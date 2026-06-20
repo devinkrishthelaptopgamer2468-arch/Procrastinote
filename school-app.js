@@ -1,0 +1,3343 @@
+// --- State & Local Storage Management ---
+const USERS_KEY = 'school_planner_users';
+const SESSION_KEY = 'school_planner_current_session';
+const SUBJECT_LIST = [
+    "Mathematics", "Physics", "Biology", "Chemistry", "English", 
+    "Tamil", "Social Science", "Sixth Subject", "PT", "VBSE", 
+    "LSA", "VBSE/LSA", "Library", "MADD", "ATL"
+];
+
+let defaultState = {
+    settings: {
+        totalDays: 6,
+        currentDayOrder: 1, // Represents 'Today'
+        lastUpdatedDate: new Date().toDateString(),
+        theme: 'light'
+    },
+    user: null, // Holds profile info
+    notebooks: [], // e.g. [{id, title, content, images: []}]
+    activeNotebookId: null, // To remember the last opened note
+    uniforms: {}, // e.g., { "1": "Regular", "2": "PE" }
+    timetable: {}, // e.g., { "1": ["Math", "English"], "2": ["Science"] }
+    homeTimetable: { weekdays: '', weekends: '', halfdays: '', everyday: '' },
+    homeSchedule: [], // e.g. [{id, daycat, acttype, subject, start, end}]
+    homework: [], // e.g., { id, task, subject, date }
+    emailVerified: false,
+    groqKey: '',
+    emailjs: {
+        publicKey: '',
+        serviceId: '',
+        templateId: ''
+    }
+};
+
+let allUsers = JSON.parse(localStorage.getItem(USERS_KEY)) || {};
+let currentEmail = localStorage.getItem(SESSION_KEY);
+let appState = (currentEmail && allUsers[currentEmail]) ? 
+    { ...JSON.parse(JSON.stringify(defaultState)), user: allUsers[currentEmail].profile, ...allUsers[currentEmail].data } : 
+    JSON.parse(JSON.stringify(defaultState));
+    
+// Auto-update if using the old broken default key
+if (appState.geminiKey) {
+    delete appState.geminiKey;
+}
+
+// Simple state management script
+function saveState() {
+    if (appState.user && appState.user.email) {
+        const email = appState.user.email.toLowerCase();
+        allUsers[email] = {
+            profile: appState.user,
+            data: {
+                settings: appState.settings,
+                notebooks: appState.notebooks,
+                activeNotebookId: appState.activeNotebookId,
+                uniforms: appState.uniforms,
+                timetable: appState.timetable,
+                homeTimetable: appState.homeTimetable,
+                homeSchedule: appState.homeSchedule,
+                homework: appState.homework,
+                emailVerified: appState.emailVerified,
+                groqKey: appState.groqKey,
+                emailjs: appState.emailjs
+            }
+        };
+        localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+        localStorage.setItem(SESSION_KEY, email);
+    }
+    renderAllViews();
+}
+
+function flashFeedback(buttonElement) {
+    const card = buttonElement.closest('.card');
+    if (card) {
+        card.classList.remove('flash-success');
+        void card.offsetWidth; // Trigger reflow
+        card.classList.add('flash-success');
+        setTimeout(() => {
+            card.classList.remove('flash-success');
+        }, 500);
+    }
+}
+
+// Global custom dropdown helper
+function setupCustomDropdown(displayId, optionsId, inputId, options, onSelect) {
+    const display = document.getElementById(displayId);
+    const optionsEl = document.getElementById(optionsId);
+    const hiddenInput = document.getElementById(inputId);
+    
+    if (!display || !optionsEl) return;
+
+    // Clear and build options
+    optionsEl.innerHTML = '';
+    options.forEach(opt => {
+        const div = document.createElement('div');
+        div.className = 'custom-option';
+        div.innerText = opt.label;
+        div.setAttribute('data-value', opt.value);
+        div.addEventListener('click', (e) => {
+            const val = e.target.getAttribute('data-value');
+            if (hiddenInput) hiddenInput.value = val;
+            display.innerText = opt.label;
+            display.classList.add('has-value');
+            optionsEl.classList.remove('open');
+            display.classList.remove('active');
+            if (onSelect) onSelect(val);
+        });
+        optionsEl.appendChild(div);
+    });
+
+    display.onclick = (e) => {
+        e.stopPropagation();
+        // Close other open ones
+        document.querySelectorAll('.custom-select-options').forEach(o => {
+            if (o !== optionsEl) o.classList.remove('open');
+        });
+        document.querySelectorAll('.custom-select-display').forEach(d => {
+            if (d !== display) d.classList.remove('active');
+        });
+        optionsEl.classList.toggle('open');
+        display.classList.toggle('active');
+    };
+}
+
+// Close custom select dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select-display') && !e.target.closest('.custom-select-options')) {
+        document.querySelectorAll('.custom-select-options').forEach(o => o.classList.remove('open'));
+        document.querySelectorAll('.custom-select-display').forEach(d => d.classList.remove('active'));
+    }
+});
+
+// --- Navigation Logic ---
+document.querySelectorAll('.nav-links li').forEach(link => {
+    link.addEventListener('click', (e) => {
+        const li = e.currentTarget;
+        document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+        
+        li.classList.add('active');
+        const tabId = li.getAttribute('data-tab');
+        document.getElementById(tabId).classList.add('active-view');
+    });
+});
+
+
+// Sidebar Auto-collapse Logic
+let sidebarTimer;
+const sidebar = document.querySelector('.sidebar');
+
+function resetSidebarTimer() {
+    clearTimeout(sidebarTimer);
+    sidebarTimer = setTimeout(() => {
+        sidebar.classList.add('collapsed');
+    }, 1000);
+}
+
+if (sidebar) {
+    sidebar.addEventListener('mouseenter', () => {
+        clearTimeout(sidebarTimer);
+        sidebar.classList.remove('collapsed');
+    });
+
+    sidebar.addEventListener('mouseleave', () => {
+        resetSidebarTimer();
+    });
+
+    // Start timer on load
+    resetSidebarTimer();
+}
+
+// --- Date & Day Order Math ---
+function updateDayOrderIfNeeded() {
+    if (!appState.settings.lastUpdatedDate) {
+        appState.settings.lastUpdatedDate = new Date().toDateString();
+        return true;
+    }
+    
+    let lastDate = new Date(appState.settings.lastUpdatedDate);
+    let today = new Date();
+    
+    // Normalize to midnight
+    lastDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    // Only start tracking from June 1st, 2026
+    let startTrackingDate = new Date('2026-06-01');
+    startTrackingDate.setHours(0, 0, 0, 0);
+    
+    let upgraded = false;
+    if (lastDate < startTrackingDate) {
+        lastDate = startTrackingDate;
+        upgraded = true;
+    }
+    
+    if (today > lastDate) {
+        let temp = new Date(lastDate);
+        let weekdays = 0;
+        while (temp < today) {
+            temp.setDate(temp.getDate() + 1);
+            let dayOfWeek = temp.getDay(); // 0 is Sunday, 6 is Saturday
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                weekdays++;
+            }
+        }
+        
+        if (weekdays > 0) {
+            let current = parseInt(appState.settings.currentDayOrder) || 1;
+            let total = parseInt(appState.settings.totalDays) || 6;
+            let newDay = ((current - 1 + weekdays) % total) + 1;
+            appState.settings.currentDayOrder = newDay;
+        }
+        
+        appState.settings.lastUpdatedDate = today.toDateString();
+        return true;
+    } else if (today < lastDate) {
+        // Clock was moved back or timezone change, just sync date to today without changing day order
+        appState.settings.lastUpdatedDate = today.toDateString();
+        return true;
+    } else if (upgraded) {
+        appState.settings.lastUpdatedDate = today.toDateString();
+        return true;
+    }
+    return false;
+}
+
+function getTomorrowDayOrder() {
+    // If today is Day Order X, tomorrow is Day Order X+1 (wrapping around)
+    let current = parseInt(appState.settings.currentDayOrder);
+    let total = parseInt(appState.settings.totalDays);
+    let tmrw = current + 1;
+    if (tmrw > total) tmrw = 1;
+    return tmrw;
+}
+
+// --- Calendar Logic ---
+let currentCalendarDate = new Date();
+let selectedCalendarDate = new Date();
+selectedCalendarDate.setHours(0,0,0,0);
+
+function getDayOrderForDate(targetDate) {
+    const targetCopy = new Date(targetDate);
+    targetCopy.setHours(0,0,0,0);
+    
+    const dow = targetCopy.getDay();
+    if (dow === 0 || dow === 6) return null; // Weekend has no Day Order
+    
+    let lastDate = new Date(appState.settings.lastUpdatedDate);
+    lastDate.setHours(0,0,0,0);
+    
+    let currentDayOrder = parseInt(appState.settings.currentDayOrder) || 1;
+    let totalDays = parseInt(appState.settings.totalDays) || 6;
+    
+    if (targetCopy.getTime() === lastDate.getTime()) {
+        return currentDayOrder;
+    }
+    
+    let weekdays = 0;
+    let temp = new Date(lastDate);
+    
+    if (targetCopy > lastDate) {
+        while (temp.getTime() < targetCopy.getTime()) {
+            temp.setDate(temp.getDate() + 1);
+            let d = temp.getDay();
+            if (d !== 0 && d !== 6) {
+                weekdays++;
+            }
+        }
+        return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
+    } else {
+        while (temp.getTime() > targetCopy.getTime()) {
+            let d = temp.getDay();
+            if (d !== 0 && d !== 6) {
+                weekdays++;
+            }
+            temp.setDate(temp.getDate() - 1);
+        }
+        let d = temp.getDay();
+        if (d !== 0 && d !== 6) {
+            weekdays++;
+        }
+        
+        let newDay = (currentDayOrder - 1 - weekdays) % totalDays;
+        if (newDay < 0) newDay += totalDays;
+        return newDay + 1;
+    }
+}
+
+function formatDateString(date) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function showCalendarDayDetails(date) {
+    const detailsDate = document.getElementById('cal-details-date');
+    const detailsContent = document.getElementById('cal-details-content');
+    if (!detailsDate || !detailsContent) return;
+    
+    detailsDate.innerText = date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const dayOrder = getDayOrderForDate(date);
+    const formattedDate = formatDateString(date);
+    
+    let html = '';
+    
+    if (dayOrder !== null) {
+        html += `
+            <div class="calendar-detail-section">
+                <h4>Day Order</h4>
+                <p>Day Order ${dayOrder}</p>
+            </div>
+        `;
+        
+        const uniform = appState.uniforms[dayOrder] || 'Not configured in settings';
+        html += `
+            <div class="calendar-detail-section">
+                <h4>Required Uniform</h4>
+                <p>${uniform}</p>
+            </div>
+        `;
+        
+        const daySubjects = appState.timetable[dayOrder] || [];
+        let subjectsHtml = '';
+        daySubjects.forEach((sub, idx) => {
+            if (sub.trim() !== '') {
+                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${sub}</li>`;
+            }
+        });
+        if (subjectsHtml === '') {
+            subjectsHtml = '<li>No subjects scheduled.</li>';
+        }
+        
+        html += `
+            <div class="calendar-detail-section">
+                <h4>Timetable Subjects</h4>
+                <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.25rem;">
+                    ${subjectsHtml}
+                </ul>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="calendar-detail-section" style="background: rgba(148, 163, 184, 0.05);">
+                <h4>Day Category</h4>
+                <p style="color: var(--text-secondary);">Weekend (No Day Order / Classes)</p>
+            </div>
+        `;
+    }
+    
+    const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    let hwHtml = '';
+    if (matchingHw.length > 0) {
+        matchingHw.forEach(hw => {
+            hwHtml += `
+                <li class="calendar-detail-hw-item">
+                    <strong style="color: var(--danger); font-size: 0.95rem;">${hw.task}</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">Subject: ${hw.subject}</div>
+                </li>
+            `;
+        });
+    } else {
+        hwHtml = '<li style="color: var(--text-secondary); font-style: italic;">No homework assignments due.</li>';
+    }
+    
+    html += `
+        <div class="calendar-detail-section">
+            <h4>Homework Due</h4>
+            <ul class="calendar-detail-hw-list">
+                ${hwHtml}
+            </ul>
+        </div>
+    `;
+    
+    detailsContent.innerHTML = html;
+}
+
+function createDayCell(date, isCurrentMonth) {
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day-cell';
+    if (!isCurrentMonth) {
+        cell.classList.add('other-month');
+    }
+    
+    const today = new Date();
+    if (date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear()) {
+        cell.classList.add('today');
+    }
+    
+    if (selectedCalendarDate && date.getDate() === selectedCalendarDate.getDate() && date.getMonth() === selectedCalendarDate.getMonth() && date.getFullYear() === selectedCalendarDate.getFullYear()) {
+        cell.classList.add('selected');
+    }
+    
+    const numDiv = document.createElement('div');
+    numDiv.className = 'calendar-day-num';
+    numDiv.innerText = date.getDate();
+    cell.appendChild(numDiv);
+    
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'calendar-day-info';
+    
+    const dayOrder = getDayOrderForDate(date);
+    if (dayOrder !== null) {
+        const doBadge = document.createElement('span');
+        doBadge.className = 'calendar-mini-badge day-order';
+        doBadge.innerText = `DO ${dayOrder}`;
+        infoDiv.appendChild(doBadge);
+        
+        const uniform = appState.uniforms[dayOrder];
+        if (uniform) {
+            const uniBadge = document.createElement('span');
+            uniBadge.className = 'calendar-mini-badge';
+            const isSports = uniform.toLowerCase().includes('pe') || uniform.toLowerCase().includes('sports') || uniform.toLowerCase().includes('pt') || uniform.toLowerCase().includes('uniform rules');
+            if (isSports) {
+                uniBadge.classList.add('sports-uniform');
+            } else {
+                uniBadge.classList.add('regular-uniform');
+            }
+            uniBadge.innerText = uniform;
+            uniBadge.title = `Uniform: ${uniform}`;
+            infoDiv.appendChild(uniBadge);
+        }
+    }
+    
+    const formattedDate = formatDateString(date);
+    const hasHw = appState.homework.some(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    if (hasHw) {
+        const hwBadge = document.createElement('span');
+        hwBadge.className = 'calendar-mini-badge hw-due';
+        hwBadge.innerText = `HW Due`;
+        infoDiv.appendChild(hwBadge);
+    }
+    
+    cell.appendChild(infoDiv);
+    
+    cell.addEventListener('click', () => {
+        selectedCalendarDate = new Date(date);
+        document.querySelectorAll('.calendar-day-cell').forEach(c => c.classList.remove('selected'));
+        cell.classList.add('selected');
+        showCalendarDayDetails(date);
+    });
+    
+    return cell;
+}
+
+function renderCalendar() {
+    const grid = document.getElementById('calendar-days-grid');
+    const monthYearLabel = document.getElementById('calendar-month-year');
+    if (!grid || !monthYearLabel) return;
+    
+    grid.innerHTML = '';
+    
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+    
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    monthYearLabel.innerText = `${monthNames[month]} ${year}`;
+    
+    const firstDay = new Date(year, month, 1);
+    const startDayOfWeek = firstDay.getDay(); 
+    
+    const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+    const prevMonthDays = new Date(year, month, 0).getDate();
+    
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+        const dayNum = prevMonthDays - i;
+        const cellDate = new Date(year, month - 1, dayNum);
+        grid.appendChild(createDayCell(cellDate, false));
+    }
+    
+    for (let i = 1; i <= totalDaysInMonth; i++) {
+        const cellDate = new Date(year, month, i);
+        grid.appendChild(createDayCell(cellDate, true));
+    }
+    
+    const currentCells = startDayOfWeek + totalDaysInMonth;
+    const remainingCells = 42 - currentCells;
+    for (let i = 1; i <= remainingCells; i++) {
+        const cellDate = new Date(year, month + 1, i);
+        grid.appendChild(createDayCell(cellDate, false));
+    }
+    
+    if (selectedCalendarDate) {
+        showCalendarDayDetails(selectedCalendarDate);
+    }
+}
+
+// Bind calendar navigation controls
+(function initCalendarControls() {
+    document.getElementById('btn-prev-month')?.addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+        renderCalendar();
+    });
+
+    document.getElementById('btn-next-month')?.addEventListener('click', () => {
+        currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+        renderCalendar();
+    });
+})();
+
+// --- Render Logic ---
+
+function renderAllViews() {
+    renderSettings();
+    renderTimetable();
+    renderHomework();
+    renderDashboard();
+    renderProfile();
+    renderNotebooks();
+    updateRobotExpression();
+    renderCalendar();
+    renderEmailJSSettings();
+    if (typeof renderHomeSchedule === 'function') {
+        const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
+        renderHomeSchedule(activeFilter);
+    }
+}
+
+function updateRobotExpression() {
+    const mouths = document.querySelectorAll('.robot-mouth');
+    if (!mouths.length) return;
+    
+    let isOverdue = false;
+    const now = new Date();
+    // Normalize today to start of day
+    now.setHours(0, 0, 0, 0); 
+    
+    for (let hw of appState.homework) {
+        const hwDate = new Date(hw.date);
+        hwDate.setHours(0, 0, 0, 0);
+        if (hwDate < now) {
+            isOverdue = true;
+            break;
+        }
+    }
+    
+    const frownPath = "M 40 65 Q 50 55 60 65";
+    const smilePath = "M 40 60 Q 50 68 60 60";
+    
+    mouths.forEach(mouth => {
+        mouth.setAttribute('d', isOverdue ? frownPath : smilePath);
+    });
+}
+
+function renderSettings() {
+    // Setup Custom Dropdowns for School Setup
+    setupCustomDropdown('total-days-display', 'total-days-options', 'total-days', 
+        Array.from({length: 10}, (_, i) => ({label: (i+1).toString(), value: (i+1).toString()})),
+        (val) => {
+            appState.settings.totalDays = parseInt(val);
+            renderSettings(); // Re-render to update the range of Today's Day Order
+        }
+    );
+
+    const total = parseInt(appState.settings.totalDays);
+    setupCustomDropdown('current-day-display', 'current-day-options', 'current-day-order', 
+        Array.from({length: total}, (_, i) => ({label: (i+1).toString(), value: (i+1).toString()})),
+        (val) => {
+            appState.settings.currentDayOrder = parseInt(val);
+        }
+    );
+
+    // Set initial display values
+    const totalDisplay = document.getElementById('total-days-display');
+    if (totalDisplay) {
+        totalDisplay.innerText = appState.settings.totalDays;
+        totalDisplay.classList.add('has-value');
+    }
+
+    const currentDisplay = document.getElementById('current-day-display');
+    if (currentDisplay) {
+        if (parseInt(appState.settings.currentDayOrder) > total) {
+            appState.settings.currentDayOrder = total;
+        }
+        currentDisplay.innerText = appState.settings.currentDayOrder;
+        currentDisplay.classList.add('has-value');
+    }
+
+    // Uniforms
+    const container = document.getElementById('uniform-setup-container');
+    container.innerHTML = '';
+    
+    const uniformOptions = [
+        {label: 'Regular Uniform', value: 'Regular Uniform'},
+        {label: 'Sports Uniform', value: 'Sports Uniform'}
+    ];
+
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        const val = appState.uniforms[i] || 'Regular Uniform';
+        container.innerHTML += `
+            <div class="form-group" style="position: relative; margin-bottom: 2rem;">
+                <label>Day ${i} Uniform</label>
+                <div id="uniform-day-${i}-display" class="custom-select-display">${val}</div>
+                <div id="uniform-day-${i}-options" class="custom-select-options"></div>
+                <input type="hidden" id="uniform-day-${i}" value="${val}">
+            </div>
+        `;
+    }
+
+    // Initialize dropdowns after HTML is added
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        setupCustomDropdown(`uniform-day-${i}-display`, `uniform-day-${i}-options`, `uniform-day-${i}`, uniformOptions);
+        const display = document.getElementById(`uniform-day-${i}-display`);
+        if (display && appState.uniforms[i]) {
+            display.classList.add('has-value');
+        }
+    }
+}
+
+function renderTimetable() {
+    const container = document.getElementById('timetable-container');
+    container.innerHTML = '';
+    
+    const subOptions = SUBJECT_LIST.map(s => ({label: s, value: s}));
+
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        const daySubjects = appState.timetable[i] || ['', '', '', '', '', '', '', ''];
+        let subjectsHtml = '';
+        
+        for (let j = 0; j < 8; j++) {
+            let val = daySubjects[j] || '';
+            let displayVal = val || `Subject ${j+1}`;
+            subjectsHtml += `
+                <div class="form-group" style="position: relative; margin-bottom: 1.5rem;">
+                    <div id="day-${i}-sub-${j}-display" class="custom-select-display ${val ? 'has-value' : ''}" style="font-size: 0.9rem; padding: 0.5rem 0;">${displayVal}</div>
+                    <div id="day-${i}-sub-${j}-options" class="custom-select-options"></div>
+                    <input type="hidden" class="subject-input day-${i}-sub" id="day-${i}-sub-${j}" value="${val}">
+                </div>
+            `;
+        }
+
+        container.innerHTML += `
+            <div class="day-column">
+                <h4>Day ${i}</h4>
+                ${subjectsHtml}
+            </div>
+        `;
+    }
+
+    // Initialize all timetable dropdowns
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        for (let j = 0; j < 8; j++) {
+            setupCustomDropdown(`day-${i}-sub-${j}-display`, `day-${i}-sub-${j}-options`, `day-${i}-sub-${j}`, subOptions, (val) => {
+                // Optional: handle immediate save or feedback
+            });
+        }
+    }
+
+    // Populate home timetable
+    const ht = appState.homeTimetable;
+    if (ht) {
+        const wk = document.getElementById('home-study-weekdays');
+        if (wk) wk.value = ht.weekdays || '';
+        const we = document.getElementById('home-study-weekends');
+        if (we) we.value = ht.weekends || '';
+        const hd = document.getElementById('home-study-halfdays');
+        if (hd) hd.value = ht.halfdays || '';
+        const ed = document.getElementById('home-study-everyday');
+        if (ed) ed.value = ht.everyday || '';
+    }
+}
+
+function renderHomework() {
+    // Setup Subject Dropdown for Form
+    const subOptions = SUBJECT_LIST.map(s => ({label: s, value: s}));
+    setupCustomDropdown('hw-subject-display', 'hw-subject-options', 'hw-subject', subOptions);
+
+    const list = document.getElementById('active-homework-list');
+    list.innerHTML = '';
+
+    // Sort by date mostly
+    appState.homework.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (appState.homework.length === 0) {
+        list.innerHTML = '<li class="empty-state">No active homework!</li>';
+        return;
+    }
+
+    appState.homework.forEach((hw, index) => {
+        list.innerHTML += `
+            <li>
+                <div class="hw-info">
+                    <strong>${hw.task} (${hw.subject})</strong>
+                    <span>Due: ${new Date(hw.date).toLocaleDateString()}</span>
+                </div>
+                <button class="done-btn" onclick="completeHomework(${index})">Mark Done</button>
+            </li>
+        `;
+    });
+}
+
+function renderDashboard() {
+    const tmrwDay = getTomorrowDayOrder();
+    document.getElementById('dash-day-order-display').innerText = `Tomorrow is Day Order: ${tmrwDay}`;
+
+    // Uniform
+    const unif = appState.uniforms[tmrwDay];
+    document.getElementById('dash-uniform').innerText = unif ? unif : "Not Set up - Check settings!";
+
+    // Subjects & Books
+    // Get ALL unique subjects to know our master list
+    let allSubjects = new Set();
+    Object.values(appState.timetable).forEach(dayList => {
+        dayList.forEach(sub => {
+            if (sub.trim() !== '') allSubjects.add(sub.trim());
+        });
+    });
+
+    // Get tomorrow's subjects
+    let tmrwSubjects = new Set();
+    const dayList = appState.timetable[tmrwDay] || [];
+    dayList.forEach(sub => {
+        if (sub.trim() !== '') tmrwSubjects.add(sub.trim());
+    });
+
+    // Pack list = tomorrow's subjects
+    const packListEl = document.getElementById('dash-pack-list');
+    packListEl.innerHTML = '';
+    if (tmrwSubjects.size === 0) {
+        packListEl.innerHTML = '<li class="empty-state">No subjects set for tomorrow.</li>';
+    } else {
+        tmrwSubjects.forEach(sub => {
+            packListEl.innerHTML += `<li>${sub}</li>`;
+        });
+    }
+
+    // Leave list = All subjects minus tomorrow's subjects
+    const leaveListEl = document.getElementById('dash-leave-list');
+    leaveListEl.innerHTML = '';
+    let leftBehind = 0;
+    allSubjects.forEach(sub => {
+        if (!tmrwSubjects.has(sub)) {
+            leaveListEl.innerHTML += `<li>${sub}</li>`;
+            leftBehind++;
+        }
+    });
+    
+    if (leftBehind === 0) {
+        leaveListEl.innerHTML = '<li class="empty-state">No other books.</li>';
+    }
+
+    // Homework Alert (due within 2 days)
+    const hwList = document.getElementById('dash-homework-list');
+    hwList.innerHTML = '';
+    const now = new Date();
+    let urgentHw = 0;
+
+    appState.homework.forEach(hw => {
+        const diffTime = new Date(hw.date) - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        if (diffDays <= 3) { // Shows due soon
+            hwList.innerHTML += `<li>${hw.task} - Due in ${diffDays} days</li>`;
+            urgentHw++;
+        }
+    });
+
+    if (urgentHw === 0) {
+        hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
+    }
+}
+
+function renderProfile() {
+    if (appState.user) {
+        const nameEl = document.getElementById('profile-name');
+        const gradeEl = document.getElementById('profile-grade');
+        const emailEl = document.getElementById('profile-email');
+        
+        if (nameEl) nameEl.innerText = appState.user.name || '--';
+        if (gradeEl) gradeEl.innerText = appState.user.class || '--';
+        if (emailEl) emailEl.innerText = appState.user.email || '--';
+    }
+}
+
+// --- Action Bindings ---
+
+// Settings setup
+document.getElementById('save-school-setup').addEventListener('click', (e) => {
+    appState.settings.totalDays = document.getElementById('total-days').value;
+    appState.settings.currentDayOrder = document.getElementById('current-day-order').value;
+    saveState();
+    flashFeedback(e.target);
+});
+
+document.getElementById('save-uniforms-btn').addEventListener('click', (e) => {
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        const hiddenInput = document.getElementById(`uniform-day-${i}`);
+        if(hiddenInput) {
+            appState.uniforms[i] = hiddenInput.value;
+        }
+    }
+    saveState();
+    flashFeedback(e.target);
+});
+
+// Timetable setup
+document.getElementById('save-timetable-btn').addEventListener('click', (e) => {
+    for (let i = 1; i <= appState.settings.totalDays; i++) {
+        let subs = [];
+        document.querySelectorAll(`.day-${i}-sub`).forEach(input => {
+            subs.push(input.value);
+        });
+        appState.timetable[i] = subs;
+    }
+    saveState();
+    flashFeedback(e.target);
+});
+
+
+// --- Home Schedule Logic ---
+function renderHomeSchedule(filter = 'all') {
+    if (!appState.homeSchedule) appState.homeSchedule = [];
+    const listEl = document.getElementById('home-schedule-list');
+    const emptyEl = document.getElementById('home-schedule-empty');
+    if (!listEl) return;
+
+    const filtered = filter === 'all' 
+        ? appState.homeSchedule 
+        : appState.homeSchedule.filter(item => item.daycat === filter);
+
+    // Remove all items except empty state
+    Array.from(listEl.children).forEach(ch => { if (ch.id !== 'home-schedule-empty') ch.remove(); });
+
+    if (filtered.length === 0) {
+        if (emptyEl) emptyEl.style.display = 'block';
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Sort by start time
+    const sorted = [...filtered].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    const daycatLabels = { weekday: 'Weekday', weekend: 'Weekend', halfday: 'Half-day' };
+    const acttypeLabels = { study: 'Study Session', homework: 'Homework Time', revision: 'Revision', break: 'Break' };
+    const acttypeColors = { study: '#3b82f6', homework: '#8b5cf6', revision: '#10b981', break: '#f59e0b' };
+
+    sorted.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'schedule-item';
+        const color = acttypeColors[item.acttype] || '#3b82f6';
+        const timeStr = item.start && item.end ? `${item.start} – ${item.end}` : (item.start || item.end || '');
+        div.innerHTML = `
+            <div class="schedule-item-color-bar" style="background: ${color};"></div>
+            <div class="schedule-item-body">
+                <div class="schedule-item-time">${timeStr}</div>
+                <div class="schedule-item-subject">${item.subject || 'General'}</div>
+                <div class="schedule-item-badges">
+                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${acttypeLabels[item.acttype] || item.acttype}</span>
+                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${daycatLabels[item.daycat] || item.daycat}</span>
+                </div>
+            </div>
+            <button class="schedule-delete-btn" onclick="deleteScheduleItem('${item.id}')" title="Remove">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+        `;
+        listEl.appendChild(div);
+    });
+}
+
+window.deleteScheduleItem = function(id) {
+    if (!appState.homeSchedule) return;
+    appState.homeSchedule = appState.homeSchedule.filter(i => i.id !== id);
+    saveState();
+    const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
+    renderHomeSchedule(activeFilter);
+};
+
+// Setup home schedule form dropdowns & handlers
+(function initHomeSchedule() {
+    const daycatOptions = [
+        { label: 'Weekday (Mon–Fri)', value: 'weekday' },
+        { label: 'Weekend (Sat–Sun)', value: 'weekend' },
+        { label: 'Half-day', value: 'halfday' }
+    ];
+    const acttypeOptions = [
+        { label: 'Study Session', value: 'study' },
+        { label: 'Homework Time', value: 'homework' },
+        { label: 'Revision', value: 'revision' },
+        { label: 'Break', value: 'break' }
+    ];
+
+    setupCustomDropdown('hs-daycat-display', 'hs-daycat-options', 'hs-daycat', daycatOptions, () => {});
+    setupCustomDropdown('hs-acttype-display', 'hs-acttype-options', 'hs-acttype', acttypeOptions, () => {});
+
+    document.getElementById('btn-add-schedule-block')?.addEventListener('click', () => {
+        const daycat = document.getElementById('hs-daycat')?.value || 'weekday';
+        const acttype = document.getElementById('hs-acttype')?.value || 'study';
+        const subject = document.getElementById('hs-subject')?.value.trim() || '';
+        const start = document.getElementById('hs-start')?.value || '';
+        const end = document.getElementById('hs-end')?.value || '';
+
+        if (!start && !end) {
+            const btn = document.getElementById('btn-add-schedule-block');
+            btn.classList.add('shake-error');
+            setTimeout(() => btn.classList.remove('shake-error'), 600);
+            return;
+        }
+
+        if (!appState.homeSchedule) appState.homeSchedule = [];
+        appState.homeSchedule.push({ id: 'hs_' + Date.now(), daycat, acttype, subject, start, end });
+        saveState();
+
+        // Reset form
+        if (document.getElementById('hs-subject')) document.getElementById('hs-subject').value = '';
+        if (document.getElementById('hs-start')) document.getElementById('hs-start').value = '';
+        if (document.getElementById('hs-end')) document.getElementById('hs-end').value = '';
+
+        const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
+        renderHomeSchedule(activeFilter);
+    });
+
+    // Filter pills
+    document.getElementById('hs-filter-pills')?.addEventListener('click', (e) => {
+        const pill = e.target.closest('.hs-pill');
+        if (!pill) return;
+        document.querySelectorAll('.hs-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        renderHomeSchedule(pill.getAttribute('data-filter') || 'all');
+    });
+})();
+
+// Timetable tab switch
+document.getElementById('tt-school-btn')?.addEventListener('click', (e) => {
+    e.target.classList.add('active');
+    e.target.style.background = 'var(--primary-color)';
+    e.target.style.color = 'white';
+    
+    const homeBtn = document.getElementById('tt-home-btn');
+    if(homeBtn) {
+        homeBtn.classList.remove('active');
+        homeBtn.style.background = 'transparent';
+        homeBtn.style.color = 'var(--text-primary)';
+    }
+    
+    document.getElementById('school-timetable-view').style.display = 'block';
+    document.getElementById('home-timetable-view').style.display = 'none';
+});
+
+document.getElementById('tt-home-btn')?.addEventListener('click', (e) => {
+    e.target.classList.add('active');
+    e.target.style.background = 'var(--primary-color)';
+    e.target.style.color = 'white';
+    
+    const schoolBtn = document.getElementById('tt-school-btn');
+    if(schoolBtn) {
+        schoolBtn.classList.remove('active');
+        schoolBtn.style.background = 'transparent';
+        schoolBtn.style.color = 'var(--text-primary)';
+    }
+    
+    document.getElementById('school-timetable-view').style.display = 'none';
+    document.getElementById('home-timetable-view').style.display = 'block';
+});
+
+
+// Helper to calculate the next working day (excluding Saturday/Sunday)
+function getNextWorkingDay() {
+    const date = new Date();
+    // Move to tomorrow
+    date.setDate(date.getDate() + 1);
+    // Move past Saturday and Sunday
+    while (date.getDay() === 0 || date.getDay() === 6) {
+        date.setDate(date.getDate() + 1);
+    }
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+// Homework setup
+document.getElementById('homework-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    let deadlineDate = document.getElementById('hw-deadline').value;
+    if (!deadlineDate) {
+        deadlineDate = getNextWorkingDay();
+    }
+    const hw = {
+        task: document.getElementById('hw-task').value,
+        subject: document.getElementById('hw-subject').value,
+        date: deadlineDate
+    };
+    appState.homework.push(hw);
+    
+    // Clear inputs
+    document.getElementById('hw-task').value = '';
+    const hiddenSub = document.getElementById('hw-subject');
+    hiddenSub.value = '';
+    const displaySub = document.getElementById('hw-subject-display');
+    if (displaySub) {
+        displaySub.innerText = 'Select Subject';
+        displaySub.classList.remove('has-value');
+    }
+    document.getElementById('hw-deadline').value = '';
+    
+    saveState();
+});
+
+window.completeHomework = function(index) {
+    appState.homework.splice(index, 1);
+    saveState();
+    triggerConfetti();
+}
+
+// --- Notebook Logic ---
+let selectedNotebookIds = new Set();
+
+function updateBulkActionsBar() {
+    const bulkBar = document.getElementById('notebook-bulk-bar');
+    const selectedCountEl = document.getElementById('nb-selected-count');
+    const selectAllCheckbox = document.getElementById('nb-select-all');
+    const bulkButtonsContainer = document.querySelector('.bulk-buttons-container');
+
+    if (!bulkBar) return;
+
+    if (appState.notebooks && appState.notebooks.length > 0) {
+        bulkBar.style.display = 'block';
+        if (selectedCountEl) {
+            selectedCountEl.innerText = `${selectedNotebookIds.size} selected`;
+        }
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = (selectedNotebookIds.size === appState.notebooks.length && appState.notebooks.length > 0);
+        }
+        if (bulkButtonsContainer) {
+            if (selectedNotebookIds.size > 0) {
+                bulkButtonsContainer.classList.add('visible');
+            } else {
+                bulkButtonsContainer.classList.remove('visible');
+            }
+        }
+    } else {
+        bulkBar.style.display = 'none';
+        selectedNotebookIds.clear();
+        if (bulkButtonsContainer) {
+            bulkButtonsContainer.classList.remove('visible');
+        }
+    }
+}
+
+function renderNotebooks() {
+    const listEl = document.getElementById('notebook-list');
+    const emptyState = document.getElementById('notebook-empty-state');
+    const activeView = document.getElementById('notebook-active-view');
+    const titleInput = document.getElementById('notebook-title');
+    const contentInput = document.getElementById('notebook-content');
+    const galleryEl = document.getElementById('notebook-image-gallery');
+
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    
+    if (!appState.notebooks) appState.notebooks = [];
+
+    // Filter out selection set for deleted notes
+    const validIds = new Set(appState.notebooks.map(n => n.id));
+    selectedNotebookIds.forEach(id => {
+        if (!validIds.has(id)) selectedNotebookIds.delete(id);
+    });
+
+    appState.notebooks.forEach(nb => {
+        const li = document.createElement('li');
+        li.className = 'notebook-list-item' + (appState.activeNotebookId === nb.id ? ' active' : '');
+        
+        const isChecked = selectedNotebookIds.has(nb.id);
+        
+        li.innerHTML = `
+            <input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" ${isChecked ? 'checked' : ''}>
+            <div style="flex: 1; min-width: 0;" class="nb-item-click-target">
+                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${nb.title || 'Untitled Note'}</h4>
+                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? nb.content.substring(0, 30) + '...' : 'No content'}</p>
+            </div>
+        `;
+        
+        const checkbox = li.querySelector('.nb-item-checkbox');
+        checkbox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (checkbox.checked) {
+                selectedNotebookIds.add(nb.id);
+            } else {
+                selectedNotebookIds.delete(nb.id);
+            }
+            updateBulkActionsBar();
+        });
+        
+        const clickTarget = li.querySelector('.nb-item-click-target');
+        clickTarget.addEventListener('click', () => {
+            appState.activeNotebookId = nb.id;
+            saveState();
+        });
+
+        listEl.appendChild(li);
+    });
+
+    updateBulkActionsBar();
+
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+
+    if (activeNb) {
+        emptyState.style.display = 'none';
+        activeView.style.display = 'flex';
+        
+        if (document.activeElement !== titleInput) titleInput.value = activeNb.title;
+        if (document.activeElement !== contentInput) contentInput.value = activeNb.content;
+
+        galleryEl.innerHTML = '';
+        if (activeNb.images && activeNb.images.length > 0) {
+            activeNb.images.forEach((imgUrl, idx) => {
+                const container = document.createElement('div');
+                container.className = 'gallery-img-container';
+                container.innerHTML = `
+                    <img src="${imgUrl}" alt="Notebook Image">
+                    <button class="gallery-img-delete" onclick="deleteNotebookImage(${idx})">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                `;
+                galleryEl.appendChild(container);
+            });
+        }
+    } else {
+        emptyState.style.display = 'block';
+        activeView.style.display = 'none';
+    }
+}
+
+document.getElementById('btn-new-notebook')?.addEventListener('click', () => {
+    if (!appState.notebooks) appState.notebooks = [];
+    const newId = 'nb_' + Date.now();
+    appState.notebooks.unshift({
+        id: newId,
+        title: 'New Note',
+        content: '',
+        images: []
+    });
+    appState.activeNotebookId = newId;
+    saveState();
+});
+
+// Fullscreen Notebook toggle
+document.getElementById('btn-fullscreen-notebook')?.addEventListener('click', () => {
+    const editor = document.getElementById('notebook-editor');
+    if (!editor) return;
+    
+    const isFullscreen = editor.classList.toggle('fullscreen');
+    
+    const expandIcon = document.getElementById('fullscreen-expand-icon');
+    const collapseIcon = document.getElementById('fullscreen-collapse-icon');
+    
+    if (isFullscreen) {
+        if (expandIcon) expandIcon.style.display = 'none';
+        if (collapseIcon) collapseIcon.style.display = 'inline-block';
+    } else {
+        if (expandIcon) expandIcon.style.display = 'inline-block';
+        if (collapseIcon) collapseIcon.style.display = 'none';
+    }
+});
+
+// Select All notes
+document.getElementById('nb-select-all')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+        if (appState.notebooks) {
+            appState.notebooks.forEach(nb => selectedNotebookIds.add(nb.id));
+        }
+    } else {
+        selectedNotebookIds.clear();
+    }
+    renderNotebooks();
+});
+
+// Bulk Delete selected notes
+document.getElementById('btn-bulk-delete')?.addEventListener('click', () => {
+    if (selectedNotebookIds.size === 0) return;
+    showConfirm(`Are you sure you want to delete the ${selectedNotebookIds.size} selected notes?`, () => {
+        appState.notebooks = appState.notebooks.filter(nb => !selectedNotebookIds.has(nb.id));
+        if (selectedNotebookIds.has(appState.activeNotebookId)) {
+            appState.activeNotebookId = null;
+        }
+        selectedNotebookIds.clear();
+        saveState();
+        renderNotebooks();
+    });
+});
+
+// Bulk Export/Download selected notes
+document.getElementById('btn-bulk-download')?.addEventListener('click', () => {
+    if (selectedNotebookIds.size === 0) return;
+    
+    let exportContent = '';
+    selectedNotebookIds.forEach(id => {
+        const nb = appState.notebooks.find(n => n.id === id);
+        if (nb) {
+            exportContent += `=========================================\n`;
+            exportContent += `Title: ${nb.title || 'Untitled Note'}\n`;
+            exportContent += `=========================================\n\n`;
+            exportContent += `${nb.content || ''}\n\n\n`;
+        }
+    });
+
+    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `procrastinote_export_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
+
+// Press Enter to submit URL image
+document.getElementById('notebook-image-url')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+        document.getElementById('btn-add-image')?.click();
+    }
+});
+
+window.showConfirm = function(message, onConfirm) {
+    const overlay = document.getElementById('custom-confirm-overlay');
+    const msgEl = document.getElementById('custom-confirm-msg');
+    const btnYes = document.getElementById('custom-confirm-yes');
+    const btnNo = document.getElementById('custom-confirm-no');
+    
+    if (!overlay) {
+        if (confirm(message)) onConfirm();
+        return;
+    }
+    
+    msgEl.innerText = message;
+    overlay.style.display = 'flex';
+    
+    const cleanup = () => {
+        overlay.style.display = 'none';
+        btnYes.removeEventListener('click', yesHandler);
+        btnNo.removeEventListener('click', noHandler);
+    };
+    
+    const yesHandler = () => {
+        cleanup();
+        onConfirm();
+    };
+    
+    const noHandler = () => {
+        cleanup();
+    };
+    
+    btnYes.addEventListener('click', yesHandler);
+    btnNo.addEventListener('click', noHandler);
+};
+
+document.getElementById('btn-delete-notebook')?.addEventListener('click', () => {
+    showConfirm("Are you sure you want to delete this note?", () => {
+        appState.notebooks = appState.notebooks.filter(n => n.id !== appState.activeNotebookId);
+        appState.activeNotebookId = null;
+        saveState();
+        renderNotebooks();
+    });
+});
+
+document.getElementById('notebook-title')?.addEventListener('input', (e) => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (activeNb) {
+        activeNb.title = e.target.value;
+        saveState();
+    }
+});
+
+document.getElementById('notebook-content')?.addEventListener('input', (e) => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (activeNb) {
+        activeNb.content = e.target.value;
+        saveState();
+    }
+});
+
+document.getElementById('btn-add-image')?.addEventListener('click', () => {
+    const urlInput = document.getElementById('notebook-image-url');
+    const url = urlInput.value.trim();
+    if (url) {
+        const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+        if (activeNb) {
+            if (!activeNb.images) activeNb.images = [];
+            activeNb.images.push(url);
+            urlInput.value = '';
+            saveState();
+            renderNotebooks();
+        }
+    }
+});
+
+document.getElementById('notebook-image-file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const dataUrl = ev.target.result;
+            const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+            if (activeNb) {
+                if (!activeNb.images) activeNb.images = [];
+                activeNb.images.push(dataUrl);
+                saveState();
+                renderNotebooks();
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+});
+
+window.deleteNotebookImage = function(index) {
+    showConfirm("Are you sure you want to delete this image?", () => {
+        const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+        if (activeNb && activeNb.images) {
+            activeNb.images.splice(index, 1);
+            saveState();
+            renderNotebooks();
+        }
+    });
+}
+
+// AI Assist Logic
+document.getElementById('btn-ai-continue')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb || !activeNb.content) {
+        alert("Write something first so AI has context!");
+        return;
+    }
+    const btn = document.getElementById('btn-ai-continue');
+    const origText = btn.innerHTML;
+    btn.innerHTML = 'Writing...';
+    btn.disabled = true;
+
+    const prompt = `Continue the following notes. Add new relevant information to extend the ideas organically. IMPORTANT: Do not include any conversational filler, greetings, or acknowledgements. Just output the continuation text directly:\n\n${activeNb.content}`;
+    const response = await callGroq(prompt);
+    
+    activeNb.content += '\n\n' + response;
+    const contentInput = document.getElementById('notebook-content');
+    if (contentInput) contentInput.value = activeNb.content;
+    saveState();
+
+    btn.innerHTML = origText;
+    btn.disabled = false;
+});
+
+document.getElementById('btn-ai-generate')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb) return;
+    
+    const promptInput = document.getElementById('notebook-ai-prompt');
+    const query = promptInput.value.trim();
+    if (!query) {
+        alert("Enter a prompt for the AI.");
+        return;
+    }
+
+    const btn = document.getElementById('btn-ai-generate');
+    const origText = btn.innerText;
+    btn.innerText = '...';
+    btn.disabled = true;
+
+    const context = activeNb.content ? ` Context from notes: "${activeNb.content.substring(0, 500)}"` : '';
+    const prompt = `The user is writing notes. They asked: "${query}". Generate a helpful response to insert into their notes.${context}`;
+    const response = await callGroq(prompt);
+    
+    activeNb.content += `\n\n[AI: ${query}]\n${response}\n`;
+    const contentInput = document.getElementById('notebook-content');
+    if (contentInput) contentInput.value = activeNb.content;
+    promptInput.value = '';
+    saveState();
+
+    btn.innerText = origText;
+    btn.disabled = false;
+});
+
+document.getElementById('btn-translate-english')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb || !activeNb.content) {
+        alert("Write something first to translate!");
+        return;
+    }
+    const btn = document.getElementById('btn-translate-english');
+    const origText = btn.innerText;
+    btn.innerText = 'Translating...';
+    btn.disabled = true;
+
+    const prompt = `Translate the following notes into English. IMPORTANT: Just output the translated text directly, without any conversational filler, greetings, or acknowledgements:\n\n${activeNb.content}`;
+    const response = await callGroq(prompt);
+    
+    activeNb.content += `\n\n[Translation to English]\n${response}\n`;
+    const contentInput = document.getElementById('notebook-content');
+    if (contentInput) contentInput.value = activeNb.content;
+    saveState();
+
+    btn.innerText = origText;
+    btn.disabled = false;
+});
+
+document.getElementById('btn-ocr-images')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb || !activeNb.images || activeNb.images.length === 0) {
+        alert("Add some images to extract text from!");
+        return;
+    }
+    const btn = document.getElementById('btn-ocr-images');
+    const origText = btn.innerText;
+    btn.innerText = 'Extracting...';
+    btn.disabled = true;
+
+    try {
+        let extractedText = '';
+        for (let i = 0; i < activeNb.images.length; i++) {
+            const imgUrl = activeNb.images[i];
+            const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng+tam');
+            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${text}\n`;
+        }
+        
+        activeNb.content += `\n\n[OCR Extraction]\n${extractedText}\n`;
+        activeNb.images = [];
+        const contentInput = document.getElementById('notebook-content');
+        if (contentInput) contentInput.value = activeNb.content;
+        saveState();
+        renderNotebooks();
+    } catch (e) {
+        alert("Error during OCR: " + e.message);
+    }
+
+    btn.innerText = origText;
+    btn.disabled = false;
+});
+
+// --- Theme Toggle Logic ---
+function applyTheme() {
+    const theme = appState.settings.theme || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    
+    // Update switch visually
+    const toggleSwitch = document.getElementById('theme-checkbox');
+    if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
+}
+
+document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
+    appState.settings.theme = e.target.checked ? 'light' : 'dark';
+    applyTheme();
+    saveState();
+});
+
+// --- Auth / Login Logic ---
+// --- Custom Dropdown Logic ---
+const gradeDisplay = document.getElementById('grade-display');
+const gradeOptions = document.getElementById('grade-options');
+const hiddenClassInput = document.getElementById('login-class');
+
+if (gradeDisplay) {
+    gradeDisplay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        gradeOptions.classList.toggle('open');
+        gradeDisplay.classList.toggle('active');
+    });
+
+    document.querySelectorAll('.custom-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+            const val = e.target.getAttribute('data-value');
+            if (hiddenClassInput) hiddenClassInput.value = val;
+            gradeDisplay.innerText = val;
+            gradeDisplay.classList.add('has-value');
+            gradeOptions.classList.remove('open');
+            gradeDisplay.classList.remove('active');
+        });
+    });
+
+    // Show Password Toggle
+    const passToggle = document.getElementById('show-password-cb');
+    const passInput = document.getElementById('login-password');
+    if (passToggle && passInput) {
+        passToggle.addEventListener('change', (e) => {
+            passInput.type = e.target.checked ? 'text' : 'password';
+        });
+    }
+}
+
+// Generate options for study timer (10 min to 1 h, step 5 min)
+function getStudyTimeOptions() {
+    const opts = [];
+    for (let mins = 10; mins <= 60; mins += 5) {
+        let label;
+        if (mins < 60) {
+            label = `${mins} Minutes`;
+        } else if (mins === 60) {
+            label = `1 Hour`;
+        } else {
+            label = `${mins / 60} Hours`;
+        }
+        opts.push({ label, value: mins.toString() });
+    }
+    return opts;
+}
+
+// Initialise the study time custom dropdown
+setupCustomDropdown(
+    'study-min-display',
+    'study-min-options',
+    'study-min',
+    getStudyTimeOptions(),
+    (val) => {
+        // Trigger change event if needed
+        const hiddenInput = document.getElementById('study-min');
+        if (hiddenInput) {
+            hiddenInput.dispatchEvent(new Event('change'));
+        }
+    }
+);
+
+// Generate options for break timer (5 min to 20 min, step 5 min)
+function getBreakTimeOptions() {
+    const opts = [];
+    for (let mins = 5; mins <= 20; mins += 5) {
+        opts.push({ label: `${mins} Minutes`, value: mins.toString() });
+    }
+    return opts;
+}
+
+// Initialise the break time custom dropdown
+setupCustomDropdown(
+    'break-min-display',
+    'break-min-options',
+    'break-min',
+    getBreakTimeOptions(),
+    (val) => {
+        // Trigger change event if needed
+        const hiddenInput = document.getElementById('break-min');
+        if (hiddenInput) {
+            hiddenInput.dispatchEvent(new Event('change'));
+        }
+    }
+);
+
+// --- Auth Toggle Logic ---
+let currentAuthMode = 'signup'; // default
+
+document.getElementById('btn-login')?.addEventListener('click', () => {
+    currentAuthMode = 'login';
+    document.querySelector('.auth-slider').classList.add('login-mode');
+    document.getElementById('btn-login').classList.add('active');
+    document.getElementById('btn-signup').classList.remove('active');
+    
+    document.getElementById('auth-title').innerText = 'Welcome Back';
+    document.getElementById('auth-submit-btn').innerText = 'Log In';
+    
+    document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = 'none');
+    document.getElementById('login-name').removeAttribute('required'); // Prevent form validation
+});
+
+document.getElementById('btn-signup')?.addEventListener('click', () => {
+    currentAuthMode = 'signup';
+    document.querySelector('.auth-slider').classList.remove('login-mode');
+    document.getElementById('btn-signup').classList.add('active');
+    document.getElementById('btn-login').classList.remove('active');
+    
+    document.getElementById('auth-title').innerText = 'Create an Account';
+    document.getElementById('auth-submit-btn').innerText = 'Sign Up';
+    
+    // Reset hiding to default flex/block state, assuming normal standard is block.
+    document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = '');
+    document.getElementById('login-name').setAttribute('required', 'true');
+});
+
+document.getElementById('login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('login-name').value;
+    const cls = hiddenClassInput ? hiddenClassInput.value : '';
+    const email = document.getElementById('login-email').value.toLowerCase();
+    const pass = document.getElementById('login-password').value;
+    
+    if (currentAuthMode === 'login') {
+        const userEntry = allUsers[email];
+        if (!userEntry) {
+            alert('No account found! Please sign up first.');
+            return;
+        }
+        if (userEntry.profile.pass !== pass) {
+            const passInput = document.getElementById('login-password');
+            passInput.classList.add('shake-error');
+            setTimeout(() => passInput.classList.remove('shake-error'), 750);
+            return;
+        }
+        // Load user data
+        appState = {
+            user: userEntry.profile,
+            ...userEntry.data
+        };
+    } else {
+        // Signup Mode
+        if (!cls) {
+            alert("Please select a Class / Grade!");
+            return;
+        }
+        if (allUsers[email]) {
+            alert("Account already exists with this email!");
+            return;
+        }
+        // Create new user with default data
+        appState = JSON.parse(JSON.stringify(defaultState));
+        appState.user = { name, class: cls, email, pass };
+    }
+    
+    saveState();
+    checkAuth();
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem(SESSION_KEY);
+    appState = JSON.parse(JSON.stringify(defaultState));
+    checkAuth();
+});
+
+function checkAuth() {
+    if (appState.user && appState.user.name) {
+        // User is logged in
+        document.getElementById('landing-view').style.display = 'none';
+        document.getElementById('fullpage-intro').style.display = 'none';
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
+        
+        // Setup greeting & sidebar
+        const firstName = appState.user.name.split(' ')[0];
+        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${firstName}</span>!`;
+        document.getElementById('sidebar-user-class').innerText = `Class: ${appState.user.class}`;
+        
+        // Update day order if date has changed
+        if (updateDayOrderIfNeeded()) {
+            saveState();
+        } else {
+            renderAllViews();
+        }
+        applyTheme(); // Ensure user preference is applied
+    } else {
+        // User not logged in - Force Dark Mode
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.getElementById('main-app').style.display = 'none';
+        
+        // Show Intro Typewriter FIRST
+        document.getElementById('fullpage-intro').style.display = 'flex';
+        document.getElementById('fullpage-intro').style.transform = 'translateY(0)';
+        document.getElementById('landing-view').style.display = 'flex';
+        document.getElementById('landing-view').style.transform = 'translateY(0)';
+        document.getElementById('login-overlay').style.display = 'none';
+
+        typewriterEffect();
+
+        document.getElementById('get-started-btn').onclick = () => {
+            // Slide up landing page to reveal login
+            document.getElementById('landing-view').style.transform = 'translateY(-100vh)';
+            setTimeout(() => {
+                document.getElementById('landing-view').style.display = 'none';
+                document.getElementById('login-overlay').style.display = 'flex';
+            }, 800);
+        };
+    }
+}
+
+function startLandingSequence() {
+    const spans = document.querySelectorAll('.hero-words span');
+    if (!spans.length) return;
+
+    // Reset states
+    spans.forEach(s => { s.style.opacity = '0'; s.style.transform = 'translateY(20px)'; });
+    document.getElementById('landing-hero-subtitle').innerHTML = '';
+    document.getElementById('get-started-btn').style.opacity = '0';
+    document.getElementById('get-started-btn').style.transform = 'translateY(20px)';
+
+    // 1. Words appear 1 after the other (Snappier)
+    spans.forEach((span, index) => {
+        setTimeout(() => {
+            span.style.opacity = "1";
+            span.style.transform = "translateY(0)";
+        }, index * 250); 
+    });
+
+    // 2. Start typewriter right after the last word appears
+    setTimeout(() => {
+        typeHeroSubtitle();
+    }, (spans.length * 250) + 100);
+}
+
+function typeHeroSubtitle() {
+    const text = "Your very own Educational Planner";
+    const el = document.getElementById('landing-hero-subtitle');
+    const btn = document.getElementById('get-started-btn');
+    if (!el) return;
+
+    el.innerHTML = "";
+    let i = 0;
+    const speed = 25; // Faster typing
+
+    function type() {
+        if (i < text.length) {
+            el.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(type, speed);
+        } else {
+            // Fade in the button right after typing finishes
+            btn.style.opacity = "1";
+            btn.style.transform = "translateY(0)";
+        }
+    }
+    type();
+}
+
+let hasTyped = false;
+function typewriterEffect() {
+    if (hasTyped) return;
+    hasTyped = true;
+    
+    const text = "Welcome to Procrastinote. The smartest way to organize your school life.";
+    const introEl = document.getElementById('fullpage-intro');
+    const landingEl = document.getElementById('landing-view');
+    const typeEl = document.getElementById('fullpage-typewriter');
+    
+    introEl.style.display = 'flex';
+    typeEl.innerHTML = "";
+    
+    let i = 0;
+    const speed = 15; // Much faster typing
+    
+    function type() {
+        if (i < text.length) {
+            typeEl.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(type, speed);
+        } else {
+            // Finished typing, wait then SLIDE UP Intro to reveal Landing Page
+            setTimeout(() => {
+                introEl.style.transform = 'translateY(-100vh)'; 
+                
+                // Logic to setup music presets
+                document.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        // Update player logic here
+                    });
+                });
+
+                setTimeout(() => {
+                    introEl.style.display = 'none';
+                    // Start the landing sequence (words, hero typing)
+                    startLandingSequence();
+                }, 800); 
+            }, 600); 
+        }
+    }
+    
+    setTimeout(type, 200);
+}
+
+// --- Robot Pupil Tracker ---
+let mouseX = 0, mouseY = 0;
+let pupilData = new Map();
+
+document.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
+
+function animatePupils() {
+    document.querySelectorAll('.robot-pupil').forEach(pupil => {
+        const robot = pupil.closest('.robot-icon');
+        if (!robot) return;
+        const rect = robot.getBoundingClientRect();
+        if (rect.width === 0) return; // Not visible
+
+        const robotX = rect.left + rect.width / 2;
+        const robotY = rect.top + rect.height / 2;
+        
+        const deltaX = mouseX - robotX;
+        const deltaY = mouseY - robotY;
+        const angle = Math.atan2(deltaY, deltaX);
+        const maxDist = 3.5;
+        
+        const targetX = Math.cos(angle) * maxDist;
+        const targetY = Math.sin(angle) * maxDist;
+        
+        let data = pupilData.get(pupil) || { x: 0, y: 0 };
+        // Lerp: current += (target - current) * factor
+        data.x += (targetX - data.x) * 0.12; 
+        data.y += (targetY - data.y) * 0.12;
+        
+        pupil.style.transform = `translate(${data.x}px, ${data.y}px)`;
+        pupilData.set(pupil, data);
+    });
+    requestAnimationFrame(animatePupils);
+}
+requestAnimationFrame(animatePupils);
+
+// --- Confetti Logic ---
+let confettiTriggered = false;
+
+function triggerConfetti() {
+    if (confettiTriggered) return;
+    confettiTriggered = true;
+    
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '0';
+    container.style.width = '100vw';
+    container.style.height = '100vh';
+    container.style.pointerEvents = 'none';
+    container.style.zIndex = '9999';
+    container.style.overflow = 'hidden';
+    document.body.appendChild(container);
+    
+    const colors = ['#f87171', '#4ade80', '#facc15', '#3b82f6', '#a855f7'];
+    
+    for (let i = 0; i < 70; i++) {
+        const conf = document.createElement('div');
+        conf.className = 'confetti-piece';
+        conf.style.left = Math.random() * 100 + 'vw';
+        conf.style.animationDelay = (Math.random() * 0.3) + 's';
+        conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        conf.style.transform = `rotate(${Math.random() * 360}deg)`;
+        container.appendChild(conf);
+    }
+    
+    setTimeout(() => {
+        if(container.parentNode) container.remove();
+        // Resetting confetti triggered logic slightly so it happens again if user interacts and empties
+        setTimeout(() => { confettiTriggered = false; }, 3000);
+    }, 1500); 
+}
+
+// --- Password Update Flow Logic ---
+function switchPwStep(stepId) {
+    document.querySelectorAll('#password-card .pw-step').forEach(step => {
+        step.classList.remove('active');
+    });
+    const target = document.getElementById(stepId);
+    if (target) {
+        target.classList.add('active');
+    }
+}
+
+document.getElementById('btn-verify-old')?.addEventListener('click', () => {
+    const input = document.getElementById('old-password');
+    const oldPass = input.value;
+
+    if (oldPass === appState.user.pass) {
+        switchPwStep('pw-step-2');
+    } else {
+        input.classList.add('shake-error');
+        setTimeout(() => input.classList.remove('shake-error'), 750);
+        input.value = '';
+    }
+});
+
+document.getElementById('btn-update-password')?.addEventListener('click', () => {
+    const newPassInput = document.getElementById('new-password');
+    const confirmPassInput = document.getElementById('confirm-password');
+    const newPass = newPassInput.value;
+    const confirmPass = confirmPassInput.value;
+
+    if (!newPass || newPass.length < 4) {
+        alert("Password must be at least 4 characters.");
+        return;
+    }
+
+    if (newPass === appState.user.pass) {
+        alert("New password cannot be the same as the old password.");
+        return;
+    }
+
+    if (newPass !== confirmPass) {
+        confirmPassInput.classList.add('shake-error');
+        setTimeout(() => confirmPassInput.classList.remove('shake-error'), 750);
+        return;
+    }
+
+    // Success!
+    appState.user.pass = newPass;
+    saveState();
+    switchPwStep('pw-step-success');
+    triggerConfetti();
+});
+
+document.getElementById('btn-reset-pw-flow')?.addEventListener('click', () => {
+    // Reset fields and go back to step 1
+    document.getElementById('old-password').value = '';
+    document.getElementById('new-password').value = '';
+    document.getElementById('confirm-password').value = '';
+    
+    // Also reset checkboxes and types
+    ['old', 'new', 'confirm'].forEach(type => {
+        const cb = document.getElementById(`show-${type}-password-cb`);
+        const input = document.getElementById(`${type}-password`);
+        if (cb) cb.checked = false;
+        if (input) input.type = 'password';
+    });
+
+    switchPwStep('pw-step-1');
+});
+
+// Show Password Toggle for Update Flow
+['old', 'new', 'confirm'].forEach(type => {
+    const cb = document.getElementById(`show-${type}-password-cb`);
+    const input = document.getElementById(`${type}-password`);
+    if (cb && input) {
+        cb.addEventListener('change', (e) => {
+            input.type = e.target.checked ? 'text' : 'password';
+        });
+    }
+});
+
+// Security Navigation
+document.getElementById('btn-go-security')?.addEventListener('click', () => {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+    document.getElementById('security-view').classList.add('active-view');
+    // Always start at step 1
+    switchPwStep('pw-step-1');
+});
+
+document.getElementById('back-to-settings')?.addEventListener('click', () => {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+    document.getElementById('settings').classList.add('active-view');
+});
+
+// --- EmailJS Configuration Logic ---
+function renderEmailJSSettings() {
+    const pubKeyEl = document.getElementById('emailjs-public-key');
+    const svcIdEl = document.getElementById('emailjs-service-id');
+    const tmplIdEl = document.getElementById('emailjs-template-id');
+    
+    // Update Groq Key input value from state
+    const groqKeyEl = document.getElementById('groq-api-key');
+    if (groqKeyEl) groqKeyEl.value = appState.groqKey || '';
+    
+    if (appState.emailjs) {
+        if (pubKeyEl) pubKeyEl.value = appState.emailjs.publicKey || '';
+        if (svcIdEl) svcIdEl.value = appState.emailjs.serviceId || '';
+        if (tmplIdEl) tmplIdEl.value = appState.emailjs.templateId || '';
+    }
+}
+
+document.getElementById('btn-save-emailjs')?.addEventListener('click', (e) => {
+    const pubKey = document.getElementById('emailjs-public-key').value;
+    const svcId = document.getElementById('emailjs-service-id').value;
+    const tmplId = document.getElementById('emailjs-template-id').value;
+    
+    if (!appState.emailjs) appState.emailjs = {};
+    appState.emailjs.publicKey = pubKey;
+    appState.emailjs.serviceId = svcId;
+    appState.emailjs.templateId = tmplId;
+    
+    saveState();
+    flashFeedback(e.target);
+});
+
+// --- Email Verification Logic ---
+let currentOTP = null;
+
+function switchEmailStep(stepId) {
+    document.querySelectorAll('#email-verify-card .email-step').forEach(step => {
+        step.style.display = 'none';
+    });
+    const target = document.getElementById(stepId);
+    if (target) {
+        target.style.display = 'block';
+    }
+}
+
+async function sendVerificationEmail() {
+    if (!appState.user || !appState.user.email) {
+        alert("User email not found. Please log in again.");
+        return;
+    }
+
+    switchEmailStep('email-step-loading');
+    
+    // Generate 6-digit OTP
+    currentOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    const config = appState.emailjs;
+    if (config && config.publicKey && config.serviceId && config.templateId) {
+        try {
+            await emailjs.send(config.serviceId, config.templateId, {
+                to_email: appState.user.email,
+                to_name: appState.user.name,
+                otp_code: currentOTP
+            }, config.publicKey);
+            console.log(`[EmailJS] Verification email sent to ${appState.user.email}`);
+            alert(`A 6-digit verification code has been sent to ${appState.user.email} using EmailJS.`);
+        } catch (error) {
+            console.error('[EmailJS Error]', error);
+            alert(`Failed to send email via EmailJS: ${error.text || error.message || error}. Falling back to simulation mode.\n\nDemo OTP: ${currentOTP}`);
+        }
+    } else {
+        // Fallback to simulation
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log(`[SIMULATION] Verification email sent to ${appState.user.email}`);
+        console.log(`[SIMULATION] OTP: ${currentOTP}`);
+        alert(`A 6-digit verification code has been sent to ${appState.user.email}.\n\n(Demo OTP: ${currentOTP})`);
+    }
+    
+    switchEmailStep('email-step-2');
+}
+
+document.getElementById('btn-send-otp')?.addEventListener('click', sendVerificationEmail);
+document.getElementById('btn-resend-otp')?.addEventListener('click', sendVerificationEmail);
+
+document.getElementById('btn-verify-otp')?.addEventListener('click', () => {
+    const input = document.getElementById('email-otp');
+    const enteredOTP = input.value;
+    
+    if (enteredOTP === currentOTP) {
+        appState.emailVerified = true;
+        saveState();
+        switchEmailStep('email-step-success');
+        const statusEl = document.getElementById('email-verify-status');
+        if (statusEl) statusEl.innerText = "Your email address is verified.";
+        triggerConfetti();
+    } else {
+        input.classList.add('shake-error');
+        setTimeout(() => input.classList.remove('shake-error'), 750);
+        input.value = '';
+    }
+});
+
+// Sync verification UI on load
+function syncVerificationUI() {
+    const statusEl = document.getElementById('email-verify-status');
+    if (appState.emailVerified) {
+        switchEmailStep('email-step-success');
+        if (statusEl) statusEl.innerText = "Your email address is verified.";
+    } else {
+        switchEmailStep('email-step-1');
+        if (statusEl) statusEl.innerText = "Confirm your email address for account recovery.";
+    }
+}
+// Call this after app state is fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    syncVerificationUI();
+    loadTimerState();
+    // Update PiP visibility after restoring timer state
+    setTimeout(updatePipVisibility, 200);
+});
+
+// --- Zen Mode Logic ---
+const TIMER_STATE_KEY = 'procrastinote_timer_state';
+let timerInterval;
+let timerSeconds = 25 * 60;
+let isTimerRunning = false;
+let timerMode = 'study'; // 'study' or 'break'
+let timerEndTime = null;
+let isFirstPlayCompleted = false;
+
+function saveTimerState() {
+    const state = {
+        timerSeconds,
+        isTimerRunning,
+        timerMode,
+        timerEndTime
+    };
+    localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
+}
+
+function loadTimerState() {
+    const saved = localStorage.getItem(TIMER_STATE_KEY);
+    if (saved) {
+        const state = JSON.parse(saved);
+        timerSeconds = state.timerSeconds;
+        timerMode = state.timerMode || 'study';
+        
+        // If it was running, check how much time is left
+        if (state.isTimerRunning && state.timerEndTime) {
+            const now = Date.now();
+            const remaining = Math.round((state.timerEndTime - now) / 1000);
+            if (remaining > 0) {
+                timerSeconds = remaining;
+                timerEndTime = state.timerEndTime;
+                isTimerRunning = true;
+                startTimer(true); // Restart with existing endTime
+            } else {
+                // Timer finished while we were away
+                timerSeconds = 0;
+                isTimerRunning = false;
+                timerEndTime = null;
+                // We'll let the user see it finished or auto-switch on next tick
+                updateTimerDisplay();
+            }
+        } else {
+            isTimerRunning = false;
+            timerEndTime = null;
+            updateTimerDisplay();
+        }
+    } else {
+        // Default sync
+        const studyMin = document.getElementById('study-min')?.value || 25;
+        timerSeconds = studyMin * 60;
+        updateTimerDisplay();
+    }
+}
+const timerProgress = document.getElementById('timer-progress');
+const timerTime = document.getElementById('timer-time');
+const timerLabel = document.getElementById('timer-label');
+const timerStartBtn = document.getElementById('timer-start');
+const timerPauseBtn = document.getElementById('timer-pause');
+
+function updateTimerDisplay() {
+    let displaySecs = timerSeconds;
+    
+    if (isTimerRunning && timerEndTime) {
+        const now = Date.now();
+        displaySecs = Math.max(0, Math.round((timerEndTime - now) / 1000));
+    }
+
+    const mins = Math.floor(displaySecs / 60);
+    const secs = displaySecs % 60;
+    timerTime.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    // Update progress circle
+    const studyInput = document.getElementById('study-min');
+    const breakInput = document.getElementById('break-min');
+    const total = ((timerMode === 'study' ? (studyInput ? studyInput.value : 25) : (breakInput ? breakInput.value : 5))) * 60;
+    
+    const ratio = displaySecs / total;
+    const offset = 282.7 * ratio;
+    timerProgress.style.strokeDashoffset = offset;
+    
+    // Sync tab title if running
+    if (isTimerRunning) {
+        document.title = `(${mins}:${secs.toString().padStart(2, '0')}) Procrastinote`;
+    } else {
+        document.title = "Procrastinote | Educational Planner";
+    }
+}
+
+function startTimer(isResume = false) {
+    // If called from an event listener, isResume will be the event object.
+    // We only want to resume if isResume is explicitly true.
+    const resume = isResume === true;
+    
+    if (isTimerRunning && !resume) return;
+    
+    isTimerRunning = true;
+    if (!resume) {
+        timerEndTime = Date.now() + (timerSeconds * 1000);
+    }
+    
+    timerStartBtn.style.display = 'none';
+    timerPauseBtn.style.display = 'flex';
+    
+    saveTimerState();
+    // Show PiP when timer starts
+    setTimeout(updatePipVisibility, 50);
+
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.round((timerEndTime - now) / 1000);
+        
+        if (remaining <= 0) {
+            clearInterval(timerInterval);
+            isTimerRunning = false;
+            timerEndTime = null;
+            
+            // Switch mode
+            if (timerMode === 'study') {
+                if (!isFirstPlayCompleted) {
+                    isFirstPlayCompleted = true;
+                    timerMode = 'study';
+                    timerLabel.innerText = 'Study Session';
+                    timerLabel.classList.remove('break');
+                    timerSeconds = (document.getElementById('study-min')?.value || 25) * 60;
+                    saveTimerState();
+                    updateTimerDisplay();
+                    pauseTimer(); // Pause instead of transitioning to break
+                } else {
+                    timerMode = 'break';
+                    timerLabel.innerText = 'Break Time';
+                    timerLabel.classList.add('break');
+                    timerSeconds = (document.getElementById('break-min')?.value || 5) * 60;
+                    triggerConfetti(); // Celebrate finishing a study session!
+                    saveTimerState();
+                    updateTimerDisplay();
+                    startTimer(); // Auto-start the break phase
+                }
+            } else {
+                timerMode = 'study';
+                timerLabel.innerText = 'Study Session';
+                timerLabel.classList.remove('break');
+                timerSeconds = (document.getElementById('study-min')?.value || 25) * 60;
+                saveTimerState();
+                updateTimerDisplay();
+                startTimer(); // Auto-start the study phase
+            }
+        } else {
+            timerSeconds = remaining;
+            updateTimerDisplay();
+        }
+    }, 1000);
+}
+
+function pauseTimer() {
+    clearInterval(timerInterval);
+    isTimerRunning = false;
+    timerEndTime = null;
+    timerStartBtn.style.display = 'flex';
+    timerPauseBtn.style.display = 'none';
+    saveTimerState();
+    updateTimerDisplay();
+    // Update PiP visibility when timer pauses
+    setTimeout(updatePipVisibility, 50);
+}
+
+function resetTimer() {
+    pauseTimer();
+    isFirstPlayCompleted = false;
+    timerMode = 'study';
+    timerLabel.innerText = 'Study Session';
+    timerLabel.classList.remove('break');
+    const studyMin = document.getElementById('study-min')?.value || 25;
+    timerSeconds = studyMin * 60;
+    saveTimerState();
+    updateTimerDisplay();
+    // Hide PiP when timer resets
+    setTimeout(updatePipVisibility, 50);
+}
+
+timerStartBtn?.addEventListener('click', startTimer);
+timerPauseBtn?.addEventListener('click', pauseTimer);
+document.getElementById('timer-reset')?.addEventListener('click', resetTimer);
+
+// Update time when settings change
+document.getElementById('study-min')?.addEventListener('change', (e) => {
+    if (!isTimerRunning && timerMode === 'study') {
+        timerSeconds = e.target.value * 60;
+        saveTimerState();
+        updateTimerDisplay();
+    }
+});
+document.getElementById('break-min')?.addEventListener('change', (e) => {
+    if (!isTimerRunning && timerMode === 'break') {
+        timerSeconds = e.target.value * 60;
+        saveTimerState();
+        updateTimerDisplay();
+    }
+});
+
+// --- Zen Music Logic (Web Audio API) ---
+let audioCtx = null;
+let masterGain = null;
+let isMusicPlaying = false;
+let activeNodes = [];
+let beatTimeoutId = null;
+let birdTimeoutId = null;
+let currentSound = 'white';
+
+const musicToggleBtn = document.getElementById('music-toggle');
+const musicPlayIcon = document.getElementById('music-play-icon');
+const musicPauseIcon = document.getElementById('music-pause-icon');
+const musicPlayerUI = document.querySelector('.music-player-ui');
+const volValue = document.getElementById('vol-value');
+const playerStatus = document.getElementById('player-status');
+
+function getAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = (document.getElementById('music-volume')?.value || 50) / 100;
+        masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+}
+
+function createNoiseBuffer(ctx, type) {
+    const bufSize = ctx.sampleRate * 3;
+    const buf = ctx.createBuffer(2, bufSize, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        if (type === 'white') {
+            for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+        } else if (type === 'brown') {
+            let last = 0;
+            for (let i = 0; i < bufSize; i++) {
+                const w = Math.random() * 2 - 1;
+                d[i] = (last + 0.02 * w) / 1.02;
+                last = d[i];
+                d[i] *= 3.5;
+            }
+        } else { // pink
+            let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+            for (let i = 0; i < bufSize; i++) {
+                const w = Math.random() * 2 - 1;
+                b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
+                b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
+                b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+                d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11; b6=w*0.115926;
+            }
+        }
+    }
+    return buf;
+}
+
+function makeNoise(ctx, type, filterType, freq, q, gain) {
+    const src = ctx.createBufferSource();
+    src.buffer = createNoiseBuffer(ctx, type);
+    src.loop = true;
+    const flt = ctx.createBiquadFilter();
+    flt.type = filterType;
+    flt.frequency.value = freq;
+    if (q) flt.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(flt); flt.connect(g); g.connect(masterGain);
+    src.start();
+    activeNodes.push(src);
+    return src;
+}
+
+function stopAllNodes() {
+    clearTimeout(beatTimeoutId);
+    clearTimeout(birdTimeoutId);
+    beatTimeoutId = null; birdTimeoutId = null;
+    activeNodes.forEach(n => { try { n.stop(); } catch(e){} try { n.disconnect(); } catch(e){} });
+    activeNodes = [];
+}
+
+function startWhiteNoise(ctx) {
+    makeNoise(ctx, 'white', 'lowpass', 10000, null, 0.2);
+}
+
+function startRain(ctx) {
+    makeNoise(ctx, 'white', 'lowpass', 2000, null, 0.4);
+    makeNoise(ctx, 'brown', 'lowpass', 100, null, 0.3);
+    makeNoise(ctx, 'white', 'bandpass', 3000, 2, 0.1);
+}
+
+function startForest(ctx) {
+    makeNoise(ctx, 'pink', 'lowpass', 800, null, 0.15);
+    makeNoise(ctx, 'white', 'bandpass', 4000, 0.5, 0.08);
+    function bird() {
+        if (!isMusicPlaying) return;
+        const freqs = [1200,1600,2000,1800,2400];
+        const base = freqs[Math.floor(Math.random()*freqs.length)];
+        for (let i = 0; i < 3; i++) {
+            const t = ctx.currentTime + i * 0.12;
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.frequency.setValueAtTime(base + Math.random()*200, t);
+            o.frequency.exponentialRampToValueAtTime(base*1.2, t+0.08);
+            g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+            o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.12);
+        }
+        birdTimeoutId = setTimeout(bird, 2000 + Math.random()*5000);
+    }
+    bird();
+}
+
+function startOcean(ctx) {
+    makeNoise(ctx, 'brown', 'lowpass', 200, null, 0.35);
+    // Wave with LFO
+    const ws = ctx.createBufferSource();
+    ws.buffer = createNoiseBuffer(ctx, 'white'); ws.loop = true;
+    const wf = ctx.createBiquadFilter(); wf.type='bandpass'; wf.frequency.value=1000; wf.Q.value=0.7;
+    const wg = ctx.createGain(); wg.gain.value = 0.2;
+    const lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 0.12; lg.gain.value = 0.15;
+    lfo.connect(lg); lg.connect(wg.gain);
+    ws.connect(wf); wf.connect(wg); wg.connect(masterGain);
+    ws.start(); lfo.start();
+    activeNodes.push(ws, lfo);
+    makeNoise(ctx, 'white', 'highpass', 5000, null, 0.04);
+}
+
+// --- Dynamic Zen Background Animations ---
+let bgAnimationInterval = null;
+
+function clearBackgroundAnimations() {
+    clearInterval(bgAnimationInterval);
+    const fluidBg = document.querySelector('.fluid-bg');
+    if (fluidBg) {
+        fluidBg.classList.remove('ocean-mode');
+    }
+    document.querySelectorAll('.bird-particle, .rain-particle').forEach(el => el.remove());
+}
+
+function spawnBird() {
+    const isLeft = Math.random() > 0.5;
+    const bird = document.createElement('div');
+    bird.classList.add('bird-particle');
+    
+    bird.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="bird-wing" d="M4 14c3-3 6-3 8 0 2-3 5-3 8 0"/></svg>`;
+    
+    if (isLeft) {
+        bird.style.color = '#10b981';
+        bird.style.animation = `flyRight ${10 + Math.random() * 5}s linear forwards`;
+        bird.style.top = `${5 + Math.random() * 85}vh`;
+    } else {
+        bird.style.color = '#3b82f6';
+        bird.style.animation = `flyLeft ${10 + Math.random() * 5}s linear forwards`;
+        bird.style.top = `${5 + Math.random() * 85}vh`;
+    }
+
+    document.body.appendChild(bird);
+
+    setTimeout(() => {
+        if (bird.parentNode) bird.remove();
+    }, 15000);
+}
+
+function spawnRain() {
+    const isLeft = Math.random() > 0.5;
+    const drop = document.createElement('div');
+    drop.classList.add('rain-particle');
+    
+    if (isLeft) {
+        drop.style.backgroundColor = '#10b981';
+        drop.style.left = `${Math.random() * 50}vw`; 
+    } else {
+        drop.style.backgroundColor = '#3b82f6';
+        drop.style.left = `${50 + Math.random() * 50}vw`; 
+    }
+    
+    drop.style.animation = `rainDrop ${1 + Math.random()}s linear forwards`;
+
+    document.body.appendChild(drop);
+
+    setTimeout(() => {
+        if (drop.parentNode) drop.remove();
+    }, 2000);
+}
+
+function updateBackgroundAnimation() {
+    clearBackgroundAnimations();
+    if (!isMusicPlaying) return;
+
+    const fluidBg = document.querySelector('.fluid-bg');
+
+    if (currentSound === 'forest') {
+        bgAnimationInterval = setInterval(() => {
+            if (document.querySelectorAll('.bird-particle').length < 15) {
+                spawnBird();
+            }
+        }, 1500);
+    } else if (currentSound === 'rain') {
+        bgAnimationInterval = setInterval(() => {
+            if (document.querySelectorAll('.rain-particle').length < 30) {
+                spawnRain();
+                spawnRain(); 
+            }
+        }, 200);
+    } else if (currentSound === 'ocean') {
+        if (fluidBg) {
+            fluidBg.classList.add('ocean-mode');
+        }
+    }
+}
+
+function startSound(soundKey) {
+    const ctx = getAudioCtx();
+    stopAllNodes();
+    switch(soundKey) {
+        case 'white':  startWhiteNoise(ctx); break;
+        case 'rain':   startRain(ctx);   break;
+        case 'forest': startForest(ctx); break;
+        case 'ocean':  startOcean(ctx);  break;
+    }
+    updateBackgroundAnimation();
+}
+
+function setPlayingUI(playing) {
+    isMusicPlaying = playing;
+    musicPlayIcon.style.display  = playing ? 'none'  : 'block';
+    musicPauseIcon.style.display = playing ? 'block' : 'none';
+    musicPlayerUI?.classList.toggle('playing', playing);
+    if (playerStatus) playerStatus.innerText = playing ? 'Now Playing' : 'Paused';
+    updateBackgroundAnimation();
+    // Sync PiP music display
+    if (typeof updatePipMusicDisplay === 'function') updatePipMusicDisplay();
+}
+
+function toggleMusic() {
+    const ctx = getAudioCtx();
+    if (isMusicPlaying) {
+        ctx.suspend();
+        setPlayingUI(false);
+    } else {
+        if (activeNodes.length === 0) {
+            startSound(currentSound);
+        } else {
+            ctx.resume();
+        }
+        setPlayingUI(true);
+    }
+}
+
+musicToggleBtn?.addEventListener('click', toggleMusic);
+
+document.getElementById('music-volume')?.addEventListener('input', (e) => {
+    const val = e.target.value;
+    if (masterGain) masterGain.gain.value = val / 100;
+});
+
+document.querySelectorAll('.noise-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const sound = btn.getAttribute('data-sound');
+        const name  = btn.getAttribute('data-name');
+        if (!sound) return;
+        document.querySelectorAll('.noise-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('track-name').innerText = name;
+        currentSound = sound;
+        if (isMusicPlaying) startSound(sound);
+    });
+});
+
+// --- Real-time Clock Logic ---
+function updateClock() {
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    
+    const timeString = `${hours}:${minutes}:${seconds}`;
+    
+    const timeEl = document.getElementById('clock-time');
+    const ampmEl = document.getElementById('clock-ampm');
+    
+    if (timeEl) timeEl.innerText = timeString;
+    if (ampmEl) ampmEl.innerText = ampm;
+}
+
+setInterval(updateClock, 1000);
+updateClock(); // Initial call
+
+// --- AI Assistant Logic ---
+const AI_CONFIG = {
+    model: "llama-3.1-8b-instant",
+    baseUrl: "https://api.groq.com/openai/v1/chat/completions"
+};
+
+function addMessage(text, isBot = true) {
+    const chatMessages = document.getElementById('ai-chat-messages');
+    if (!chatMessages) return;
+    
+    const msg = document.createElement('div');
+    msg.className = `ai-message ${isBot ? 'bot-message' : 'user-message'}`;
+    msg.innerText = text;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function callGroq(prompt) {
+    const apiKey = appState.groqKey;
+    if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
+
+    const url = AI_CONFIG.baseUrl;
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: AI_CONFIG.model,
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging."
+                    },
+                    {
+                        role: "user",
+                        content: prompt
+                    }
+                ]
+            })
+        });
+        
+        const data = await response.json();
+        console.log("[Groq API Response]", data);
+
+        if (data.error) {
+            return `API Error: ${data.error.message || "Unknown error occurred."}`;
+        }
+
+        if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+            return data.choices[0].message.content;
+        }
+
+        return "I received an empty response. Check the console for details!";
+    } catch (error) {
+        console.error("Groq Fetch Error:", error);
+        return "I'm having trouble connecting to my brain right now. Please check your internet connection and API key!";
+    }
+}
+
+function handleAICommand(input) {
+    const text = input.toLowerCase();
+    
+    // 1. Timer commands
+    if (text.includes('timer') && (text.includes('start') || text.includes('set') || text.includes('begin'))) {
+        const minsMatch = text.match(/(\d+)\s*min/);
+        if (minsMatch) {
+            const mins = parseInt(minsMatch[1]);
+            const studyMin = document.getElementById('study-min');
+            if (studyMin) studyMin.value = mins;
+            resetTimer();
+            startTimer();
+            return `Sure! Starting a ${mins} minute study timer for you. ⏱️`;
+        }
+        startTimer();
+        return "Starting your timer now! Let's get to work. 🚀";
+    }
+    
+    if (text.includes('pause') && text.includes('timer')) {
+        pauseTimer();
+        return "Timer paused. Take a quick breather!";
+    }
+
+    if (text.includes('reset') && text.includes('timer')) {
+        resetTimer();
+        return "Timer reset to default.";
+    }
+
+    // 2. Music commands
+    if (text.includes('play') || text.includes('music') || text.includes('sound') || text.includes('track')) {
+        if (text.includes('rain')) { startSound('rain'); setPlayingUI(true); return "Playing relaxing rain sounds. 🌧️"; }
+        if (text.includes('forest')) { startSound('forest'); setPlayingUI(true); return "Playing peaceful forest sounds. 🌲"; }
+        if (text.includes('ocean')) { startSound('ocean'); setPlayingUI(true); return "Playing calming ocean waves. 🌊"; }
+        if (text.includes('white noise')) { startSound('white'); setPlayingUI(true); return "Playing white noise. 🎧"; }
+    }
+    
+    if (text.includes('stop') || text.includes('pause')) {
+        if (text.includes('music') || text.includes('sound')) {
+            if (isMusicPlaying) toggleMusic();
+            return "Music paused.";
+        }
+    }
+
+    // 3. Theme commands
+    if (text.includes('dark mode') || text.includes('dark theme')) {
+        if (!document.body.hasAttribute('data-theme')) {
+            document.getElementById('theme-checkbox')?.click();
+        }
+        return "Switching to Dark Mode. 🌙";
+    }
+    if (text.includes('light mode') || text.includes('light theme')) {
+        if (document.body.hasAttribute('data-theme')) {
+            document.getElementById('theme-checkbox')?.click();
+        }
+        return "Switching to Light Mode. ☀️";
+    }
+
+    return null; // No local command matched
+}
+
+async function processAIInput() {
+    const inputEl = document.getElementById('ai-user-input');
+    const text = inputEl.value.trim();
+    if (!text) return;
+    
+    addMessage(text, false);
+    inputEl.value = '';
+    
+    const statusText = document.getElementById('ai-status-text');
+    if (statusText) statusText.innerText = "Thinking...";
+    
+    // Check for local commands first
+    const localResponse = handleAICommand(text);
+    if (localResponse) {
+        setTimeout(() => {
+            addMessage(localResponse, true);
+            if (statusText) statusText.innerText = "Online";
+        }, 600);
+        return;
+    }
+    
+    // Otherwise, call Groq
+    const botResponse = await callGroq(text);
+    addMessage(botResponse, true);
+    if (statusText) statusText.innerText = "Online";
+}
+
+// UI Event Listeners
+document.getElementById('ai-mascot-fab')?.addEventListener('click', () => {
+    const chat = document.getElementById('ai-chat-window');
+    if (chat) {
+        const isHidden = chat.style.display === 'none';
+        chat.style.display = isHidden ? 'flex' : 'none';
+        if (isHidden) document.getElementById('ai-user-input')?.focus();
+    }
+});
+
+document.getElementById('close-chat-btn')?.addEventListener('click', () => {
+    const chat = document.getElementById('ai-chat-window');
+    if (chat) chat.style.display = 'none';
+});
+
+document.getElementById('ai-send-btn')?.addEventListener('click', processAIInput);
+document.getElementById('ai-user-input')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') processAIInput();
+});
+
+document.getElementById('btn-save-ai-key')?.addEventListener('click', () => {
+    const key = document.getElementById('groq-api-key').value;
+    appState.groqKey = key;
+    saveState();
+    alert("AI Settings Saved!");
+});
+
+// --- Picture-in-Picture Widget Logic ---
+const pipWidget = document.getElementById('pip-widget');
+const pipBubble = document.getElementById('pip-bubble');
+const pipTimerSection = document.getElementById('pip-timer-section');
+const pipMusicSection = document.getElementById('pip-music-section');
+const pipDivider = document.getElementById('pip-divider');
+let pipMinimized = false;
+let currentActiveTab = 'dashboard'; // Track the current tab
+
+// Determine if PiP should be visible
+function shouldShowPip() {
+    if (currentActiveTab === 'zen' && !extPipWindow) return false;
+
+    const studyMin = document.getElementById('study-min');
+    const breakMin = document.getElementById('break-min');
+    if (!studyMin || !breakMin) return false;
+
+    const mode = typeof timerMode !== 'undefined' ? timerMode : 'study';
+    const total = (mode === 'study' ? studyMin.value : breakMin.value) * 60;
+    const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
+    const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
+    const timerActive = running || (currentSecs > 0 && currentSecs < total);
+    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+
+    return timerActive || musicActive;
+}
+
+// Update PiP section visibility based on what's active
+function updatePipSections() {
+    const studyMin = document.getElementById('study-min');
+    const breakMin = document.getElementById('break-min');
+    const mode = typeof timerMode !== 'undefined' ? timerMode : 'study';
+    const total = (mode === 'study' ? (studyMin ? studyMin.value : 25) : (breakMin ? breakMin.value : 5)) * 60;
+    const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
+    const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
+    const timerActive = running || (currentSecs > 0 && currentSecs < total);
+    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+
+    // Show/hide timer section
+    if (timerActive) {
+        pipTimerSection.classList.remove('hidden');
+    } else {
+        pipTimerSection.classList.add('hidden');
+    }
+
+    // Show/hide music section
+    if (musicActive) {
+        pipMusicSection.classList.remove('hidden');
+        pipMusicSection.classList.add('playing');
+    } else {
+        pipMusicSection.classList.remove('playing');
+        pipMusicSection.classList.add('hidden');
+    }
+
+    // Show divider only when both are visible
+    if (timerActive && musicActive) {
+        pipDivider.classList.remove('hidden');
+    } else {
+        pipDivider.classList.add('hidden');
+    }
+}
+
+// Sync PiP timer display with main timer
+function updatePipTimerDisplay() {
+    const doc = pipWidget ? pipWidget.ownerDocument : document;
+    const pipTimerText = doc.getElementById('pip-timer-text');
+    const pipTimerProgress = doc.getElementById('pip-timer-progress');
+    const pipTimerLabelEl = doc.getElementById('pip-timer-label');
+    const pipTimerPlayBtn = doc.getElementById('pip-timer-play');
+    const pipTimerPauseBtn = doc.getElementById('pip-timer-pause');
+
+    if (!pipTimerText || !pipTimerProgress) return;
+
+    let displaySecs = timerSeconds;
+    if (isTimerRunning && timerEndTime) {
+        displaySecs = Math.max(0, Math.round((timerEndTime - Date.now()) / 1000));
+    }
+
+    const mins = Math.floor(displaySecs / 60);
+    const secs = displaySecs % 60;
+    pipTimerText.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+    // Update progress ring (circumference = 2 * PI * 42 ≈ 263.9)
+    const studyMin = document.getElementById('study-min');
+    const breakMin = document.getElementById('break-min');
+    const total = ((timerMode === 'study' ? (studyMin ? studyMin.value : 25) : (breakMin ? breakMin.value : 5))) * 60;
+    const ratio = displaySecs / total;
+    pipTimerProgress.style.strokeDashoffset = 263.9 * ratio;
+
+    // Update label
+    if (pipTimerLabelEl) {
+        pipTimerLabelEl.innerText = timerMode === 'study' ? 'Study Session' : 'Break Time';
+        pipTimerLabelEl.classList.toggle('break', timerMode === 'break');
+    }
+
+    // Update play/pause buttons
+    if (pipTimerPlayBtn && pipTimerPauseBtn) {
+        pipTimerPlayBtn.style.display = isTimerRunning ? 'none' : 'flex';
+        pipTimerPauseBtn.style.display = isTimerRunning ? 'flex' : 'none';
+    }
+}
+
+// Sync PiP music display
+function updatePipMusicDisplay() {
+    const doc = pipWidget ? pipWidget.ownerDocument : document;
+    const pipMusicTrack = doc.getElementById('pip-music-track');
+    const pipMusicStatus = doc.getElementById('pip-music-status');
+    const pipMusicPauseIcon = pipWidget?.querySelector('.pip-music-pause-icon');
+    const pipMusicPlayIcon = pipWidget?.querySelector('.pip-music-play-icon');
+
+    if (pipMusicTrack) {
+        pipMusicTrack.innerText = document.getElementById('track-name')?.innerText || 'Zen Music';
+    }
+    if (pipMusicStatus) {
+        pipMusicStatus.innerText = isMusicPlaying ? 'Now Playing' : 'Paused';
+    }
+    if (pipMusicPauseIcon && pipMusicPlayIcon) {
+        pipMusicPauseIcon.style.display = isMusicPlaying ? 'block' : 'none';
+        pipMusicPlayIcon.style.display = isMusicPlaying ? 'none' : 'block';
+    }
+    if (isMusicPlaying) {
+        pipMusicSection.classList.add('playing');
+    } else {
+        pipMusicSection.classList.remove('playing');
+    }
+}
+
+// Global variable to hold external Picture-in-Picture window reference
+let extPipWindow = null;
+
+// Function to open the Document Picture-in-Picture window (always on top)
+async function openExternalPip() {
+    if (!('documentPictureInPicture' in window)) {
+        tryVideoPipFallback();
+        return;
+    }
+
+    if (extPipWindow) {
+        extPipWindow.close();
+        extPipWindow = null;
+        return;
+    }
+
+    try {
+        const width = 300;
+        const height = 220;
+        extPipWindow = await window.documentPictureInPicture.requestWindow({
+            width: width,
+            height: height
+        });
+
+        // Add class to body for styling overrides
+        extPipWindow.document.body.classList.add('external-pip-body');
+
+        // Apply theme attributes
+        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        extPipWindow.document.documentElement.setAttribute('data-theme', theme);
+
+        // Copy stylesheets to PiP window
+        [...document.styleSheets].forEach((styleSheet) => {
+            try {
+                const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
+                const style = extPipWindow.document.createElement('style');
+                style.textContent = cssRules;
+                extPipWindow.document.head.appendChild(style);
+            } catch (e) {
+                const link = extPipWindow.document.createElement('link');
+                link.rel = 'stylesheet';
+                link.type = styleSheet.type;
+                link.media = styleSheet.media.mediaText;
+                link.href = styleSheet.href;
+                extPipWindow.document.head.appendChild(link);
+            }
+        });
+
+        // Move the pip-widget to the PiP window body
+        extPipWindow.document.body.appendChild(pipWidget);
+        
+        // Hide in-app bubble
+        if (pipBubble) pipBubble.style.display = 'none';
+
+        // When PiP closes, restore pip-widget to main document
+        extPipWindow.addEventListener('pagehide', (event) => {
+            extPipWindow = null;
+            document.body.appendChild(pipWidget);
+            updatePipVisibility();
+        });
+
+        // Force update displays in PiP context
+        updatePipSections();
+        updatePipTimerDisplay();
+        updatePipMusicDisplay();
+
+    } catch (err) {
+        console.error("Failed to open Document Picture-in-Picture window:", err);
+    }
+}
+
+// Canvas & Video setup for automatic browser-tab PiP
+let autoPipCanvas = null;
+let autoPipVideo = null;
+let autoPipCtx = null;
+let canvasDrawInterval = null;
+
+function setupAutoPipElements() {
+    if (autoPipVideo) return;
+
+    autoPipCanvas = document.createElement('canvas');
+    autoPipCanvas.width = 300;
+    autoPipCanvas.height = 180;
+    autoPipCtx = autoPipCanvas.getContext('2d');
+
+    autoPipVideo = document.createElement('video');
+    autoPipVideo.style.position = 'fixed';
+    autoPipVideo.style.top = '0';
+    autoPipVideo.style.left = '0';
+    autoPipVideo.style.width = '10px';
+    autoPipVideo.style.height = '10px';
+    autoPipVideo.style.opacity = '0.001';
+    autoPipVideo.style.pointerEvents = 'none';
+    autoPipVideo.style.zIndex = '-9999';
+    autoPipVideo.muted = true;
+    autoPipVideo.playsInline = true;
+    autoPipVideo.setAttribute('autopictureinpicture', '');
+    autoPipVideo.autoPictureInPicture = true;
+
+    // Capture stream from canvas at 10 FPS
+    const stream = autoPipCanvas.captureStream(10);
+    autoPipVideo.srcObject = stream;
+    document.body.appendChild(autoPipVideo);
+
+    // Watch for entering and leaving browser video PiP
+    autoPipVideo.addEventListener('enterpictureinpicture', () => {
+        updatePipVisibility();
+    });
+    autoPipVideo.addEventListener('leavepictureinpicture', () => {
+        updatePipVisibility();
+    });
+}
+
+function drawAutoPipCanvas() {
+    if (!autoPipCtx) return;
+
+    const ctx = autoPipCtx;
+    const w = autoPipCanvas.width;
+    const h = autoPipCanvas.height;
+
+    // Get current theme from state or document attribute
+    const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+    const isDark = theme === 'dark';
+
+    // Solid themed background colors
+    const bgCol = isDark ? '#0b0f19' : '#f8fafc';
+    const textPrimaryCol = isDark ? '#ffffff' : '#0f172a';
+    const textSecondaryCol = isDark ? '#94a3b8' : '#475569';
+    const ringBgCol = isDark ? '#1e293b' : '#cbd5e1';
+    const activeLineCol = isDark ? '#334155' : '#cbd5e1';
+
+    // Background
+    ctx.fillStyle = bgCol;
+    ctx.fillRect(0, 0, w, h);
+
+    // Border
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, '#3b82f6');
+    grad.addColorStop(1, '#10b981');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
+
+    // Timer check
+    const studyMin = document.getElementById('study-min');
+    const breakMin = document.getElementById('break-min');
+    const mode = typeof timerMode !== 'undefined' ? timerMode : 'study';
+    const total = ((mode === 'study' ? (studyMin ? studyMin.value : 25) : (breakMin ? breakMin.value : 5))) * 60;
+    const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
+    const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
+    const timerActive = running || (currentSecs > 0 && currentSecs < total);
+
+    // Left Side: Timer Ring
+    if (timerActive) {
+        const centerX = 80;
+        const centerY = 90;
+        const radius = 50;
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = ringBgCol;
+        ctx.lineWidth = 6;
+        ctx.stroke();
+
+        const ratio = currentSecs / total;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * ratio);
+        ctx.strokeStyle = mode === 'study' ? '#3b82f6' : '#10b981';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        let displaySecs = timerSeconds;
+        if (isTimerRunning && timerEndTime) {
+            displaySecs = Math.max(0, Math.round((timerEndTime - Date.now()) / 1000));
+        }
+        const mins = Math.floor(displaySecs / 60);
+        const secs = displaySecs % 60;
+        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        ctx.fillStyle = textPrimaryCol;
+        ctx.font = 'bold 20px Montserrat, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(timeStr, centerX, centerY - 5);
+
+        ctx.fillStyle = mode === 'study' ? '#3b82f6' : '#10b981';
+        ctx.font = '600 10px Montserrat, sans-serif';
+        ctx.fillText(mode === 'study' ? 'STUDY' : 'BREAK', centerX, centerY + 18);
+    } else {
+        const centerX = 80;
+        const centerY = 90;
+        ctx.fillStyle = ringBgCol;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 40, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.fillStyle = textSecondaryCol;
+        ctx.font = '600 12px Montserrat, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Zen Mode', centerX, centerY);
+    }
+
+    // Right Side: Music Status
+    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+    const trackNameStr = document.getElementById('track-name')?.innerText || 'Zen Music';
+
+    const rightStartX = 150;
+    const titleY = 50;
+    const trackY = 80;
+    const statusY = 105;
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+
+    ctx.fillStyle = textSecondaryCol;
+    ctx.font = 'bold 11px Montserrat, sans-serif';
+    ctx.fillText('ZEN MUSIC', rightStartX, titleY);
+
+    ctx.fillStyle = textPrimaryCol;
+    ctx.font = 'bold 14px Montserrat, sans-serif';
+    let displayTrack = trackNameStr;
+    if (ctx.measureText(displayTrack).width > 130) {
+        while (ctx.measureText(displayTrack + '...').width > 130 && displayTrack.length > 0) {
+            displayTrack = displayTrack.slice(0, -1);
+        }
+        displayTrack += '...';
+    }
+    ctx.fillText(displayTrack, rightStartX, trackY);
+
+    ctx.fillStyle = musicActive ? '#10b981' : textSecondaryCol;
+    ctx.font = '600 11px Montserrat, sans-serif';
+    ctx.fillText(musicActive ? 'Playing' : 'Paused', rightStartX, statusY);
+
+    if (musicActive) {
+        ctx.fillStyle = '#10b981';
+        const waveX = rightStartX;
+        const waveY = 120;
+        const barWidth = 4;
+        const barGap = 3;
+        const numBars = 12;
+        const time = Date.now() * 0.005;
+
+        for (let i = 0; i < numBars; i++) {
+            const barHeight = 5 + Math.abs(Math.sin(time + i * 0.8)) * 25;
+            ctx.fillRect(waveX + i * (barWidth + barGap), waveY + (25 - barHeight), barWidth, barHeight);
+        }
+    } else {
+        ctx.fillStyle = activeLineCol;
+        ctx.fillRect(rightStartX, 135, 80, 2);
+    }
+}
+
+function startAutoPipLoop() {
+    setupAutoPipElements();
+    if (canvasDrawInterval) clearInterval(canvasDrawInterval);
+    canvasDrawInterval = setInterval(drawAutoPipCanvas, 100);
+    
+    if (autoPipVideo) {
+        autoPipVideo.play().catch(err => {
+            console.log("Auto-PiP video play failed (expected on start before user gesture): ", err);
+        });
+    }
+}
+
+function stopAutoPipLoop() {
+    if (canvasDrawInterval) {
+        clearInterval(canvasDrawInterval);
+        canvasDrawInterval = null;
+    }
+    if (autoPipVideo) {
+        autoPipVideo.pause();
+    }
+}
+
+async function tryVideoPipFallback() {
+    setupAutoPipElements();
+    if (autoPipVideo) {
+        try {
+            await autoPipVideo.play();
+            await autoPipVideo.requestPictureInPicture();
+        } catch (err) {
+            console.error("Standard Video PiP fallback failed:", err);
+            alert("Picture-in-Picture is not supported or was blocked by the browser.");
+        }
+    }
+}
+
+// Show/hide PiP widget
+function updatePipVisibility() {
+    const show = shouldShowPip();
+    const isVideoPipActive = document.pictureInPictureElement && (document.pictureInPictureElement === autoPipVideo);
+
+    // If an external Document PiP window is open
+    if (extPipWindow) {
+        if (!show) {
+            extPipWindow.close();
+            extPipWindow = null;
+        } else {
+            if (pipWidget) pipWidget.classList.remove('visible');
+            if (pipBubble) pipBubble.style.display = 'none';
+            // Update displays in Document PiP context
+            updatePipSections();
+            updatePipTimerDisplay();
+            updatePipMusicDisplay();
+        }
+        return;
+    }
+
+    // If browser tab-level Video PiP fallback is active
+    if (isVideoPipActive) {
+        if (!show) {
+            document.exitPictureInPicture().catch(err => console.log("Exit Video PiP failed:", err));
+            stopAutoPipLoop();
+        } else {
+            startAutoPipLoop();
+        }
+        if (pipWidget) pipWidget.classList.remove('visible');
+        if (pipBubble) pipBubble.style.display = 'none';
+        return;
+    }
+
+    // Otherwise, ensure all in-website widgets on the main page are hidden
+    if (pipWidget) pipWidget.classList.remove('visible');
+    if (pipBubble) pipBubble.style.display = 'none';
+    pipMinimized = false;
+    stopAutoPipLoop();
+}
+
+// PiP timer control event listeners
+document.getElementById('pip-timer-play')?.addEventListener('click', () => {
+    startTimer();
+    updatePipTimerDisplay();
+});
+
+document.getElementById('pip-timer-pause')?.addEventListener('click', () => {
+    pauseTimer();
+    updatePipTimerDisplay();
+    setTimeout(updatePipVisibility, 50);
+});
+
+document.getElementById('pip-timer-reset')?.addEventListener('click', () => {
+    resetTimer();
+    updatePipTimerDisplay();
+    setTimeout(updatePipVisibility, 50);
+});
+
+// PiP music toggle
+document.getElementById('pip-music-toggle')?.addEventListener('click', () => {
+    toggleMusic();
+    updatePipMusicDisplay();
+    setTimeout(updatePipVisibility, 50);
+});
+
+// PiP close (minimize to bubble)
+document.getElementById('pip-close')?.addEventListener('click', () => {
+    pipMinimized = true;
+    updatePipVisibility();
+});
+
+// PiP bubble click (restore)
+pipBubble?.addEventListener('click', () => {
+    pipMinimized = false;
+    updatePipVisibility();
+});
+
+// PiP "Go to Zen" button
+document.getElementById('pip-go-zen')?.addEventListener('click', () => {
+    // Navigate to Zen tab
+    document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+    const zenTab = document.querySelector('[data-tab="zen"]');
+    if (zenTab) zenTab.classList.add('active');
+    document.getElementById('zen')?.classList.add('active-view');
+    currentActiveTab = 'zen';
+    
+    if (typeof handleTimerSidebarMove === 'function') handleTimerSidebarMove('zen');
+    if (typeof handleMusicSidebarMove === 'function') handleMusicSidebarMove('zen');
+    
+    updatePipVisibility();
+});
+
+// Register float miniplayer trigger buttons
+document.getElementById('zen-float-btn')?.addEventListener('click', openExternalPip);
+document.getElementById('pip-float-btn')?.addEventListener('click', openExternalPip);
+
+// Sync theme changes to the external PiP window
+if (typeof applyTheme === 'function') {
+    const originalApplyTheme = applyTheme;
+    applyTheme = function() {
+        originalApplyTheme();
+        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        if (extPipWindow) {
+            extPipWindow.document.documentElement.setAttribute('data-theme', theme);
+        }
+    };
+}
+
+// Auto-close PiP when returning to the tab
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        if (extPipWindow) {
+            extPipWindow.close();
+            extPipWindow = null;
+        }
+    }
+});
+
+// --- PiP Drag Logic ---
+(function setupPipDrag() {
+    const header = pipWidget?.querySelector('.pip-header');
+    if (!header || !pipWidget) return;
+
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    header.addEventListener('mousedown', (e) => {
+        // Don't drag if clicking a button
+        if (e.target.closest('button')) return;
+
+        isDragging = true;
+        pipWidget.classList.add('dragging');
+
+        const rect = pipWidget.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        startX = e.clientX;
+        startY = e.clientY;
+
+        // Switch to absolute positioning for drag
+        pipWidget.style.left = rect.left + 'px';
+        pipWidget.style.top = rect.top + 'px';
+        pipWidget.style.bottom = 'auto';
+        pipWidget.style.right = 'auto';
+
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+
+        // Constrain to viewport
+        const maxLeft = window.innerWidth - pipWidget.offsetWidth - 8;
+        const maxTop = window.innerHeight - pipWidget.offsetHeight - 8;
+        newLeft = Math.max(8, Math.min(maxLeft, newLeft));
+        newTop = Math.max(8, Math.min(maxTop, newTop));
+
+        pipWidget.style.left = newLeft + 'px';
+        pipWidget.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        pipWidget.classList.remove('dragging');
+    });
+})();
+
+// Periodic PiP update (syncs timer every second when PiP or external PiP is active)
+setInterval(() => {
+    if ((pipWidget && pipWidget.classList.contains('visible')) || extPipWindow) {
+        updatePipTimerDisplay();
+        updatePipMusicDisplay();
+        updatePipSections();
+        // Auto-hide if nothing is active anymore
+        if (!shouldShowPip()) {
+            updatePipVisibility();
+        }
+    }
+}, 1000);
+
+// Hook into existing navigation to track current tab and update PiP
+// Override the existing navigation click handler
+document.querySelectorAll('.nav-links li').forEach(link => {
+    link.addEventListener('click', () => {
+        currentActiveTab = link.getAttribute('data-tab');
+        pipMinimized = false; // Reset minimized when changing tabs
+        setTimeout(updatePipVisibility, 100);
+    });
+});
+
+// Hook into setPlayingUI to trigger PiP update when music state changes
+const originalSetPlayingUI = setPlayingUI;
+setPlayingUI = function(playing) {
+    originalSetPlayingUI(playing);
+    setTimeout(updatePipVisibility, 50);
+};
+
+// Initialize application
+// Force-fix for Monday June 1st migration if they hit the Day Order 3 bug
+if (new Date().toDateString() === 'Mon Jun 01 2026' && !localStorage.getItem('procrastinote_june1_fixed')) {
+    appState.settings.currentDayOrder = 1;
+    appState.settings.lastUpdatedDate = 'Mon Jun 01 2026';
+    localStorage.setItem('procrastinote_june1_fixed', 'true');
+    saveState();
+}
+
+updateTimerDisplay();
+updateRobotExpression();
+applyTheme();
+checkAuth();
+

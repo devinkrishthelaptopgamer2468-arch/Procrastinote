@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procrastinote | Educational Planner</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <meta name="description" content="Personal school planner for day orders, uniforms, and homework.">
+    <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@500;600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="school-styles.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body>
+    <div class="fluid-bg">
+        <div class="fluid-blob blob-blue"></div>
+        <div class="fluid-blob blob-green"></div>
+        <div class="fluid-blob blob-blue" style="animation-delay: -5s; width: 40vw; height: 40vw; top: 40%; left: 30%;"></div>
+    </div>
+
+    <div class="top-clock" id="digital-clock">
+        <span id="clock-time">00:00:00</span>
+        <span id="clock-ampm">AM</span>
+    </div>
+    
+    <!-- Landing Page / Introduction -->
+    <section id="landing-view" class="landing-view">
+        <header class="landing-header">
+            <svg class="landing-logo-img animated-logo-svg" viewBox="0 0 100 100" width="80" height="80">
+                <defs>
+                    <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#06b6d4" />
+                        <stop offset="100%" stop-color="#8b5cf6" />
+                    </linearGradient>
+                </defs>
+                <text x="50" y="65" font-family="'Quicksand', sans-serif" font-size="50" font-weight="bold" fill="url(#logo-gradient)" text-anchor="middle">P</text>
+                <path class="box-line" d="M 60 85 L 85 85 L 85 15 L 15 15 L 15 85 L 40 85" fill="none" stroke="url(#logo-gradient)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="landing-brand-name">Procrastinote</span>
+        </header>
+        <div class="landing-hero">
+            <h1 class="hero-words">
+                <span>Plan</span>
+                <span> . </span>
+                <span>Organize</span>
+                <span> . </span>
+                <span>Study</span>
+            </h1>
+            <p class="hero-subtitle" id="landing-hero-subtitle"></p>
+            <button class="get-started-btn" id="get-started-btn" style="opacity: 0;">Get Started</button>
+        </div>
+    </section>
+
+    <!-- Full-page Intro Overlay -->
+    <div id="fullpage-intro" class="fullpage-intro" style="display: none;">
+        <h1 id="fullpage-typewriter"></h1>
+    </div>
+
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay" style="display: none;">
+        <div class="login-box">
+            <div class="login-logo">
+                <svg class="animated-logo-svg" viewBox="0 0 100 100" width="60" height="60">
+                    <defs>
+                        <linearGradient id="logo-gradient-login" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#06b6d4" />
+                            <stop offset="100%" stop-color="#8b5cf6" />
+                        </linearGradient>
+                    </defs>
+                    <text x="50" y="65" font-family="'Quicksand', sans-serif" font-size="50" font-weight="bold" fill="url(#logo-gradient-login)" text-anchor="middle">P</text>
+                    <path class="box-line" d="M 60 85 L 85 85 L 85 15 L 15 15 L 15 85 L 40 85" fill="none" stroke="url(#logo-gradient-login)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Procrastinote</span>
+            </div>
+            <div class="auth-pill-wrapper">
+                <div class="auth-slider"></div>
+                <button type="button" class="auth-pill-btn active" id="btn-signup">Sign Up</button>
+                <button type="button" class="auth-pill-btn" id="btn-login">Log In</button>
+            </div>
+            
+            <h2 id="auth-title">Create an Account</h2>
+
+            <form id="login-form">
+                <div class="form-group auth-hide-on-login">
+                    <label for="login-name">Full Name</label>
+                    <input type="text" id="login-name" placeholder="John Doe" required>
+                </div>
+                <div class="form-group auth-hide-on-login" style="position: relative;">
+                    <label>Class / Grade</label>
+                    <div id="grade-display" class="custom-select-display">Select your grade</div>
+                    <div id="grade-options" class="custom-select-options">
+                        <div class="custom-option" data-value="1st Grade">1st Grade</div>
+                        <div class="custom-option" data-value="2nd Grade">2nd Grade</div>
+                        <div class="custom-option" data-value="3rd Grade">3rd Grade</div>
+                        <div class="custom-option" data-value="4th Grade">4th Grade</div>
+                        <div class="custom-option" data-value="5th Grade">5th Grade</div>
+                        <div class="custom-option" data-value="6th Grade">6th Grade</div>
+                        <div class="custom-option" data-value="7th Grade">7th Grade</div>
+                        <div class="custom-option" data-value="8th Grade">8th Grade</div>
+                        <div class="custom-option" data-value="9th Grade">9th Grade</div>
+                        <div class="custom-option" data-value="10th Grade">10th Grade</div>
+                        <div class="custom-option" data-value="11th Grade">11th Grade</div>
+                        <div class="custom-option" data-value="12th Grade">12th Grade</div>
+                    </div>
+                    <input type="hidden" id="login-class">
+                </div>
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" placeholder="john@example.com" required>
+                </div>
+                <div class="form-group" style="position: relative; margin-bottom: 2rem;">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
+                    <div class="show-password-wrapper">
+                        <input type="checkbox" id="show-password-cb">
+                        <label for="show-password-cb">Show Password</label>
+                    </div>
+                </div>
+                <button type="submit" class="btn primary-btn login-btn" id="auth-submit-btn">Sign Up</button>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- Main Application -->
+    <div class="app-container" id="main-app" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <h1 style="display:flex; align-items:center; gap:6px;">
+                    <svg class="animated-logo-svg" viewBox="0 0 100 100" width="32" height="32">
+                        <defs>
+                            <linearGradient id="logo-gradient-sidebar" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#06b6d4" />
+                                <stop offset="100%" stop-color="#8b5cf6" />
+                            </linearGradient>
+                        </defs>
+                        <text x="50" y="65" font-family="'Quicksand', sans-serif" font-size="50" font-weight="bold" fill="url(#logo-gradient-sidebar)" text-anchor="middle">P</text>
+                        <path class="box-line" d="M 60 85 L 85 85 L 85 15 L 15 15 L 15 85 L 40 85" fill="none" stroke="url(#logo-gradient-sidebar)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Procrastinote</span>
+                </h1>
+                <p id="sidebar-user-class" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.4rem;"></p>
+            </div>
+            
+            <ul class="nav-links">
+                <li class="active" data-tab="dashboard">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7" rx="1" fill="#3b82f6" stroke="#93c5fd"/>
+                            <rect x="14" y="3" width="7" height="7" rx="1" fill="#3b82f6" stroke="#93c5fd"/>
+                            <rect x="14" y="14" width="7" height="7" rx="1" fill="#3b82f6" stroke="#93c5fd"/>
+                            <rect x="3" y="14" width="7" height="7" rx="1" fill="#3b82f6" stroke="#93c5fd"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Dashboard</span>
+                </li>
+                <li data-tab="timetable">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="13" r="8" fill="#3b82f6" stroke="#93c5fd"/>
+                            <path d="M12 9v4l2 2" stroke="#93c5fd" stroke-linecap="round"/>
+                            <path d="M5 3L2 6" stroke="#93c5fd" stroke-linecap="round"/>
+                            <path d="M19 3l3 3" stroke="#93c5fd" stroke-linecap="round"/>
+                            <path d="M12 21v1" stroke="#93c5fd" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Timetable</span>
+                </li>
+                <li data-tab="homework">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#93c5fd"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="#3b82f6" stroke="#93c5fd"/>
+                            <path d="M8 7h8M8 11h8M8 15h4" stroke="#93c5fd" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Homework</span>
+                </li>
+                <li data-tab="zen">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9" fill="#3b82f6" stroke="#93c5fd" opacity="0.3"/>
+                            <path d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9z" stroke="#93c5fd"/>
+                            <path d="M12 8c2.21 0 4 1.79 4 4s-1.79 4-4 4-4-1.79-4-4 1.79-4 4-4z" fill="#3b82f6" stroke="#93c5fd"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Zen</span>
+                </li>
+                <li data-tab="calendar">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Calendar</span>
+                </li>
+                <li data-tab="notebook">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Notebook</span>
+                </li>
+                <li data-tab="settings">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3" fill="#3b82f6" stroke="#93c5fd"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="#93c5fd"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Settings</span>
+                </li>
+            </ul>
+
+            <div style="margin-top:auto; padding: 1rem 2rem; display:flex; flex-direction:column; gap:1rem;">
+                <div class="theme-switch-wrapper">
+                    <span class="theme-switch-label">Light Mode</span>
+                    <label class="theme-switch" for="theme-checkbox">
+                        <input type="checkbox" id="theme-checkbox" />
+                        <div class="slider round"></div>
+                    </label>
+                </div>
+                <button id="logout-btn" class="btn secondary-btn" style="width:100%; font-size:0.9rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Log Out</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            
+            <!-- Dashboard View -->
+            <section id="dashboard" class="view active-view">
+                <header class="view-header">
+                    <h2 id="greeting-header">Welcome, <span class="highlight">Student</span>!</h2>
+                    <br/>
+                    <h2>Planning for <span id="dash-tomorrow-label" class="highlight">Tomorrow</span></h2>
+                    <p class="subtitle" id="dash-day-order-display">Day Order: --</p>
+                </header>
+                
+                <div class="dashboard-grid">
+                    <div class="card uniform-card">
+                        <div class="card-title-wrap">
+                            <svg class="anim-uniform" viewBox="0 0 100 100" width="28" height="28">
+                                <pattern id="checkered" width="20" height="20" patternUnits="userSpaceOnUse">
+                                   <rect width="20" height="20" fill="#e0f2fe" />
+                                   <rect width="10" height="10" fill="#7dd3fc" />
+                                   <rect x="10" y="10" width="10" height="10" fill="#7dd3fc" />
+                                </pattern>
+                                <path class="shirt-path" d="M 25 20 L 40 10 L 60 10 L 75 20 L 90 45 L 75 55 L 70 40 L 70 90 L 30 90 L 30 40 L 25 55 L 10 45 Z" fill="url(#checkered)" />
+                            </svg>
+                            <h3>Uniform Reminder</h3>
+                        </div>
+                        <p id="dash-uniform" class="primary-text">Regular Uniform</p>
+                    </div>
+
+                    <div class="card backpack-card">
+                        <div class="card-title-wrap">
+                            <svg class="anim-backpack" viewBox="0 0 100 100" width="28" height="28">
+                                <path d="M 20 40 Q 20 10 50 10 Q 80 10 80 40 L 80 90 Q 80 95 75 95 L 25 95 Q 20 95 20 90 Z" fill="#2563eb" />
+                                <g class="bp-books">
+                                    <rect x="25" y="15" width="12" height="35" fill="#ef4444" transform="rotate(-15 30 30)" />
+                                    <rect x="42" y="10" width="16" height="40" fill="#10b981" />
+                                    <rect x="62" y="12" width="12" height="38" fill="#eab308" transform="rotate(10 65 30)" />
+                                </g>
+                                <path d="M 20 45 L 80 45 L 80 90 Q 80 95 75 95 L 25 95 Q 20 95 20 90 Z" fill="#3b82f6" />
+                                <path d="M 30 45 L 30 70 L 70 70 L 70 45" fill="none" stroke="#93c5fd" stroke-width="4" stroke-linejoin="round" />
+                            </svg>
+                            <h3>Backpack Checklist</h3>
+                        </div>
+                        <div class="checklist-grid">
+                            <div class="pack-list">
+                                <h4>Pack These Books:</h4>
+                                <ul id="dash-pack-list">
+                                </ul>
+                            </div>
+                            <div class="leave-list">
+                                <h4>Leave at Home:</h4>
+                                <ul id="dash-leave-list">
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card homework-card">
+                        <div class="card-title-wrap">
+                            <svg class="anim-homework" viewBox="0 0 100 100" width="28" height="28">
+                                <rect x="20" y="10" width="60" height="80" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="6" />
+                                <path class="hw-line hl-1" d="M 35 30 L 65 30" stroke="#64748b" stroke-width="6" stroke-dasharray="30" stroke-dashoffset="30" stroke-linecap="round" />
+                                <path class="hw-line hl-2" d="M 35 50 L 65 50" stroke="#64748b" stroke-width="6" stroke-dasharray="30" stroke-dashoffset="30" stroke-linecap="round" />
+                                <path class="hw-line hl-3" d="M 35 70 L 50 70" stroke="#64748b" stroke-width="6" stroke-dasharray="15" stroke-dashoffset="15" stroke-linecap="round" />
+                                <g class="hw-pen">
+                                    <polygon points="0,0 -15,-30 -5,-35 10,-5" fill="#3b82f6" />
+                                    <polygon points="0,0 -8,-15 -2,-17" fill="#f1f5f9" />
+                                </g>
+                            </svg>
+                            <h3>Upcoming Homework</h3>
+                        </div>
+                        <ul id="dash-homework-list">
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Timetable View -->
+            <section id="timetable" class="view">
+                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2>Timetable & Subjects</h2>
+                        <p class="subtitle">Set your schedule</p>
+                    </div>
+                    <div class="timetable-switch" style="display: flex; background: var(--bg-card); border-radius: 8px; padding: 4px; border: 1px solid var(--border-color);">
+                        <button id="tt-school-btn" class="btn" style="border: none; background: var(--primary-color); color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">School</button>
+                        <button id="tt-home-btn" class="btn" style="border: none; background: transparent; color: var(--text-primary); padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">Home Study</button>
+                    </div>
+                </header>
+                
+                <div id="school-timetable-view">
+                <div class="card">
+                    <h3>Day Order Schedule</h3>
+                    <div class="timetable-grid" id="timetable-container">
+                        <!-- Generated via JS -->
+                    </div>
+                    <button class="btn primary-btn" id="save-timetable-btn" style="margin-top: 1rem;">Save Timetable</button>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3>School Setup</h3>
+                        <div class="form-group" style="position: relative;">
+                            <label>Total Day Orders</label>
+                            <div id="total-days-display" class="custom-select-display">Select Total Days</div>
+                            <div id="total-days-options" class="custom-select-options"></div>
+                            <input type="hidden" id="total-days" value="6">
+                        </div>
+                        <div class="form-group" style="position: relative;">
+                            <label>Today is Day Order</label>
+                            <div id="current-day-display" class="custom-select-display">Select Day Order</div>
+                            <div id="current-day-options" class="custom-select-options"></div>
+                            <input type="hidden" id="current-day-order" value="1">
+                        </div>
+                        <button class="btn secondary-btn" id="save-school-setup">Update Setup</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>Uniform Rules</h3>
+                        <div id="uniform-setup-container">
+                            <!-- Generated via JS -->
+                        </div>
+                        <button class="btn secondary-btn" id="save-uniforms-btn">Save Uniforms</button>
+                    </div>
+                </div>
+                </div>
+
+                <div id="home-timetable-view" style="display: none;">
+                    <div class="home-schedule-layout">
+                        <!-- Add Schedule Block Form -->
+                        <div class="card home-schedule-form-card">
+                            <div class="card-title-wrap" style="margin-bottom: 1.5rem;">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--accent-color)" stroke-width="2">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                                </svg>
+                                <h3>Add Schedule Block</h3>
+                            </div>
+                            <div class="form-group" style="position: relative; margin-bottom: 1.25rem;">
+                                <label>Day Category</label>
+                                <div id="hs-daycat-display" class="custom-select-display">Weekday</div>
+                                <div id="hs-daycat-options" class="custom-select-options"></div>
+                                <input type="hidden" id="hs-daycat" value="weekday">
+                            </div>
+                            <div class="form-group" style="position: relative; margin-bottom: 1.25rem;">
+                                <label>Activity Type</label>
+                                <div id="hs-acttype-display" class="custom-select-display">Study Session</div>
+                                <div id="hs-acttype-options" class="custom-select-options"></div>
+                                <input type="hidden" id="hs-acttype" value="study">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1.25rem;">
+                                <label for="hs-subject">Subject / Topic</label>
+                                <input type="text" id="hs-subject" placeholder="e.g. Mathematics, Reading..." style="width: 100%; padding: 0.65rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-color); color: var(--text-primary); font-size: 0.95rem; outline: none; transition: border-color 0.2s; font-family: inherit;">
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                <div class="form-group">
+                                    <label for="hs-start">Start Time</label>
+                                    <input type="time" id="hs-start" class="time-input" style="width: 100%; padding: 0.65rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-color); color: var(--text-primary); font-size: 0.95rem; outline: none; transition: border-color 0.2s;">
+                                </div>
+                                <div class="form-group">
+                                    <label for="hs-end">End Time</label>
+                                    <input type="time" id="hs-end" class="time-input" style="width: 100%; padding: 0.65rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-color); color: var(--text-primary); font-size: 0.95rem; outline: none; transition: border-color 0.2s;">
+                                </div>
+                            </div>
+                            <button class="btn primary-btn" id="btn-add-schedule-block" style="width: 100%;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 0.4rem;"><path d="M12 5v14M5 12h14"/></svg>
+                                Add to Schedule
+                            </button>
+                        </div>
+
+                        <!-- Visual Schedule Timeline -->
+                        <div class="card home-schedule-timeline-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+                                <div class="card-title-wrap" style="margin-bottom: 0;">
+                                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--accent-color)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    <h3>My Schedule</h3>
+                                </div>
+                                <div class="hs-filter-pills" id="hs-filter-pills">
+                                    <button class="hs-pill active" data-filter="all">All</button>
+                                    <button class="hs-pill" data-filter="weekday">Weekdays</button>
+                                    <button class="hs-pill" data-filter="weekend">Weekends</button>
+                                    <button class="hs-pill" data-filter="halfday">Half-days</button>
+                                </div>
+                            </div>
+                            <div id="home-schedule-list" class="home-schedule-list">
+                                <div id="home-schedule-empty" style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
+                                    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 1rem; opacity: 0.4;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <p style="font-size: 0.9rem;">No schedule blocks yet. Add one to get started!</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="settings" class="view">
+                <header class="view-header">
+                    <h2>Settings</h2>
+                    <p class="subtitle">Customize your planner experience</p>
+                </header>
+
+                <div class="settings-grid">
+                    <div class="card profile-card">
+                        <div class="card-title-wrap">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--accent-color)" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                            </svg>
+                            <h3>Profile Details</h3>
+                        </div>
+                        <div class="profile-info">
+                            <div class="info-item">
+                                <span class="info-label">Full Name</span>
+                                <span class="info-value" id="profile-name">--</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Class / Grade</span>
+                                <span class="info-value" id="profile-grade">--</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Email Address</span>
+                                <span class="info-value" id="profile-email">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card security-card clickable-card" id="btn-go-security">
+                        <div class="card-title-wrap">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--accent-color)" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                            <h3>Security</h3>
+                        </div>
+                        <p class="subtitle">Password, email verification and account safety.</p>
+                        <div class="card-footer-action">
+                            <span>Manage Security</span>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Security View -->
+            <section id="security-view" class="view">
+                <header class="view-header">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <button id="back-to-settings" class="icon-btn">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 12H5M12 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <div>
+                            <h2>Security Settings</h2>
+                            <p class="subtitle">Protect your account and data</p>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="settings-grid">
+                    <div class="card" id="password-card">
+                        <h3>Change Password</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem;">Update your password to keep your account secure.</p>
+                        
+                        <div id="pw-step-1" class="pw-step active">
+                            <div class="form-group" style="position: relative;">
+                                <label for="old-password">Enter Old Password</label>
+                                <input type="password" id="old-password" placeholder="••••••••" style="text-align: center;">
+                                <div class="show-password-wrapper" style="justify-content: center; width: 100%;">
+                                    <input type="checkbox" id="show-old-password-cb">
+                                    <label for="show-old-password-cb">Show Password</label>
+                                </div>
+                            </div>
+                            <button class="btn secondary-btn" style="width: 100%; margin-top: 1.5rem;" id="btn-verify-old">Verify Password</button>
+                        </div>
+
+                        <div id="pw-step-2" class="pw-step">
+                            <div class="form-group" style="position: relative; margin-bottom: 2.5rem;">
+                                <label for="new-password">New Password</label>
+                                <input type="password" id="new-password" placeholder="••••••••" style="text-align: center;">
+                                <div class="show-password-wrapper" style="justify-content: center; width: 100%;">
+                                    <input type="checkbox" id="show-new-password-cb">
+                                    <label for="show-new-password-cb">Show Password</label>
+                                </div>
+                            </div>
+                            <div class="form-group" style="position: relative; margin-bottom: 2.5rem;">
+                                <label for="confirm-password">Confirm New Password</label>
+                                <input type="password" id="confirm-password" placeholder="••••••••" style="text-align: center;">
+                                <div class="show-password-wrapper" style="justify-content: center; width: 100%;">
+                                    <input type="checkbox" id="show-confirm-password-cb">
+                                    <label for="show-confirm-password-cb">Show Password</label>
+                                </div>
+                            </div>
+                            <button class="btn primary-btn" style="width: 100%;" id="btn-update-password">Update Password</button>
+                        </div>
+
+                        <div id="pw-step-success" class="pw-step">
+                            <div style="text-align: center; padding: 1rem 0;">
+                                <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+                                <h4 style="margin-bottom: 0.5rem;">Password Updated!</h4>
+                                <p class="subtitle">Your password has been changed successfully.</p>
+                                <button class="btn secondary-btn" style="width: 100%; margin-top: 1.5rem;" id="btn-reset-pw-flow">Done</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>AI Assistant Settings</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem;">Manage your Groq API key for advanced intelligence.</p>
+                        <div class="form-group">
+                            <label for="groq-api-key">Groq API Key</label>
+                            <input type="password" id="groq-api-key" placeholder="gsk_...">
+                        </div>
+                        <button class="btn secondary-btn" style="width: 100%;" id="btn-save-ai-key">Save Key</button>
+                    </div>
+
+                    <div class="card" id="email-verify-card">
+                        <h3>Verify Email</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem;" id="email-verify-status">Confirm your email address for account recovery.</p>
+                        
+                        <div id="email-step-1" class="email-step active">
+                            <button class="btn secondary-btn" style="width: 100%;" id="btn-send-otp">Send Verification Code</button>
+                        </div>
+
+                        <div id="email-step-loading" class="email-step" style="text-align: center; display: none;">
+                            <div class="music-icon-animated" style="margin: 0 auto 1rem;">
+                                <span></span><span></span><span></span><span></span>
+                            </div>
+                            <p>Sending verification code...</p>
+                        </div>
+
+                        <div id="email-step-2" class="email-step" style="display: none;">
+                            <div class="form-group">
+                                <label for="email-otp">Enter 6-digit Code</label>
+                                <input type="text" id="email-otp" placeholder="000000" maxlength="6" style="text-align: center; font-size: 1.5rem; letter-spacing: 0.5rem; font-weight: 700;">
+                            </div>
+                            <button class="btn primary-btn" style="width: 100%;" id="btn-verify-otp">Verify Code</button>
+                            <button class="btn secondary-btn" style="width: 100%; margin-top: 0.5rem; border: none;" id="btn-resend-otp">Resend Email</button>
+                        </div>
+
+                        <div id="email-step-success" class="email-step" style="display: none;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">✨</div>
+                                <p style="color: var(--success); font-weight: 700;">Email Verified!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Email Service Settings</h3>
+                        <p class="subtitle" style="margin-bottom: 1.5rem;">Configure EmailJS credentials to enable real email verification.</p>
+                        <div class="form-group">
+                            <label for="emailjs-public-key">Public Key</label>
+                            <input type="password" id="emailjs-public-key" placeholder="EmailJS Public Key" style="text-align: center;">
+                        </div>
+                        <div class="form-group">
+                            <label for="emailjs-service-id">Service ID</label>
+                            <input type="text" id="emailjs-service-id" placeholder="e.g., service_xxxxxxx" style="text-align: center;">
+                        </div>
+                        <div class="form-group">
+                            <label for="emailjs-template-id">Template ID</label>
+                            <input type="text" id="emailjs-template-id" placeholder="e.g., template_xxxxxxx" style="text-align: center;">
+                        </div>
+                        <button class="btn secondary-btn" style="width: 100%; margin-top: 1rem;" id="btn-save-emailjs">Save Configuration</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Homework View -->
+            <section id="homework" class="view">
+                <header class="view-header">
+                    <h2>Homework Tracker</h2>
+                    <p class="subtitle">Don't forget your assignments</p>
+                </header>
+
+                <div class="homework-layout">
+                    <div class="card add-homework">
+                        <h3>Add New Homework</h3>
+                        <form id="homework-form">
+                            <div class="form-group">
+                                <label for="hw-task">Task Description</label>
+                                <input type="text" id="hw-task" placeholder="e.g., Math Page 42" required>
+                            </div>
+                            <div class="form-group" style="position: relative;">
+                                <label>Subject</label>
+                                <div id="hw-subject-display" class="custom-select-display">Select Subject</div>
+                                <div id="hw-subject-options" class="custom-select-options"></div>
+                                <input type="hidden" id="hw-subject" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="hw-deadline">Deadline Date</label>
+                                <input type="date" id="hw-deadline">
+                            </div>
+                            <button type="submit" class="btn primary-btn">Add Homework</button>
+                        </form>
+                    </div>
+
+                    <div class="card list-homework">
+                        <h3>Active Homework</h3>
+                        <ul id="active-homework-list" class="interactive-list">
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- Zen View -->
+            <section id="zen" class="view">
+                <header class="view-header">
+                    <div>
+                        <h2>Zen Mode</h2>
+                        <p class="subtitle">Focus your mind, boost your productivity</p>
+                    </div>
+                </header>
+                
+                <div class="zen-layout">
+                    <!-- Timer Card -->
+                    <div class="card zen-card timer-card">
+                        <div class="timer-type-toggle">
+                            <span id="timer-label" class="active">Study Session</span>
+                        </div>
+                        <div class="timer-display">
+                            <svg class="timer-progress-svg" viewBox="0 0 100 100">
+                                <circle class="timer-bg" cx="50" cy="50" r="45"></circle>
+                                <circle id="timer-progress" class="timer-bar" cx="50" cy="50" r="45"></circle>
+                            </svg>
+                            <div class="timer-text" id="timer-time">25:00</div>
+                        </div>
+                        <div class="timer-controls">
+                            <button id="timer-start" class="btn primary-btn icon-btn-large" title="Start Timer">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                            </button>
+                            <button id="timer-pause" class="btn secondary-btn icon-btn-large" style="display:none;" title="Pause Timer">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                            </button>
+                            <button id="timer-reset" class="btn secondary-btn icon-btn-large" title="Reset Timer">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            </button>
+                            <button id="zen-float-btn" class="btn secondary-btn icon-btn-large" title="Float Miniplayer (PiP)">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="2" width="20" height="20" rx="4" />
+                                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="timer-settings" style="margin-top: 2rem;">
+                            <div class="form-group" style="position: relative;">
+                                <label>Study Time</label>
+                                <div id="study-min-display" class="custom-select-display has-value">25 Minutes</div>
+                                <div id="study-min-options" class="custom-select-options"></div>
+                                <input type="hidden" id="study-min" value="25">
+                            </div>
+                            <div class="form-group" style="position: relative;">
+                                <label>Break Time</label>
+                                <div id="break-min-display" class="custom-select-display has-value">5 Minutes</div>
+                                <div id="break-min-options" class="custom-select-options"></div>
+                                <input type="hidden" id="break-min" value="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Music & Sounds Card -->
+                    <div class="card zen-card music-card">
+                        <div class="card-title-wrap">
+                            <div class="headphones-hint">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+                                    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+                                </svg>
+                                <span>Best with Headphones</span>
+                            </div>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--accent-color)" stroke-width="2">
+                                <path d="M9 18V5l12-2v13"/>
+                                <circle cx="6" cy="18" r="3"/>
+                                <circle cx="18" cy="16" r="3"/>
+                            </svg>
+                            <h3>Zen Music</h3>
+                        </div>
+                        <p class="subtitle">Chill beats and nature sounds</p>
+                        
+                        <div class="noise-grid">
+                            <button class="noise-btn active" data-sound="white" data-name="White Noise">
+                                <div class="noise-icon" style="background: #e5e7eb;"></div>
+                                <span>White Noise</span>
+                            </button>
+                            <button class="noise-btn" data-sound="rain" data-name="Rain Sounds">
+                                <div class="noise-icon" style="background: #60a5fa;"></div>
+                                <span>Rain Sounds</span>
+                            </button>
+                            <button class="noise-btn" data-sound="forest" data-name="Forest Sounds">
+                                <div class="noise-icon" style="background: #34d399;"></div>
+                                <span>Forest Sounds</span>
+                            </button>
+                            <button class="noise-btn" data-sound="ocean" data-name="Ocean Waves">
+                                <div class="noise-icon" style="background: #2dd4bf;"></div>
+                                <span>Ocean Waves</span>
+                            </button>
+                        </div>
+                        
+                        <div class="music-player-ui">
+                            <div class="player-info">
+                                <div class="music-icon-animated">
+                                    <span></span><span></span><span></span><span></span>
+                                </div>
+                                <div style="text-align: left;">
+                                    <strong id="track-name">White Noise</strong>
+                                    <p id="player-status" class="subtitle" style="margin: 0; font-size: 0.8rem;">Click Play to start</p>
+                                </div>
+                            </div>
+
+                            <div class="player-controls">
+                                <button id="music-toggle" class="btn primary-btn icon-btn-large" title="Play/Pause">
+                                    <svg id="music-play-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                    <svg id="music-pause-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                </button>
+                            </div>
+
+                            <div class="volume-control" style="width: 100%; margin-top: 1rem;">
+                                <div style="display: flex; justify-content: flex-start; margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Volume</label>
+                                </div>
+                                <input type="range" id="music-volume" min="0" max="100" value="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Calendar View -->
+            <section id="calendar" class="view">
+                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2>Calendar & Schedule Planner</h2>
+                        <p class="subtitle">Stay ahead of your homework and day order schedule</p>
+                    </div>
+                    <div class="calendar-controls" style="display: flex; align-items: center; gap: 1rem; background: var(--bg-card); padding: 0.5rem 1rem; border-radius: 12px; border: 1px solid var(--border-color);">
+                        <button id="btn-prev-month" class="icon-btn" style="padding: 0.35rem;" title="Previous Month">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+                        </button>
+                        <span id="calendar-month-year" style="font-weight: 700; font-size: 1.1rem; min-width: 140px; text-align: center; color: var(--text-primary);">June 2026</span>
+                        <button id="btn-next-month" class="icon-btn" style="padding: 0.35rem;" title="Next Month">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="calendar-layout">
+                    <!-- The Grid container -->
+                    <div class="card calendar-card" style="display: flex; flex-direction: column; padding: 1.5rem;">
+                        <div class="calendar-grid-header" style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-weight: 700; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.9rem;">
+                            <div>Sun</div>
+                            <div>Mon</div>
+                            <div>Tue</div>
+                            <div>Wed</div>
+                            <div>Thu</div>
+                            <div>Fri</div>
+                            <div>Sat</div>
+                        </div>
+                        <div id="calendar-days-grid" class="calendar-days-grid">
+                            <!-- Filled dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Side Details Panel -->
+                    <div class="card calendar-details-card" style="display: flex; flex-direction: column; padding: 1.5rem;">
+                        <h3 id="cal-details-date" style="margin-bottom: 1rem; border-bottom: 2px solid var(--border-color); padding-bottom: 0.5rem;">Select a Day</h3>
+                        <div id="cal-details-content" style="flex: 1; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto;">
+                            <div style="text-align: center; padding: 3rem 1rem; color: var(--text-secondary);">
+                                <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 1rem; opacity: 0.4;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                <p style="font-size: 0.9rem;">Click any cell to view day order, uniform, timetable, and homework details.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Notebook View -->
+            <section id="notebook" class="view">
+                <header class="view-header">
+                    <h2>Notebook</h2>
+                    <p class="subtitle">Jot down your thoughts and ideas</p>
+                </header>
+
+                <div class="notebook-layout" style="display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; height: calc(100vh - 12rem); min-height: 500px;">
+                    <div class="notebook-sidebar card" style="display: flex; flex-direction: column; overflow: hidden; padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <h3 style="margin: 0;">My Notes</h3>
+                            <button id="btn-new-notebook" class="btn primary-btn icon-btn-small" style="padding: 0.4rem; height: auto;" title="New Note">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                            </button>
+                        </div>
+                        <!-- Bulk Actions Bar -->
+                        <div id="notebook-bulk-bar" class="bulk-bar" style="display: none;">
+                            <div class="bulk-bar-content">
+                                <label class="bulk-select-label">
+                                    <input type="checkbox" id="nb-select-all">
+                                    <span id="nb-selected-count">0 selected</span>
+                                </label>
+                                <div class="bulk-buttons-container">
+                                    <button id="btn-bulk-download" class="btn bulk-action-btn" title="Export Selected">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                        Export
+                                    </button>
+                                    <button id="btn-bulk-delete" class="btn bulk-action-btn" title="Delete Selected">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <ul id="notebook-list" class="interactive-list" style="flex: 1; overflow-y: auto; margin: 0 -1rem; padding: 0 1rem;">
+                            <!-- Notebook items here -->
+                        </ul>
+                    </div>
+
+                    <div id="notebook-editor" class="notebook-editor card" style="display: flex; flex-direction: column; padding: 2rem;">
+                        <div id="notebook-empty-state" style="margin: auto; text-align: center; color: var(--text-secondary);">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 1rem;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            <p>Select or create a notebook to start writing</p>
+                        </div>
+                        
+                        <div id="notebook-active-view" style="display: none; flex: 1; flex-direction: column; gap: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; border-bottom: 2px solid var(--border-color); padding-bottom: 1rem;">
+                                <input type="text" id="notebook-title" placeholder="Notebook Title" style="font-size: 1.5rem; font-weight: 700; border: none; background: transparent; padding: 0.5rem 0; outline: none; flex: 1; color: var(--text-primary);">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button id="btn-fullscreen-notebook" class="btn secondary-btn" style="padding: 0.4rem 0.75rem; height: auto; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;" title="Toggle Fullscreen">
+                                        <svg id="fullscreen-expand-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                                        <svg id="fullscreen-collapse-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" style="display:none;"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                                        Fullscreen
+                                    </button>
+                                    <button id="btn-delete-notebook" class="btn danger-btn" style="padding: 0.4rem 0.75rem; height: auto; font-size: 0.85rem;">Delete</button>
+                                </div>
+                            </div>
+                            
+                            <div class="notebook-toolbar" style="display: flex; gap: 1rem; align-items: center; background: var(--bg-secondary); padding: 0.75rem; border-radius: 0.5rem; flex-wrap: wrap;">
+                                <button id="btn-ai-continue" class="btn secondary-btn" style="display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                                    Continue Writing
+                                </button>
+                                <button id="btn-translate-english" class="btn secondary-btn" style="display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                                    Translate to English
+                                </button>
+                                <div class="ai-prompt-box" style="display: flex; flex: 1; gap: 0.5rem;">
+                                    <input type="text" id="notebook-ai-prompt" placeholder="Ask AI to generate text..." style="flex: 1; padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                                    <button id="btn-ai-generate" class="btn primary-btn">Generate</button>
+                                </div>
+                            </div>
+
+                            <textarea id="notebook-content" placeholder="Start writing here..." style="flex: 1; resize: none; border: none; background: transparent; outline: none; font-family: 'Quicksand', sans-serif; font-size: 1.05rem; line-height: 1.7; color: var(--text-primary); padding: 0.5rem 0;"></textarea>
+                            
+                            <div class="notebook-images" style="border-top: 2px solid var(--border-color); padding-top: 1rem; margin-top: auto;">
+                                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                                    <input type="text" id="notebook-image-url" placeholder="Paste image URL (e.g. https://...)" style="flex: 1; padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); min-width: 200px;">
+                                    <button id="btn-add-image" class="btn secondary-btn">Add Image</button>
+                                    <input type="file" id="notebook-image-file" accept="image/*" style="display: none;">
+                                    <button id="btn-upload-image" class="btn secondary-btn" onclick="document.getElementById('notebook-image-file').click()">Upload File</button>
+                                    <button id="btn-ocr-images" class="btn primary-btn">Extract Text from Images (Tamil/Eng)</button>
+                                </div>
+                                <div id="notebook-image-gallery" class="image-gallery" style="display: flex; flex-wrap: wrap; gap: 1rem; overflow-y: auto; max-height: 250px;">
+                                    <!-- Images will be injected here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    
+    <!-- Picture-in-Picture Floating Widget -->
+    <div id="pip-widget" class="pip-widget">
+        <div class="pip-header">
+            <div class="pip-drag-handle">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                    <circle cx="5" cy="5" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="19" r="1"/>
+                </svg>
+            </div>
+            <span class="pip-title">Zen Mode</span>
+            <div class="pip-header-actions">
+                <button class="pip-go-btn" id="pip-go-zen" title="Go to Zen Mode">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                    </svg>
+                </button>
+                <button class="pip-close-btn" id="pip-close" title="Minimize">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="pip-body">
+            <!-- Timer Section -->
+            <div class="pip-section pip-timer-section" id="pip-timer-section">
+                <div class="pip-timer-ring">
+                    <svg class="pip-timer-svg" viewBox="0 0 100 100">
+                        <circle class="pip-timer-track" cx="50" cy="50" r="42"/>
+                        <circle class="pip-timer-progress" id="pip-timer-progress" cx="50" cy="50" r="42"/>
+                    </svg>
+                    <span class="pip-timer-text" id="pip-timer-text">25:00</span>
+                </div>
+                <div class="pip-timer-info">
+                    <span class="pip-timer-label" id="pip-timer-label">Study Session</span>
+                    <div class="pip-timer-controls">
+                        <button class="pip-ctrl-btn" id="pip-timer-play" title="Start Timer">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <button class="pip-ctrl-btn active" id="pip-timer-pause" title="Pause Timer" style="display:none;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        </button>
+                        <button class="pip-ctrl-btn" id="pip-timer-reset" title="Reset Timer">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="pip-divider" id="pip-divider"></div>
+
+            <!-- Music Section -->
+            <div class="pip-section pip-music-section" id="pip-music-section">
+                <div class="pip-music-viz">
+                    <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="pip-music-info">
+                    <span class="pip-music-track" id="pip-music-track">White Noise</span>
+                    <span class="pip-music-status" id="pip-music-status">Playing</span>
+                </div>
+                <button class="pip-ctrl-btn active" id="pip-music-toggle" title="Toggle Music">
+                    <svg class="pip-music-pause-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    <svg class="pip-music-play-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="display:none;"><path d="M8 5v14l11-7z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Minimized PiP Bubble removed -->
+
+    <!-- AI Assistant Widget -->
+    <div id="ai-assistant" class="ai-assistant">
+        <button id="ai-mascot-fab" class="ai-mascot-fab">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="10" rx="2"/>
+                <path d="M12 11V7"/>
+                <circle cx="12" cy="5" r="2"/>
+                <path d="M8 15h.01M16 15h.01M9 19c1.5 1 4.5 1 6 0"/>
+            </svg>
+        </button>
+
+        <div id="ai-chat-window" class="ai-chat-window" style="display: none;">
+            <div class="ai-chat-header">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div class="robot-icon" style="width: 30px; height: 30px; border-width: 2px;">
+                        <div class="robot-head" style="width: 24px; height: 20px;">
+                            <div class="robot-eye left" style="width: 5px; height: 5px;"><div class="robot-pupil" style="width: 2px; height: 2px;"></div></div>
+                            <div class="robot-eye right" style="width: 5px; height: 5px;"><div class="robot-pupil" style="width: 2px; height: 2px;"></div></div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="ai-chat-title">Procrastinote AI</span>
+                        <div class="ai-status-indicator">
+                            <span class="status-dot"></span>
+                            <span id="ai-status-text">Online</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="close-chat-btn" class="close-chat-btn">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            
+            <div id="ai-chat-messages" class="ai-chat-messages">
+                <div class="ai-message bot-message">
+                    Hello! I'm your Procrastinote assistant. How can I help you today?
+                </div>
+            </div>
+
+            <div class="ai-chat-input-area">
+                <input type="text" id="ai-user-input" placeholder="Ask me anything..." autocomplete="off">
+                <button id="ai-send-btn" class="ai-send-btn">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Overlay -->
+    <div id="custom-confirm-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.5); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="card" style="min-width: 300px; text-align: center; max-width: 400px; margin: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 id="custom-confirm-title" style="margin-bottom: 1rem;">Confirm Action</h3>
+            <p id="custom-confirm-msg" class="subtitle" style="margin-bottom: 2rem;">Are you sure?</p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button id="custom-confirm-no" class="btn secondary-btn" style="flex: 1;">Cancel</button>
+                <button id="custom-confirm-yes" class="btn primary-btn" style="flex: 1; background: var(--danger); border-color: var(--danger);">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="school-app.js"></script>
+</body>
+</html>
