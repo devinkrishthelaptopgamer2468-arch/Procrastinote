@@ -7,6 +7,16 @@ const SUBJECT_LIST = [
     "LSA", "VBSE/LSA", "Library", "MADD", "ATL"
 ];
 
+// Escape user-supplied text before inserting it into innerHTML templates
+function escapeHTML(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 let defaultState = {
     settings: {
         totalDays: 6,
@@ -23,6 +33,7 @@ let defaultState = {
     homeSchedule: [], // e.g. [{id, daycat, acttype, subject, start, end}]
     homework: [], // e.g., { id, task, subject, date }
     emailVerified: false,
+    friendsList: [], // Holds list of added friend emails
     groqKey: '',
     emailjs: {
         publicKey: '',
@@ -58,6 +69,7 @@ function saveState() {
                 homeSchedule: appState.homeSchedule,
                 homework: appState.homework,
                 emailVerified: appState.emailVerified,
+                friendsList: appState.friendsList || [],
                 groqKey: appState.groqKey,
                 emailjs: appState.emailjs
             }
@@ -267,6 +279,7 @@ function getDayOrderForDate(targetDate) {
         }
         return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
     } else {
+        // Mirror of the forward case: count weekdays in (target, lastDate]
         while (temp.getTime() > targetCopy.getTime()) {
             let d = temp.getDay();
             if (d !== 0 && d !== 6) {
@@ -274,11 +287,7 @@ function getDayOrderForDate(targetDate) {
             }
             temp.setDate(temp.getDate() - 1);
         }
-        let d = temp.getDay();
-        if (d !== 0 && d !== 6) {
-            weekdays++;
-        }
-        
+
         let newDay = (currentDayOrder - 1 - weekdays) % totalDays;
         if (newDay < 0) newDay += totalDays;
         return newDay + 1;
@@ -354,8 +363,8 @@ function showCalendarDayDetails(date) {
         matchingHw.forEach(hw => {
             hwHtml += `
                 <li class="calendar-detail-hw-item">
-                    <strong style="color: var(--danger); font-size: 0.95rem;">${hw.task}</strong>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">Subject: ${hw.subject}</div>
+                    <strong style="color: var(--danger); font-size: 0.95rem;">${escapeHTML(hw.task)}</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">Subject: ${escapeHTML(hw.subject)}</div>
                 </li>
             `;
         });
@@ -510,6 +519,9 @@ function renderAllViews() {
     updateRobotExpression();
     renderCalendar();
     renderEmailJSSettings();
+    if (typeof renderFriends === 'function') {
+        renderFriends();
+    }
     if (typeof renderHomeSchedule === 'function') {
         const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
         renderHomeSchedule(activeFilter);
@@ -680,7 +692,7 @@ function renderHomework() {
         list.innerHTML += `
             <li>
                 <div class="hw-info">
-                    <strong>${hw.task} (${hw.subject})</strong>
+                    <strong>${escapeHTML(hw.task)} (${escapeHTML(hw.subject)})</strong>
                     <span>Due: ${new Date(hw.date).toLocaleDateString()}</span>
                 </div>
                 <button class="done-btn" onclick="completeHomework(${index})">Mark Done</button>
@@ -749,7 +761,7 @@ function renderDashboard() {
         const diffTime = new Date(hw.date) - now;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         if (diffDays <= 3) { // Shows due soon
-            hwList.innerHTML += `<li>${hw.task} - Due in ${diffDays} days</li>`;
+            hwList.innerHTML += `<li>${escapeHTML(hw.task)} - Due in ${diffDays} days</li>`;
             urgentHw++;
         }
     });
@@ -1063,8 +1075,8 @@ function renderNotebooks() {
         li.innerHTML = `
             <input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" ${isChecked ? 'checked' : ''}>
             <div style="flex: 1; min-width: 0;" class="nb-item-click-target">
-                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${nb.title || 'Untitled Note'}</h4>
-                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? nb.content.substring(0, 30) + '...' : 'No content'}</p>
+                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${escapeHTML(nb.title || 'Untitled Note')}</h4>
+                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? escapeHTML(nb.content.substring(0, 30)) + '...' : 'No content'}</p>
             </div>
         `;
         
@@ -1105,7 +1117,7 @@ function renderNotebooks() {
                 const container = document.createElement('div');
                 container.className = 'gallery-img-container';
                 container.innerHTML = `
-                    <img src="${imgUrl}" alt="Notebook Image">
+                    <img src="${escapeHTML(imgUrl)}" alt="Notebook Image">
                     <button class="gallery-img-delete" onclick="deleteNotebookImage(${idx})">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                     </button>
@@ -1615,7 +1627,7 @@ function checkAuth() {
         
         // Setup greeting & sidebar
         const firstName = appState.user.name.split(' ')[0];
-        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${firstName}</span>!`;
+        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
         document.getElementById('sidebar-user-class').innerText = `Class: ${appState.user.class}`;
         
         // Update day order if date has changed
@@ -2545,11 +2557,12 @@ function addMessage(text, isBot = true) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-async function callGroq(prompt) {
+async function callGroq(prompt, systemPrompt = null) {
     const apiKey = appState.groqKey;
     if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
 
     const url = AI_CONFIG.baseUrl;
+    const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
     
     try {
         const response = await fetch(url, {
@@ -2563,7 +2576,7 @@ async function callGroq(prompt) {
                 messages: [
                     {
                         role: "system",
-                        content: "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging."
+                        content: sys
                     },
                     {
                         role: "user",
@@ -2636,15 +2649,15 @@ function handleAICommand(input) {
 
     // 3. Theme commands
     if (text.includes('dark mode') || text.includes('dark theme')) {
-        if (!document.body.hasAttribute('data-theme')) {
-            document.getElementById('theme-checkbox')?.click();
-        }
+        appState.settings.theme = 'dark';
+        applyTheme();
+        saveState();
         return "Switching to Dark Mode. 🌙";
     }
     if (text.includes('light mode') || text.includes('light theme')) {
-        if (document.body.hasAttribute('data-theme')) {
-            document.getElementById('theme-checkbox')?.click();
-        }
+        appState.settings.theme = 'light';
+        applyTheme();
+        saveState();
         return "Switching to Light Mode. ☀️";
     }
 
@@ -3335,6 +3348,435 @@ if (new Date().toDateString() === 'Mon Jun 01 2026' && !localStorage.getItem('pr
     localStorage.setItem('procrastinote_june1_fixed', 'true');
     saveState();
 }
+
+// --- Friends & Chat Logic ---
+const CHATS_KEY = 'school_planner_chats';
+const AI_BUDDIES = [
+    {
+        id: 'procrasti-bot',
+        name: 'Procrasti-Bot',
+        role: 'Study Coach',
+        desc: 'Productivity tips & motivation.',
+        avatar: 'PB',
+        systemPrompt: 'You are Procrasti-Bot, a friendly and encouraging productivity coach for Procrastinote. Give students quick, actionable tips to beat procrastination. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Hey there! Ready to crush some tasks today? Remember, even a 5-minute study session is better than zero. Give it a shot! 🚀",
+            "You've got this! Try setting a small, specific goal right now. What's one tiny thing you can complete in the next 15 minutes? ⏱️",
+            "Productivity tip: Put your phone in another room or turn on Zen Mode! It works wonders. 🧘",
+            "Don't wait for motivation. Action builds motivation. Start small, just do one problem or write one line!"
+        ]
+    },
+    {
+        id: 'zen-master',
+        name: 'Zen Master',
+        role: 'Mindfulness Guide',
+        desc: 'Calm breathing & relaxation.',
+        avatar: 'ZM',
+        systemPrompt: 'You are Zen Master, a calm mindfulness guide for Procrastinote. Suggest brief breathing exercises, quick stretches, or relaxing thoughts to help stressed students. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Take a deep breath. Inhale for 4 seconds, hold for 4, exhale for 4. Feel the tension leaving your shoulders. 🌸",
+            "Remember, you are doing your best, and that is enough. Let's take a 1-minute mindfulness break together. 🧘",
+            "A calm mind is a powerful mind. If you're feeling overwhelmed, try listening to some Rain sounds in Zen Mode. 🌧️",
+            "Relax your jaw, roll your shoulders, and take a long, slow breath. You are capable of handling whatever comes today."
+        ]
+    },
+    {
+        id: 'study-buddy',
+        name: 'Study Buddy',
+        role: 'Study Partner',
+        desc: 'Help with subjects & ideas.',
+        avatar: 'SB',
+        systemPrompt: 'You are Study Buddy, a helpful peer study partner for Procrastinote. Answer academic questions or help brainstorm ideas. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Hey! What subject are we working on? I'm ready to help brainstorm or solve some problems. 📚",
+            "That homework won't know what hit it! Let me know if you need to explain a concept to me - teaching is the best way to learn. ✏️",
+            "I'm checking my virtual notebook now. Feel free to ask me a question about math, science, or history! 🧠",
+            "Let's tackle this concept together. Break it down into smaller parts and let's go step-by-step!"
+        ]
+    }
+];
+
+let activeChatCategory = 'ai'; // 'ai' or 'humans'
+let activeChatId = null; // AI buddy ID or human email
+
+function getChats() {
+    return JSON.parse(localStorage.getItem(CHATS_KEY)) || {};
+}
+
+function saveChats(chats) {
+    localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+}
+
+function getRoomId(friendId) {
+    if (!appState.user) return null;
+    const currentEmail = appState.user.email.toLowerCase();
+    
+    // If it's an AI buddy, the chat room is scoped to the current user's session
+    const isAi = AI_BUDDIES.some(b => b.id === friendId);
+    if (isAi) {
+        return `room_${currentEmail}_${friendId}`;
+    }
+    
+    // For human friends, room ID is sorted alphabetically to be shared
+    const sortedEmails = [currentEmail, friendId.toLowerCase()].sort();
+    return `room_${sortedEmails[0]}_${sortedEmails[1]}`;
+}
+
+function syncIncomingFriends() {
+    if (!appState.user || !appState.user.email) return;
+    const currentUserEmail = appState.user.email.toLowerCase();
+    const chats = getChats();
+    let updated = false;
+    
+    if (!appState.friendsList) appState.friendsList = [];
+    
+    Object.keys(chats).forEach(roomKey => {
+        if (roomKey.startsWith('room_')) {
+            const content = roomKey.substring(5);
+            if (content.includes(currentUserEmail)) {
+                const idx = content.indexOf(currentUserEmail);
+                let otherEmail = '';
+                if (idx === 0) {
+                    otherEmail = content.substring(currentUserEmail.length + 1);
+                } else {
+                    otherEmail = content.substring(0, idx - 1);
+                }
+                
+                if (otherEmail) {
+                    const isAi = AI_BUDDIES.some(b => b.id === otherEmail);
+                    if (!isAi && !appState.friendsList.includes(otherEmail)) {
+                        appState.friendsList.push(otherEmail);
+                        updated = true;
+                    }
+                }
+            }
+        }
+    });
+    
+    if (updated) {
+        const email = appState.user.email.toLowerCase();
+        if (allUsers[email]) {
+            if (!allUsers[email].data) allUsers[email].data = {};
+            allUsers[email].data.friendsList = appState.friendsList;
+            localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+        }
+    }
+}
+
+function renderFriends() {
+    syncIncomingFriends();
+    const list = document.getElementById('friends-list');
+    if (!list) return;
+    list.innerHTML = '';
+    
+    if (activeChatCategory === 'ai') {
+        AI_BUDDIES.forEach(buddy => {
+            const isActive = activeChatId === buddy.id;
+            const li = document.createElement('li');
+            li.className = `friend-item-wrapper ${isActive ? 'active' : ''}`;
+            li.innerHTML = `
+                <div class="friend-item-avatar-wrapper">
+                    <div class="friend-avatar" style="background: linear-gradient(135deg, #06b6d4, #8b5cf6);">${buddy.avatar}</div>
+                    <span class="friend-status-dot online"></span>
+                </div>
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${buddy.name}</div>
+                    <div class="friend-item-subtext">${buddy.role} &bull; ${buddy.desc}</div>
+                </div>
+            `;
+            li.addEventListener('click', () => {
+                activeChatId = buddy.id;
+                renderFriends();
+                renderChatWindow();
+            });
+            list.appendChild(li);
+        });
+    } else {
+        // Human Friends
+        const friends = appState.friendsList || [];
+        if (friends.length === 0) {
+            list.innerHTML = '<li class="empty-state" style="padding: 2rem 1rem; text-align: center; color: var(--text-secondary);">No friends added yet. Add a friend using their email above!</li>';
+            return;
+        }
+        
+        friends.forEach(email => {
+            const isActive = activeChatId === email;
+            const isOnline = (email.toLowerCase() === localStorage.getItem(SESSION_KEY)); // Online if it's the current user (just for demo/fallback)
+            
+            // Get user's name from allUsers database if exists
+            const friendProfile = allUsers[email.toLowerCase()]?.profile || { name: email.split('@')[0], class: 'Unknown' };
+            const initials = friendProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            
+            const li = document.createElement('li');
+            li.className = `friend-item-wrapper ${isActive ? 'active' : ''}`;
+            li.innerHTML = `
+                <div class="friend-item-avatar-wrapper">
+                    <div class="friend-avatar" style="background: linear-gradient(135deg, #3b82f6, #10b981);">${escapeHTML(initials)}</div>
+                    <span class="friend-status-dot ${isOnline ? 'online' : 'offline'}"></span>
+                </div>
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${escapeHTML(friendProfile.name)}</div>
+                    <div class="friend-item-subtext">${escapeHTML(friendProfile.class)} &bull; ${escapeHTML(email)}</div>
+                </div>
+            `;
+            li.addEventListener('click', () => {
+                activeChatId = email;
+                renderFriends();
+                renderChatWindow();
+            });
+            list.appendChild(li);
+        });
+    }
+}
+
+function renderChatWindow() {
+    const container = document.getElementById('chat-messages-container');
+    const headerName = document.getElementById('chat-active-name');
+    const headerStatus = document.getElementById('chat-active-status');
+    const headerAvatar = document.getElementById('chat-active-avatar');
+    const inputWrapper = document.getElementById('chat-input-wrapper');
+    const typingIndicator = document.getElementById('chat-typing-indicator');
+    
+    if (!container) return;
+    
+    if (!activeChatId) {
+        container.innerHTML = `
+            <div class="chat-empty-state">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p>Select an AI Buddy or add a friend to start chatting!</p>
+            </div>
+        `;
+        if (headerName) headerName.innerText = 'Select a conversation';
+        if (headerStatus) {
+            headerStatus.innerText = 'Offline';
+            headerStatus.className = 'chat-status-label';
+        }
+        if (headerAvatar) {
+            headerAvatar.innerText = 'AI';
+            headerAvatar.style.background = 'var(--accent-color)';
+        }
+        if (inputWrapper) inputWrapper.style.display = 'none';
+        if (typingIndicator) typingIndicator.style.display = 'none';
+        return;
+    }
+    
+    // Find active conversation details
+    let name = '';
+    let statusText = 'Offline';
+    let isOnline = false;
+    let avatarInitials = '';
+    let avatarBg = '';
+    
+    const buddy = AI_BUDDIES.find(b => b.id === activeChatId);
+    if (buddy) {
+        name = buddy.name;
+        statusText = 'Online';
+        isOnline = true;
+        avatarInitials = buddy.avatar;
+        avatarBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
+    } else {
+        const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0], class: 'Unknown' };
+        name = friendProfile.name;
+        isOnline = (activeChatId.toLowerCase() === localStorage.getItem(SESSION_KEY));
+        statusText = isOnline ? 'Online' : 'Offline';
+        avatarInitials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        avatarBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+    }
+    
+    if (headerName) headerName.innerText = name;
+    if (headerStatus) {
+        headerStatus.innerText = statusText;
+        headerStatus.className = `chat-status-label ${isOnline ? 'online' : ''}`;
+    }
+    if (headerAvatar) {
+        headerAvatar.innerText = avatarInitials;
+        headerAvatar.style.background = avatarBg;
+    }
+    if (inputWrapper) inputWrapper.style.display = 'flex';
+    if (typingIndicator) typingIndicator.style.display = 'none';
+    
+    // Load messages
+    container.innerHTML = '';
+    const roomId = getRoomId(activeChatId);
+    const chats = getChats();
+    const messages = chats[roomId] || [];
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="chat-empty-state">
+                <p>No messages yet. Say hello! 👋</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const currentUserEmail = appState.user.email.toLowerCase();
+    
+    messages.forEach(msg => {
+        const isOutgoing = msg.sender.toLowerCase() === currentUserEmail;
+        const msgWrapper = document.createElement('div');
+        msgWrapper.className = `chat-msg-bubble-wrapper ${isOutgoing ? 'outgoing' : 'incoming'}`;
+        
+        let senderName = '';
+        let senderInitials = '';
+        let senderBg = '';
+        
+        if (isOutgoing) {
+            senderName = appState.user.name;
+            senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+        } else if (buddy) {
+            senderName = buddy.name;
+            senderInitials = buddy.avatar;
+            senderBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
+        } else {
+            const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0] };
+            senderName = friendProfile.name;
+            senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+        }
+        
+        const dateStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        msgWrapper.innerHTML = `
+            <div class="friend-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; background: ${senderBg};">${escapeHTML(senderInitials)}</div>
+            <div class="chat-msg-bubble">
+                <div>${escapeHTML(msg.text)}</div>
+                <span class="chat-msg-time">${dateStr}</span>
+            </div>
+        `;
+        container.appendChild(msgWrapper);
+    });
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-message-input');
+    const text = input.value.trim();
+    if (!text || !activeChatId || !appState.user) return;
+    
+    input.value = '';
+    const currentUserEmail = appState.user.email.toLowerCase();
+    const roomId = getRoomId(activeChatId);
+    
+    const newMessage = {
+        sender: currentUserEmail,
+        text: text,
+        timestamp: Date.now()
+    };
+    
+    // Save locally
+    const chats = getChats();
+    if (!chats[roomId]) chats[roomId] = [];
+    chats[roomId].push(newMessage);
+    saveChats(chats);
+    
+    // Render immediately
+    renderChatWindow();
+    
+    // Check if conversation is with AI
+    const buddy = AI_BUDDIES.find(b => b.id === activeChatId);
+    if (buddy) {
+        const typingIndicator = document.getElementById('chat-typing-indicator');
+        const container = document.getElementById('chat-messages-container');
+        if (typingIndicator) typingIndicator.style.display = 'flex';
+        if (container) container.scrollTop = container.scrollHeight;
+        
+        // Prepare prompt
+        const prompt = `Student says: "${text}"\nRespond directly as their educational mascot companion.`;
+        
+        let aiResponse = "";
+        
+        // If Groq key is available, let's call API
+        if (appState.groqKey && appState.groqKey.startsWith('gsk_')) {
+            aiResponse = await callGroq(prompt, buddy.systemPrompt);
+        }
+        
+        // If empty, failed, or standard key is used (we fallback if it looks like default/error)
+        if (!aiResponse || aiResponse.includes("API Error") || aiResponse.includes("brain right now") || aiResponse.includes("API key")) {
+            // Wait slightly to simulate writing
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 800));
+            const fallbacks = buddy.offlineResponses;
+            aiResponse = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        }
+        
+        const aiMessage = {
+            sender: buddy.id,
+            text: aiResponse,
+            timestamp: Date.now()
+        };
+        
+        chats[roomId].push(aiMessage);
+        saveChats(chats);
+        
+        if (typingIndicator) typingIndicator.style.display = 'none';
+        renderChatWindow();
+    }
+}
+
+// Bind Friends UI actions
+(function initFriendsActions() {
+    // Add Friend
+    document.getElementById('btn-add-friend')?.addEventListener('click', () => {
+        const input = document.getElementById('friend-search-input');
+        const email = input.value.trim().toLowerCase();
+        if (!email) return;
+        
+        if (!appState.user || !appState.user.email) {
+            alert("Please log in first!");
+            return;
+        }
+        
+        if (email === appState.user.email.toLowerCase()) {
+            alert("You cannot add yourself as a friend!");
+            return;
+        }
+        
+        if (!email.includes('@')) {
+            alert("Please enter a valid email address!");
+            return;
+        }
+        
+        if (!appState.friendsList) appState.friendsList = [];
+        if (appState.friendsList.includes(email)) {
+            alert("You have already added this friend!");
+            return;
+        }
+        
+        appState.friendsList.push(email);
+        saveState();
+        input.value = '';
+        alert("Friend added successfully!");
+    });
+    
+    // Search Box Enter Key
+    document.getElementById('friend-search-input')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('btn-add-friend')?.click();
+        }
+    });
+    
+    // Category Tabs Switching
+    document.querySelectorAll('.friends-cat-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.friends-cat-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            activeChatCategory = tab.getAttribute('data-category') || 'ai';
+            activeChatId = null; // Reset selection
+            renderFriends();
+            renderChatWindow();
+        });
+    });
+    
+    // Chat Send message
+    document.getElementById('chat-send-btn')?.addEventListener('click', sendChatMessage);
+    document.getElementById('chat-message-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendChatMessage();
+    });
+})();
 
 updateTimerDisplay();
 updateRobotExpression();

@@ -206,6 +206,17 @@
                     </div>
                     <span class="nav-label">Notebook</span>
                 </li>
+                <li data-tab="friends">
+                    <div class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                    </div>
+                    <span class="nav-label">Friends</span>
+                </li>
                 <li data-tab="settings">
                     <div class="nav-icon">
                         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
@@ -546,7 +557,7 @@
                         <p class="subtitle" style="margin-bottom: 1.5rem;">Manage your Groq API key for advanced intelligence.</p>
                         <div class="form-group">
                             <label for="groq-api-key">Groq API Key</label>
-                            <input type="password" id="groq-api-key" placeholder="gsk_...">
+                            <input type="password" id="groq-api-key" placeholder="gsk_..." value="">
                         </div>
                         <button class="btn secondary-btn" style="width: 100%;" id="btn-save-ai-key">Save Key</button>
                     </div>
@@ -897,6 +908,74 @@
                                     <!-- Images will be injected here -->
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Friends View -->
+            <section id="friends" class="view">
+                <header class="view-header">
+                    <h2>Friends & Chat</h2>
+                    <p class="subtitle">Connect and chat with your friends and AI Companions</p>
+                </header>
+
+                <div class="friends-layout">
+                    <!-- Friends Sidebar -->
+                    <div class="friends-sidebar-card card">
+                        <div class="friends-search-box">
+                            <input type="email" id="friend-search-input" placeholder="Friend's email...">
+                            <button id="btn-add-friend" class="btn primary-btn">Add</button>
+                        </div>
+                        
+                        <div class="friends-category-tabs">
+                            <button class="friends-cat-tab active" data-category="ai">AI Buddies</button>
+                            <button class="friends-cat-tab" data-category="humans">Friends</button>
+                        </div>
+
+                        <div class="friends-list-container">
+                            <ul id="friends-list" class="interactive-list">
+                                <!-- List items generated via JS -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Chat Window Area -->
+                    <div class="chat-window-card card">
+                        <!-- Chat Header -->
+                        <div id="chat-header" class="chat-header">
+                            <div class="chat-header-avatar" id="chat-active-avatar">AI</div>
+                            <div class="chat-header-info">
+                                <h4 id="chat-active-name">Select a conversation</h4>
+                                <span id="chat-active-status" class="chat-status-label">Offline</span>
+                            </div>
+                        </div>
+
+                        <!-- Chat Messages List -->
+                        <div id="chat-messages-container" class="chat-messages-container">
+                            <div class="chat-empty-state">
+                                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                </svg>
+                                <p>Select an AI Buddy or add a friend to start chatting!</p>
+                            </div>
+                        </div>
+
+                        <!-- Typing Indicator -->
+                        <div id="chat-typing-indicator" class="chat-typing-indicator" style="display: none;">
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
+
+                        <!-- Chat Input Area -->
+                        <div id="chat-input-wrapper" class="chat-input-wrapper" style="display: none;">
+                            <input type="text" id="chat-message-input" placeholder="Type a message..." autocomplete="off">
+                            <button id="chat-send-btn" class="btn primary-btn icon-btn-large" title="Send Message">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
