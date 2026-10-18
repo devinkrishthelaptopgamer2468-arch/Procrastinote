@@ -97,6 +97,18 @@ h1, h2, h3, h4, h5, h6, .logo, .login-logo {
     max-width: 100%;
 }
 
+.landing-credit {
+    position: absolute;
+    left: 2rem;
+    bottom: 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+    opacity: 0;
+    animation: fadeInUp 0.8s ease 1s forwards;
+}
+
 .landing-brand-name {
     font-family: 'Montserrat', sans-serif;
     font-size: 1.5rem;
