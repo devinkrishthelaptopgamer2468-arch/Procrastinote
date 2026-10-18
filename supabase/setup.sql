@@ -1,0 +1,124 @@
+-- Procrastinote online chat: database setup
+-- Paste this whole file into Supabase > SQL Editor > New query, then press "Run".
+-- It is safe to run again if you change something later.
+
+-- =========================================================
+-- 1. Profiles: the name + class friends see next to your email
+-- =========================================================
+create table if not exists public.profiles (
+    id uuid primary key references auth.users (id) on delete cascade,
+    email text not null unique,
+    name text not null default '',
+    class text not null default '',
+    created_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "Users can read their own profile" on public.profiles;
+create policy "Users can read their own profile" on public.profiles
+    for select to authenticated
+    using (id = auth.uid());
+
+drop policy if exists "Users can update their own profile" on public.profiles;
+create policy "Users can update their own profile" on public.profiles
+    for update to authenticated
+    using (id = auth.uid())
+    with check (id = auth.uid() and email = lower(auth.jwt() ->> 'email'));
+
+-- Create a profile automatically when someone signs up
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+    insert into public.profiles (id, email, name, class)
+    values (
+        new.id,
+        lower(new.email),
+        left(coalesce(new.raw_user_meta_data ->> 'name', ''), 80),
+        left(coalesce(new.raw_user_meta_data ->> 'class', ''), 40)
+    )
+    on conflict (id) do nothing;
+    return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_user();
+
+-- Look up friends by exact email. You must already know someone's email,
+-- so nobody can download a list of every user.
+create or replace function public.get_profiles(emails text[])
+returns table (id uuid, email text, name text, class text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+    select p.id, p.email, p.name, p.class
+    from public.profiles p
+    where auth.uid() is not null
+      and p.email = any (select lower(e) from unnest(emails) as e)
+    limit 200;
+$$;
+
+revoke execute on function public.get_profiles(text[]) from public, anon;
+grant execute on function public.get_profiles(text[]) to authenticated;
+
+-- =========================================================
+-- 2. Messages between two friends
+-- room_id matches the app's scheme: room_<emailA>_<emailB> (sorted)
+-- =========================================================
+create table if not exists public.messages (
+    id bigint generated always as identity primary key,
+    member_a text not null,
+    member_b text not null,
+    room_id text generated always as ('room_' || member_a || '_' || member_b) stored,
+    sender_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    sender_email text not null,
+    text text not null check (char_length(text) between 1 and 2000),
+    created_at timestamptz not null default now(),
+    check (member_a <> member_b),
+    check (member_a = lower(member_a) and member_b = lower(member_b))
+);
+
+create index if not exists messages_room_idx on public.messages (room_id, created_at);
+
+alter table public.messages enable row level security;
+
+-- You can only read messages in rooms that include your own email
+drop policy if exists "Members can read their rooms" on public.messages;
+create policy "Members can read their rooms" on public.messages
+    for select to authenticated
+    using (lower(auth.jwt() ->> 'email') in (member_a, member_b));
+
+-- You can only send as yourself, into a room that includes you
+drop policy if exists "Members can send to their rooms" on public.messages;
+create policy "Members can send to their rooms" on public.messages
+    for insert to authenticated
+    with check (
+        sender_id = auth.uid()
+        and sender_email = lower(auth.jwt() ->> 'email')
+        and sender_email in (member_a, member_b)
+    );
+
+-- No update/delete policies: messages can't be edited or deleted by anyone using the app.
+
+-- =========================================================
+-- 3. Live updates: new messages are pushed to the app instantly
+-- =========================================================
+do $$
+begin
+    if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+    ) then
+        alter publication supabase_realtime add table public.messages;
+    end if;
+end;
+$$;

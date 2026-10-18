@@ -17,6 +17,31 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
+// --- Online backend (Supabase) for accounts & friends chat ---
+// Planner data stays in localStorage; only accounts and friend messages live online.
+// If supabase-config.js is empty, `cloud` is null and the app works local-only like before.
+function isSecretSupabaseKey(key) {
+    if (key.startsWith('sb_secret_')) return true;
+    try {
+        const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        return payload.role === 'service_role';
+    } catch (e) {
+        return false;
+    }
+}
+
+const cloud = (function createCloudClient() {
+    const cfg = window.PROCRASTINOTE_SUPABASE || {};
+    const url = (cfg.url || '').trim();
+    const key = (cfg.publishableKey || '').trim();
+    if (!url || !key || !window.supabase) return null;
+    if (isSecretSupabaseKey(key)) {
+        console.error('supabase-config.js contains a SECRET key. Replace it with the publishable (anon) key. Online chat is disabled.');
+        return null;
+    }
+    return window.supabase.createClient(url, key);
+})();
+
 let defaultState = {
     settings: {
         totalDays: 6,
@@ -1568,13 +1593,97 @@ document.getElementById('btn-signup')?.addEventListener('click', () => {
     document.getElementById('login-name').setAttribute('required', 'true');
 });
 
-document.getElementById('login-form').addEventListener('submit', (e) => {
+function shakePasswordInput(id) {
+    const passInput = document.getElementById(id);
+    passInput.classList.add('shake-error');
+    setTimeout(() => passInput.classList.remove('shake-error'), 750);
+}
+
+// Build appState from an online account, keeping this browser's planner data for that email
+function loadUserFromCloud(user) {
+    const email = user.email.toLowerCase();
+    const meta = user.user_metadata || {};
+    const local = allUsers[email];
+    appState = { ...JSON.parse(JSON.stringify(defaultState)), ...(local ? local.data : {}) };
+    appState.user = {
+        name: local?.profile.name || meta.name || email.split('@')[0],
+        class: local?.profile.class || meta.class || '',
+        email,
+        cloudId: user.id
+    }; // no password stored locally anymore
+}
+
+async function cloudSignup(name, cls, email, pass) {
+    const { data, error } = await cloud.auth.signUp({
+        email,
+        password: pass,
+        options: { data: { name, class: cls }, emailRedirectTo: window.location.origin }
+    });
+    if (error) {
+        alert(`Sign up failed: ${error.message}`);
+        return false;
+    }
+    if (!data.session) {
+        alert(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`);
+        document.getElementById('btn-login')?.click();
+        return false;
+    }
+    loadUserFromCloud(data.user);
+    return true;
+}
+
+async function cloudLogin(email, pass) {
+    const { data, error } = await cloud.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+        // One-time move: an old local-only account becomes an online account with the same password
+        const local = allUsers[email];
+        if (/invalid login/i.test(error.message) && local?.profile.pass && local.profile.pass === pass) {
+            return cloudSignup(local.profile.name, local.profile.class, email, pass);
+        }
+        if (/not confirmed/i.test(error.message)) {
+            alert('Please click the confirmation link in your email first, then log in.');
+        } else if (/invalid login/i.test(error.message)) {
+            shakePasswordInput('login-password');
+        } else {
+            alert(`Log in failed: ${error.message}`);
+        }
+        return false;
+    }
+    loadUserFromCloud(data.user);
+    return true;
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('login-name').value;
     const cls = hiddenClassInput ? hiddenClassInput.value : '';
-    const email = document.getElementById('login-email').value.toLowerCase();
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
     const pass = document.getElementById('login-password').value;
-    
+
+    if (cloud) {
+        if (currentAuthMode === 'signup' && !cls) {
+            alert("Please select a Class / Grade!");
+            return;
+        }
+        const submitBtn = document.getElementById('auth-submit-btn');
+        submitBtn.disabled = true;
+        let ok = false;
+        try {
+            ok = currentAuthMode === 'login'
+                ? await cloudLogin(email, pass)
+                : await cloudSignup(name, cls, email, pass);
+        } catch (err) {
+            alert(`Could not reach the server: ${err.message}`);
+        } finally {
+            submitBtn.disabled = false;
+        }
+        if (!ok) return;
+        saveState();
+        checkAuth();
+        startCloudChat();
+        return;
+    }
+
     if (currentAuthMode === 'login') {
         const userEntry = allUsers[email];
         if (!userEntry) {
@@ -1612,6 +1721,10 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', () => {
+    if (cloud) {
+        stopCloudChat();
+        cloud.auth.signOut();
+    }
     localStorage.removeItem(SESSION_KEY);
     appState = JSON.parse(JSON.stringify(defaultState));
     checkAuth();
@@ -1844,11 +1957,17 @@ function switchPwStep(stepId) {
     }
 }
 
-document.getElementById('btn-verify-old')?.addEventListener('click', () => {
+document.getElementById('btn-verify-old')?.addEventListener('click', async () => {
     const input = document.getElementById('old-password');
     const oldPass = input.value;
 
-    if (oldPass === appState.user.pass) {
+    let correct = oldPass === appState.user.pass;
+    if (cloud) {
+        const { error } = await cloud.auth.signInWithPassword({ email: appState.user.email, password: oldPass });
+        correct = !error;
+    }
+
+    if (correct) {
         switchPwStep('pw-step-2');
     } else {
         input.classList.add('shake-error');
@@ -1857,18 +1976,20 @@ document.getElementById('btn-verify-old')?.addEventListener('click', () => {
     }
 });
 
-document.getElementById('btn-update-password')?.addEventListener('click', () => {
+document.getElementById('btn-update-password')?.addEventListener('click', async () => {
     const newPassInput = document.getElementById('new-password');
     const confirmPassInput = document.getElementById('confirm-password');
     const newPass = newPassInput.value;
     const confirmPass = confirmPassInput.value;
+    const minLength = cloud ? 6 : 4; // Supabase's default minimum
 
-    if (!newPass || newPass.length < 4) {
-        alert("Password must be at least 4 characters.");
+    if (!newPass || newPass.length < minLength) {
+        alert(`Password must be at least ${minLength} characters.`);
         return;
     }
 
-    if (newPass === appState.user.pass) {
+    const oldPass = cloud ? document.getElementById('old-password').value : appState.user.pass;
+    if (newPass === oldPass) {
         alert("New password cannot be the same as the old password.");
         return;
     }
@@ -1879,8 +2000,17 @@ document.getElementById('btn-update-password')?.addEventListener('click', () => 
         return;
     }
 
+    if (cloud) {
+        const { error } = await cloud.auth.updateUser({ password: newPass });
+        if (error) {
+            alert(`Could not change password: ${error.message}`);
+            return;
+        }
+    } else {
+        appState.user.pass = newPass;
+    }
+
     // Success!
-    appState.user.pass = newPass;
     saveState();
     switchPwStep('pw-step-success');
     triggerConfetti();
@@ -3422,6 +3552,153 @@ function getRoomId(friendId) {
     return `room_${sortedEmails[0]}_${sortedEmails[1]}`;
 }
 
+// --- Online friends chat (only when `cloud` is set up; AI buddy chats stay local) ---
+let cloudRooms = {};          // roomId -> [{ id, sender, text, timestamp }]
+let loadedRooms = new Set();  // rooms whose history has been fetched
+let friendProfiles = {};      // email -> { id, name, class } from the profiles table
+let onlineUserIds = new Set();
+let cloudChannels = [];
+
+function getFriendProfile(email) {
+    const key = email.toLowerCase();
+    return friendProfiles[key] || allUsers[key]?.profile || { name: key.split('@')[0], class: 'Unknown' };
+}
+
+function isFriendOnline(email) {
+    const id = friendProfiles[email.toLowerCase()]?.id;
+    return !!id && onlineUserIds.has(id);
+}
+
+function addFriendIfNew(email) {
+    if (!appState.friendsList) appState.friendsList = [];
+    if (appState.friendsList.includes(email)) return;
+    appState.friendsList.push(email);
+    saveState();
+    fetchFriendProfiles([email]);
+}
+
+async function fetchFriendProfiles(emails) {
+    if (!cloud || emails.length === 0) return;
+    const { data, error } = await cloud.rpc('get_profiles', { emails });
+    if (error) {
+        console.error('Could not load friend profiles:', error.message);
+        return;
+    }
+    data.forEach(p => { friendProfiles[p.email] = { id: p.id, name: p.name, class: p.class }; });
+    renderFriends();
+    renderChatHeaderStatus();
+}
+
+function addCloudMessage(row, render) {
+    const myEmail = appState.user.email.toLowerCase();
+    if (!cloudRooms[row.room_id]) cloudRooms[row.room_id] = [];
+    const list = cloudRooms[row.room_id];
+    if (list.some(m => m.id === row.id)) return;
+    list.push({ id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) });
+    list.sort((a, b) => a.timestamp - b.timestamp);
+
+    addFriendIfNew(row.member_a === myEmail ? row.member_b : row.member_a);
+    if (render && activeChatId && getRoomId(activeChatId) === row.room_id) renderChatWindow();
+}
+
+async function loadCloudRoom(roomId) {
+    loadedRooms.add(roomId);
+    const { data, error } = await cloud.from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+        .limit(500);
+    if (error) {
+        loadedRooms.delete(roomId);
+        console.error('Could not load messages:', error.message);
+        return;
+    }
+    if (!cloudRooms[roomId]) cloudRooms[roomId] = [];
+    data.forEach(row => addCloudMessage(row, false));
+    if (activeChatId && getRoomId(activeChatId) === roomId) renderChatWindow();
+}
+
+// Friends who messaged you show up in your list even if you never added them
+async function loadCloudFriends() {
+    const myEmail = appState.user.email.toLowerCase();
+    const { data, error } = await cloud.from('messages')
+        .select('member_a, member_b')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+    if (error) {
+        console.error('Could not load chats:', error.message);
+        return;
+    }
+    if (!appState.friendsList) appState.friendsList = [];
+    let updated = false;
+    data.forEach(row => {
+        const other = row.member_a === myEmail ? row.member_b : row.member_a;
+        if (!appState.friendsList.includes(other)) {
+            appState.friendsList.push(other);
+            updated = true;
+        }
+    });
+    if (updated) saveState();
+    fetchFriendProfiles(appState.friendsList);
+}
+
+function startCloudChat() {
+    if (!cloud || !appState.user?.cloudId || cloudChannels.length) return;
+
+    // Database security rules make sure we only receive messages from our own rooms
+    const messagesChannel = cloud.channel('my-messages')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+            payload => addCloudMessage(payload.new, true))
+        .subscribe();
+
+    // Presence shares only your account ID while the app is open, not your email
+    const presenceChannel = cloud.channel('online-users', {
+        config: { presence: { key: appState.user.cloudId } }
+    });
+    presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+            onlineUserIds = new Set(Object.keys(presenceChannel.presenceState()));
+            renderFriends();
+            renderChatHeaderStatus();
+        })
+        .subscribe(status => {
+            if (status === 'SUBSCRIBED') presenceChannel.track({ online_at: new Date().toISOString() });
+        });
+
+    cloudChannels = [messagesChannel, presenceChannel];
+    loadCloudFriends();
+}
+
+function stopCloudChat() {
+    cloudChannels.forEach(channel => cloud.removeChannel(channel));
+    cloudChannels = [];
+    cloudRooms = {};
+    loadedRooms = new Set();
+    friendProfiles = {};
+    onlineUserIds = new Set();
+}
+
+// On page load: make sure the saved login is still a valid online session
+async function restoreCloudSession() {
+    if (!cloud || !appState.user) return;
+    const { data } = await cloud.auth.getSession();
+    const user = data.session?.user;
+    if (!user || user.email.toLowerCase() !== appState.user.email.toLowerCase()) {
+        if (!appState.user.cloudId) {
+            alert('Procrastinote now has online accounts so you can chat with friends. Please log in again (your planner data is kept).');
+        }
+        localStorage.removeItem(SESSION_KEY);
+        appState = JSON.parse(JSON.stringify(defaultState));
+        checkAuth();
+        return;
+    }
+    if (appState.user.cloudId !== user.id || appState.user.pass) {
+        loadUserFromCloud(user);
+        saveState();
+    }
+    startCloudChat();
+}
+
 function syncIncomingFriends() {
     if (!appState.user || !appState.user.email) return;
     const currentUserEmail = appState.user.email.toLowerCase();
@@ -3501,10 +3778,8 @@ function renderFriends() {
         
         friends.forEach(email => {
             const isActive = activeChatId === email;
-            const isOnline = (email.toLowerCase() === localStorage.getItem(SESSION_KEY)); // Online if it's the current user (just for demo/fallback)
-            
-            // Get user's name from allUsers database if exists
-            const friendProfile = allUsers[email.toLowerCase()]?.profile || { name: email.split('@')[0], class: 'Unknown' };
+            const isOnline = isFriendOnline(email);
+            const friendProfile = getFriendProfile(email);
             const initials = friendProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
             
             const li = document.createElement('li');
@@ -3577,9 +3852,9 @@ function renderChatWindow() {
         avatarInitials = buddy.avatar;
         avatarBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
     } else {
-        const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0], class: 'Unknown' };
+        const friendProfile = getFriendProfile(activeChatId);
         name = friendProfile.name;
-        isOnline = (activeChatId.toLowerCase() === localStorage.getItem(SESSION_KEY));
+        isOnline = isFriendOnline(activeChatId);
         statusText = isOnline ? 'Online' : 'Offline';
         avatarInitials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         avatarBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
@@ -3600,9 +3875,22 @@ function renderChatWindow() {
     // Load messages
     container.innerHTML = '';
     const roomId = getRoomId(activeChatId);
-    const chats = getChats();
-    const messages = chats[roomId] || [];
-    
+    let messages;
+    if (cloud && !buddy) {
+        if (!loadedRooms.has(roomId)) {
+            container.innerHTML = `
+                <div class="chat-empty-state">
+                    <p>Loading messages...</p>
+                </div>
+            `;
+            loadCloudRoom(roomId);
+            return;
+        }
+        messages = cloudRooms[roomId] || [];
+    } else {
+        messages = getChats()[roomId] || [];
+    }
+
     if (messages.length === 0) {
         container.innerHTML = `
             <div class="chat-empty-state">
@@ -3632,8 +3920,7 @@ function renderChatWindow() {
             senderInitials = buddy.avatar;
             senderBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
         } else {
-            const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0] };
-            senderName = friendProfile.name;
+            senderName = getFriendProfile(activeChatId).name;
             senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
             senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
         }
@@ -3653,15 +3940,45 @@ function renderChatWindow() {
     container.scrollTop = container.scrollHeight;
 }
 
+// Update only the Online/Offline label so presence changes don't redraw the messages
+function renderChatHeaderStatus() {
+    const headerStatus = document.getElementById('chat-active-status');
+    if (!headerStatus || !activeChatId || AI_BUDDIES.some(b => b.id === activeChatId)) return;
+    const isOnline = isFriendOnline(activeChatId);
+    headerStatus.innerText = isOnline ? 'Online' : 'Offline';
+    headerStatus.className = `chat-status-label ${isOnline ? 'online' : ''}`;
+}
+
 async function sendChatMessage() {
     const input = document.getElementById('chat-message-input');
     const text = input.value.trim();
     if (!text || !activeChatId || !appState.user) return;
-    
+
     input.value = '';
     const currentUserEmail = appState.user.email.toLowerCase();
     const roomId = getRoomId(activeChatId);
-    
+
+    if (cloud && !AI_BUDDIES.some(b => b.id === activeChatId)) {
+        if (text.length > 2000) {
+            alert('Messages can be at most 2000 characters.');
+            input.value = text;
+            return;
+        }
+        // Same sorted order as getRoomId, so the database's room_id matches
+        const [memberA, memberB] = [currentUserEmail, activeChatId.toLowerCase()].sort();
+        const { data, error } = await cloud.from('messages')
+            .insert({ member_a: memberA, member_b: memberB, sender_email: currentUserEmail, text })
+            .select()
+            .single();
+        if (error) {
+            alert(`Message not sent: ${error.message}`);
+            input.value = text;
+            return;
+        }
+        addCloudMessage(data, true);
+        return;
+    }
+
     const newMessage = {
         sender: currentUserEmail,
         text: text,
@@ -3720,7 +4037,7 @@ async function sendChatMessage() {
 // Bind Friends UI actions
 (function initFriendsActions() {
     // Add Friend
-    document.getElementById('btn-add-friend')?.addEventListener('click', () => {
+    document.getElementById('btn-add-friend')?.addEventListener('click', async () => {
         const input = document.getElementById('friend-search-input');
         const email = input.value.trim().toLowerCase();
         if (!email) return;
@@ -3745,7 +4062,20 @@ async function sendChatMessage() {
             alert("You have already added this friend!");
             return;
         }
-        
+
+        if (cloud) {
+            const { data, error } = await cloud.rpc('get_profiles', { emails: [email] });
+            if (error) {
+                alert(`Could not check that email: ${error.message}`);
+                return;
+            }
+            if (!data || data.length === 0) {
+                alert("No Procrastinote account uses that email yet. Ask your friend to sign up first!");
+                return;
+            }
+            friendProfiles[email] = { id: data[0].id, name: data[0].name, class: data[0].class };
+        }
+
         appState.friendsList.push(email);
         saveState();
         input.value = '';
@@ -3782,4 +4112,5 @@ updateTimerDisplay();
 updateRobotExpression();
 applyTheme();
 checkAuth();
+restoreCloudSession();
 
