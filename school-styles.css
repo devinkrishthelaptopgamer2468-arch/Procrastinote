@@ -444,7 +444,14 @@ body {
     -webkit-backdrop-filter: blur(12px);
     border-right: 1px solid var(--border);
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
+    /* Stay in place while the page scrolls, so the theme switch and Log Out are always visible */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    flex-shrink: 0;
+    overflow-x: hidden;
+    overflow-y: auto; /* very short windows can still reach the bottom buttons */
     z-index: 100;
 }
 
