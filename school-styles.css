@@ -15,19 +15,23 @@
     background: var(--accent-color);
 }
 
+/* Light mode: soft blue-grey instead of pure white, so it's bright but easy on the eyes */
 :root {
-    --bg-color: #f7f9fa;
-    --sidebar-bg: #f7f9fad9; /* 85% opacity of bg-color */
-    --sidebar-hover: #e2e8f080;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
+    --bg-color: #e9eef5;
+    --sidebar-bg: #eef2f8d9; /* 85% opacity */
+    --sidebar-hover: #d5deea80;
+    --text-primary: #1e293b;
+    --text-secondary: #556479;
     --accent-color: #3b82f6;
     --accent-hover: #2563eb;
-    --card-bg: #ffffff;
+    --card-bg: #f8fafc;
     --danger: #ef4444;
     --success: #10b981;
-    --border: #e2e8f0;
+    --border: #d6dee8;
     --robot-mouth-color: #ffffff;
+    --glass-bg: rgba(248, 250, 252, 0.75); /* floating panels: clock, mini timer */
+    --fluid-base: #e3eaf3; /* animated background behind the app */
+    --fluid-blob-opacity: 0.22;
 }
 
 [data-theme="dark"] {
@@ -43,6 +47,9 @@
     --success: #10b981;
     --border: #334155;
     --robot-mouth-color: #0f172a;
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --fluid-base: #0f172a;
+    --fluid-blob-opacity: 0.35;
 }
 
 * {
@@ -1129,7 +1136,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     height: 100vh;
     z-index: -1;
     overflow: hidden;
-    background: #0f172a; /* Dark base color matching the theme */
+    background: var(--fluid-base);
     pointer-events: none;
 }
 
@@ -1139,7 +1146,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     height: 65vw;
     border-radius: 50%;
     filter: blur(100px);
-    opacity: 0.35;
+    opacity: var(--fluid-blob-opacity);
     animation: fluid-move 25s infinite alternate ease-in-out;
 }
 
@@ -1610,7 +1617,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     top: 1.5rem;
     right: 2rem;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--glass-bg);
     backdrop-filter: blur(10px);
     padding: 0.5rem 1rem;
     border-radius: 12px;
@@ -1766,7 +1773,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     right: 0;
     width: 350px;
     height: 500px;
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(248, 250, 252, 0.95);
     backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     border-radius: 24px;
@@ -1839,7 +1846,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    background: rgba(248, 250, 252, 0.5);
+    background: rgba(233, 238, 245, 0.6);
 }
 
 .ai-message {
@@ -1853,7 +1860,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
 
 .bot-message {
     align-self: flex-start;
-    background: white;
+    background: var(--card-bg);
     color: var(--text-primary);
     border-bottom-left-radius: 4px;
     border: 1px solid var(--border);
@@ -1868,7 +1875,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
 
 .ai-chat-input-area {
     padding: 1rem;
-    background: white;
+    background: var(--card-bg);
     border-top: 1px solid var(--border);
     display: flex;
     gap: 0.75rem;
@@ -2129,7 +2136,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     left: 2rem;
     z-index: 1999;
     width: 280px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(248, 250, 252, 0.85);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.3);
