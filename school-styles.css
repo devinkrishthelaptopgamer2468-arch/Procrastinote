@@ -507,6 +507,11 @@ body {
     height: auto;
 }
 
+/* The logo's thin cyan lines are made for dark backgrounds; deepen them on the light sidebar */
+:root:not([data-theme="dark"]) .logo img {
+    filter: brightness(0.72) saturate(1.4);
+}
+
 .logo .logo-icon,
 .sidebar.collapsed .logo .logo-full {
     display: none;
