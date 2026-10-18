@@ -34,6 +34,7 @@ let defaultState = {
     homework: [], // e.g., { id, task, subject, date }
     emailVerified: false,
     friendsList: [], // Holds list of added friend emails
+    holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
     groqKey: '',
     emailjs: {
         publicKey: '',
@@ -70,6 +71,7 @@ function saveState() {
                 homework: appState.homework,
                 emailVerified: appState.emailVerified,
                 friendsList: appState.friendsList || [],
+                holidays: appState.holidays || {},
                 groqKey: appState.groqKey,
                 emailjs: appState.emailjs
             }
@@ -181,6 +183,17 @@ if (sidebar) {
 }
 
 // --- Date & Day Order Math ---
+// currentDayOrder belongs to the last school day on or before lastUpdatedDate.
+// Weekends and holidays have no Day Order and are skipped when counting.
+function getHoliday(date) {
+    return (appState.holidays || {})[formatDateString(date)];
+}
+
+function isSchoolDay(date) {
+    const dow = date.getDay(); // 0 is Sunday, 6 is Saturday
+    return dow !== 0 && dow !== 6 && getHoliday(date) === undefined;
+}
+
 function updateDayOrderIfNeeded() {
     if (!appState.settings.lastUpdatedDate) {
         appState.settings.lastUpdatedDate = new Date().toDateString();
@@ -209,8 +222,7 @@ function updateDayOrderIfNeeded() {
         let weekdays = 0;
         while (temp < today) {
             temp.setDate(temp.getDate() + 1);
-            let dayOfWeek = temp.getDay(); // 0 is Sunday, 6 is Saturday
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
@@ -235,13 +247,40 @@ function updateDayOrderIfNeeded() {
     return false;
 }
 
-function getTomorrowDayOrder() {
-    // If today is Day Order X, tomorrow is Day Order X+1 (wrapping around)
-    let current = parseInt(appState.settings.currentDayOrder);
-    let total = parseInt(appState.settings.totalDays);
-    let tmrw = current + 1;
-    if (tmrw > total) tmrw = 1;
-    return tmrw;
+// The next school day after today (skips weekends and holidays)
+function getNextSchoolDay() {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 366; i++) {
+        date.setDate(date.getDate() + 1);
+        if (isSchoolDay(date)) return date;
+    }
+    return date;
+}
+
+// Add (name = string) or remove (name = null) a holiday. Every school day after it shifts by one.
+// Future dates shift automatically; for today or a past date, the stored Day Order is shifted too.
+function setHoliday(date, name) {
+    if (!appState.holidays) appState.holidays = {};
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const key = formatDateString(day);
+    const wasSchoolDay = isSchoolDay(day);
+    if (name === null) {
+        delete appState.holidays[key];
+    } else {
+        appState.holidays[key] = name;
+    }
+
+    const lastDate = new Date(appState.settings.lastUpdatedDate);
+    lastDate.setHours(0, 0, 0, 0);
+    if (day <= lastDate && wasSchoolDay !== isSchoolDay(day)) {
+        const total = parseInt(appState.settings.totalDays) || 6;
+        const current = parseInt(appState.settings.currentDayOrder) || 1;
+        const step = isSchoolDay(day) ? 1 : -1;
+        appState.settings.currentDayOrder = ((current - 1 + step + total) % total) + 1;
+    }
+    saveState();
 }
 
 // --- Calendar Logic ---
@@ -253,9 +292,8 @@ function getDayOrderForDate(targetDate) {
     const targetCopy = new Date(targetDate);
     targetCopy.setHours(0,0,0,0);
     
-    const dow = targetCopy.getDay();
-    if (dow === 0 || dow === 6) return null; // Weekend has no Day Order
-    
+    if (!isSchoolDay(targetCopy)) return null; // Weekends and holidays have no Day Order
+
     let lastDate = new Date(appState.settings.lastUpdatedDate);
     lastDate.setHours(0,0,0,0);
     
@@ -272,17 +310,15 @@ function getDayOrderForDate(targetDate) {
     if (targetCopy > lastDate) {
         while (temp.getTime() < targetCopy.getTime()) {
             temp.setDate(temp.getDate() + 1);
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
         return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
     } else {
-        // Mirror of the forward case: count weekdays in (target, lastDate]
+        // Mirror of the forward case: count school days in (target, lastDate]
         while (temp.getTime() > targetCopy.getTime()) {
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
             temp.setDate(temp.getDate() - 1);
@@ -348,6 +384,15 @@ function showCalendarDayDetails(date) {
                 </ul>
             </div>
         `;
+    } else if (getHoliday(date) !== undefined) {
+        const holidayName = getHoliday(date);
+        html += `
+            <div class="calendar-detail-section holiday-section">
+                <h4>Holiday</h4>
+                <p>${holidayName ? escapeHTML(holidayName) : 'School holiday'}</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">No Day Order. The schedule continues on the next school day.</p>
+            </div>
+        `;
     } else {
         html += `
             <div class="calendar-detail-section" style="background: rgba(148, 163, 184, 0.05);">
@@ -356,7 +401,27 @@ function showCalendarDayDetails(date) {
             </div>
         `;
     }
-    
+
+    // Holiday controls (weekdays only; weekends already have no Day Order)
+    const dow = date.getDay();
+    if (dow !== 0 && dow !== 6) {
+        if (getHoliday(date) !== undefined) {
+            html += `
+                <div class="calendar-detail-section">
+                    <button type="button" id="cal-remove-holiday" class="btn secondary-btn holiday-btn">Remove Holiday</button>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="calendar-detail-section">
+                    <h4>Holiday?</h4>
+                    <input type="text" id="cal-holiday-name" class="holiday-name-input" maxlength="60" placeholder="Name (optional), e.g. Diwali">
+                    <button type="button" id="cal-mark-holiday" class="btn primary-btn holiday-btn">Mark as Holiday</button>
+                </div>
+            `;
+        }
+    }
+
     const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
     let hwHtml = '';
     if (matchingHw.length > 0) {
@@ -382,6 +447,16 @@ function showCalendarDayDetails(date) {
     `;
     
     detailsContent.innerHTML = html;
+
+    document.getElementById('cal-mark-holiday')?.addEventListener('click', () => {
+        setHoliday(date, document.getElementById('cal-holiday-name').value.trim());
+    });
+    document.getElementById('cal-remove-holiday')?.addEventListener('click', () => {
+        setHoliday(date, null);
+    });
+    document.getElementById('cal-holiday-name')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('cal-mark-holiday')?.click();
+    });
 }
 
 function createDayCell(date, isCurrentMonth) {
@@ -429,6 +504,13 @@ function createDayCell(date, isCurrentMonth) {
             uniBadge.title = `Uniform: ${uniform}`;
             infoDiv.appendChild(uniBadge);
         }
+    } else if (getHoliday(date) !== undefined) {
+        cell.classList.add('holiday');
+        const holidayBadge = document.createElement('span');
+        holidayBadge.className = 'calendar-mini-badge holiday-badge';
+        holidayBadge.innerText = 'Holiday';
+        holidayBadge.title = getHoliday(date) || 'Holiday';
+        infoDiv.appendChild(holidayBadge);
     }
     
     const formattedDate = formatDateString(date);
@@ -702,8 +784,23 @@ function renderHomework() {
 }
 
 function renderDashboard() {
-    const tmrwDay = getTomorrowDayOrder();
-    document.getElementById('dash-day-order-display').innerText = `Tomorrow is Day Order: ${tmrwDay}`;
+    // Plan for the next school day, skipping weekends and holidays
+    const nextSchoolDay = getNextSchoolDay();
+    const tmrwDay = getDayOrderForDate(nextSchoolDay);
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = nextSchoolDay.getTime() === tomorrow.getTime();
+    const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
+    const tomorrowLabel = document.getElementById('dash-tomorrow-label');
+    if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
+    let dayOrderText = `${nextLabel} is Day Order: ${tmrwDay}`;
+    if (!isTomorrow) {
+        const holidayName = getHoliday(tomorrow);
+        const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
+        dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, Day Order ${tmrwDay}`;
+    }
+    document.getElementById('dash-day-order-display').innerText = dayOrderText;
 
     // Uniform
     const unif = appState.uniforms[tmrwDay];

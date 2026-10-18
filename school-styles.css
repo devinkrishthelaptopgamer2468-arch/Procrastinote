@@ -2889,6 +2889,50 @@ body.external-pip-body .pip-header {
     animation: pulse-danger 2s infinite ease-in-out;
 }
 
+/* Holidays: amber, so they stand apart from Day Orders (blue) and homework (red) */
+.calendar-mini-badge.holiday-badge {
+    background: rgba(245, 158, 11, 0.18);
+    color: #b45309;
+}
+
+.calendar-day-cell.holiday {
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.holiday-section {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.holiday-section h4 {
+    color: #b45309;
+}
+
+[data-theme="dark"] .calendar-mini-badge.holiday-badge,
+[data-theme="dark"] .holiday-section h4 {
+    color: #fbbf24;
+}
+
+.holiday-name-input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    margin: 0.25rem 0 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.holiday-name-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.holiday-btn {
+    width: 100%;
+}
+
 @keyframes pulse-danger {
     0%, 100% { opacity: 0.9; }
     50% { opacity: 0.65; }
