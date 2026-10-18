@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Security rules: the page may only send data to the services it needs (Groq for the AI key,
+         EmailJS, and the CDN for the text-recognition files), so injected code can't leak keys elsewhere.
+         When online chat (Supabase) is turned on, add https://*.supabase.co and wss://*.supabase.co to connect-src. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https://api.groq.com https://api.emailjs.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta name="referrer" content="no-referrer">
     <title>Procrastinote | Educational Planner</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -540,9 +545,12 @@
                         <p class="subtitle" style="margin-bottom: 1.5rem;">Manage your Groq API key for advanced intelligence.</p>
                         <div class="form-group">
                             <label for="groq-api-key">Groq API Key</label>
-                            <input type="password" id="groq-api-key" placeholder="gsk_..." value="">
+                            <!-- Plain text box with masked characters, so browsers don't offer to save the key as a password -->
+                            <input type="text" id="groq-api-key" class="secret-input" placeholder="gsk_..." autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
+                            <p id="groq-key-status" class="key-status">No key saved.</p>
                         </div>
                         <button class="btn secondary-btn" style="width: 100%;" id="btn-save-ai-key">Save Key</button>
+                        <button class="btn danger-btn" style="width: 100%; margin-top: 0.5rem; display: none;" id="btn-remove-ai-key">Remove Key</button>
                     </div>
 
                     <!-- Email verification is turned off for now; remove the hidden attributes to bring it back -->

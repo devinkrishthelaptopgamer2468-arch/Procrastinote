@@ -35,7 +35,8 @@ let defaultState = {
     emailVerified: false,
     friendsList: [], // Holds list of added friend emails
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
-    groqKey: '',
+    groqKeyEnc: null, // encrypted Groq key (see "Groq key protection")
+    groqKeyHint: '', // last 4 characters, to recognise which key is saved
     emailjs: {
         publicKey: '',
         serviceId: '',
@@ -72,7 +73,9 @@ function saveState() {
                 emailVerified: appState.emailVerified,
                 friendsList: appState.friendsList || [],
                 holidays: appState.holidays || {},
-                groqKey: appState.groqKey,
+                groqKeyEnc: appState.groqKeyEnc || null,
+                groqKeyHint: appState.groqKeyHint || '',
+                groqKey: appState.groqKey || undefined, // old readable key, kept only until it's encrypted
                 emailjs: appState.emailjs
             }
         };
@@ -361,7 +364,7 @@ function showCalendarDayDetails(date) {
         html += `
             <div class="calendar-detail-section">
                 <h4>Required Uniform</h4>
-                <p>${uniform}</p>
+                <p>${escapeHTML(uniform)}</p>
             </div>
         `;
         
@@ -369,7 +372,7 @@ function showCalendarDayDetails(date) {
         let subjectsHtml = '';
         daySubjects.forEach((sub, idx) => {
             if (sub.trim() !== '') {
-                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${sub}</li>`;
+                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${escapeHTML(sub)}</li>`;
             }
         });
         if (subjectsHtml === '') {
@@ -829,7 +832,7 @@ function renderDashboard() {
         packListEl.innerHTML = '<li class="empty-state">No subjects set for tomorrow.</li>';
     } else {
         tmrwSubjects.forEach(sub => {
-            packListEl.innerHTML += `<li>${sub}</li>`;
+            packListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
         });
     }
 
@@ -839,7 +842,7 @@ function renderDashboard() {
     let leftBehind = 0;
     allSubjects.forEach(sub => {
         if (!tmrwSubjects.has(sub)) {
-            leaveListEl.innerHTML += `<li>${sub}</li>`;
+            leaveListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
             leftBehind++;
         }
     });
@@ -949,11 +952,11 @@ function renderHomeSchedule(filter = 'all') {
         div.innerHTML = `
             <div class="schedule-item-color-bar" style="background: ${color};"></div>
             <div class="schedule-item-body">
-                <div class="schedule-item-time">${timeStr}</div>
-                <div class="schedule-item-subject">${item.subject || 'General'}</div>
+                <div class="schedule-item-time">${escapeHTML(timeStr)}</div>
+                <div class="schedule-item-subject">${escapeHTML(item.subject || 'General')}</div>
                 <div class="schedule-item-badges">
-                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${acttypeLabels[item.acttype] || item.acttype}</span>
-                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${daycatLabels[item.daycat] || item.daycat}</span>
+                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${escapeHTML(acttypeLabels[item.acttype] || item.acttype)}</span>
+                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${escapeHTML(daycatLabels[item.daycat] || item.daycat)}</span>
                 </div>
             </div>
             <button class="schedule-delete-btn" onclick="deleteScheduleItem('${item.id}')" title="Remove">
@@ -1709,6 +1712,7 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', () => {
+    groqKeyCache = null;
     localStorage.removeItem(SESSION_KEY);
     appState = JSON.parse(JSON.stringify(defaultState));
     checkAuth();
@@ -1722,6 +1726,8 @@ function checkAuth() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         
+        protectLegacyGroqKey();
+
         // Setup greeting & sidebar
         const firstName = appState.user.name.split(' ')[0];
         document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
@@ -2030,9 +2036,8 @@ function renderEmailJSSettings() {
     const svcIdEl = document.getElementById('emailjs-service-id');
     const tmplIdEl = document.getElementById('emailjs-template-id');
     
-    // Update Groq Key input value from state
-    const groqKeyEl = document.getElementById('groq-api-key');
-    if (groqKeyEl) groqKeyEl.value = appState.groqKey || '';
+    // The saved Groq key is never put back into the page; only its status is shown
+    renderGroqKeyStatus();
     
     if (appState.emailjs) {
         if (pubKeyEl) pubKeyEl.value = appState.emailjs.publicKey || '';
@@ -2654,8 +2659,118 @@ function addMessage(text, isBot = true) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// --- Groq key protection ---
+// The key is encrypted (AES-GCM) with a browser-generated key that can never be exported,
+// kept in this browser's IndexedDB. Saved data only holds the encrypted form, the page
+// never displays the key again, and it is only ever sent to api.groq.com.
+const SECRET_DB_NAME = 'procrastinote-secrets';
+let groqKeyCache = null; // { email, key }: decrypted key for the logged-in user, in memory only
+
+function openSecretDb() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(SECRET_DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('keys');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function getDeviceKey() {
+    const db = await openSecretDb();
+    const read = () => new Promise((resolve, reject) => {
+        const req = db.transaction('keys').objectStore('keys').get('device');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    const existing = await read();
+    if (existing) return existing;
+    const created = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    // add() fails if another tab created one first; then use theirs
+    await new Promise(resolve => {
+        const tx = db.transaction('keys', 'readwrite');
+        tx.objectStore('keys').add(created, 'device');
+        tx.oncomplete = resolve;
+        tx.onerror = (e) => { e.preventDefault(); resolve(); };
+    });
+    return read();
+}
+
+const toBase64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const fromBase64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+
+async function encryptSecret(plain, email) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        new TextEncoder().encode(plain)
+    );
+    return { iv: toBase64(iv), data: toBase64(data) };
+}
+
+async function decryptSecret(box, email) {
+    const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64(box.iv), additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        fromBase64(box.data)
+    );
+    return new TextDecoder().decode(plain);
+}
+
+// Save (string) or remove (empty) the logged-in user's Groq key
+async function setGroqKey(plain) {
+    const email = appState.user.email.toLowerCase();
+    if (!plain) {
+        appState.groqKeyEnc = null;
+        appState.groqKeyHint = '';
+        groqKeyCache = null;
+    } else {
+        appState.groqKeyEnc = await encryptSecret(plain, email);
+        appState.groqKeyHint = plain.slice(-4);
+        groqKeyCache = { email, key: plain };
+    }
+    delete appState.groqKey; // never keep the readable copy
+    saveState();
+}
+
+async function getGroqKey() {
+    if (!appState.user) return '';
+    const email = appState.user.email.toLowerCase();
+    if (groqKeyCache?.email === email) return groqKeyCache.key;
+    if (!appState.groqKeyEnc) return '';
+    try {
+        const key = await decryptSecret(appState.groqKeyEnc, email);
+        groqKeyCache = { email, key };
+        return key;
+    } catch (e) {
+        // Browser data was cleared, so the lock is gone: the saved key can't be read anymore
+        return '';
+    }
+}
+
+// Older versions saved the key as readable text; encrypt it once
+async function protectLegacyGroqKey() {
+    if (!appState.user || !appState.groqKey) return;
+    try {
+        await setGroqKey(appState.groqKey);
+    } catch (e) {
+        console.error('Could not encrypt the saved Groq key:', e.message);
+    }
+}
+
+function renderGroqKeyStatus() {
+    const status = document.getElementById('groq-key-status');
+    const removeBtn = document.getElementById('btn-remove-ai-key');
+    if (!status) return;
+    const saved = !!(appState.groqKeyEnc || appState.groqKey);
+    status.innerText = saved
+        ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
+        : 'No key saved.';
+    if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
+}
+
 async function callGroq(prompt, systemPrompt = null) {
-    const apiKey = appState.groqKey;
+    const apiKey = await getGroqKey();
     if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
 
     const url = AI_CONFIG.baseUrl;
@@ -2808,11 +2923,31 @@ document.getElementById('ai-user-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') processAIInput();
 });
 
-document.getElementById('btn-save-ai-key')?.addEventListener('click', () => {
-    const key = document.getElementById('groq-api-key').value;
-    appState.groqKey = key;
-    saveState();
-    alert("AI Settings Saved!");
+document.getElementById('btn-save-ai-key')?.addEventListener('click', async () => {
+    const input = document.getElementById('groq-api-key');
+    const key = input.value.trim();
+    if (!key) {
+        alert("Type your Groq key first. To delete the saved key, press Remove Key.");
+        return;
+    }
+    if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
+        alert("That doesn't look like a Groq key. Groq keys start with gsk_.");
+        return;
+    }
+    try {
+        await setGroqKey(key);
+        input.value = '';
+        alert("Key saved and encrypted on this device.");
+    } catch (e) {
+        alert("Your browser couldn't store the key securely, so it wasn't saved. Try a normal (not private) window.");
+    }
+});
+
+document.getElementById('btn-remove-ai-key')?.addEventListener('click', async () => {
+    if (!confirm("Remove your saved Groq key from this device?")) return;
+    await setGroqKey('');
+    document.getElementById('groq-api-key').value = '';
+    alert("Key removed.");
 });
 
 // --- Picture-in-Picture Widget Logic ---
@@ -3788,7 +3923,7 @@ async function sendChatMessage() {
         let aiResponse = "";
         
         // If Groq key is available, let's call API
-        if (appState.groqKey && appState.groqKey.startsWith('gsk_')) {
+        if ((await getGroqKey()).startsWith('gsk_')) {
             aiResponse = await callGroq(prompt, buddy.systemPrompt);
         }
         

@@ -924,6 +924,18 @@ input {
     cursor: url('ibeam.svg') 12 12, text;
 }
 
+/* Hides typed characters (like a password box) without browsers offering to save it */
+.secret-input {
+    -webkit-text-security: disc;
+    text-security: disc;
+}
+
+.key-status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+}
+
 input[type="text"], input[type="date"], input[type="number"],
 .view input[type="password"] {
     width: 100%;
