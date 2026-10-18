@@ -173,8 +173,17 @@ function resetSidebarTimer() {
     }, 1000);
 }
 
+// On phones the sidebar stays a slim icon rail; opening it would cover most of the screen
+const smallScreen = window.matchMedia('(max-width: 768px)');
+
 if (sidebar) {
+    if (smallScreen.matches) sidebar.classList.add('collapsed');
+    smallScreen.addEventListener('change', (e) => {
+        if (e.matches) sidebar.classList.add('collapsed');
+    });
+
     sidebar.addEventListener('mouseenter', () => {
+        if (smallScreen.matches) return;
         clearTimeout(sidebarTimer);
         sidebar.classList.remove('collapsed');
     });
