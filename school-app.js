@@ -7,6 +7,16 @@ const SUBJECT_LIST = [
     "LSA", "VBSE/LSA", "Library", "MADD", "ATL"
 ];
 
+// Escape user-supplied text before inserting it into innerHTML templates
+function escapeHTML(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 let defaultState = {
     settings: {
         totalDays: 6,
@@ -23,7 +33,11 @@ let defaultState = {
     homeSchedule: [], // e.g. [{id, daycat, acttype, subject, start, end}]
     homework: [], // e.g., { id, task, subject, date }
     emailVerified: false,
-    groqKey: '',
+    friendsList: [], // Holds list of added friend emails
+    holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
+    halfdayDates: {}, // e.g. { "2026-10-19": true }: use the half-day study plan that day
+    groqKeyEnc: null, // encrypted Groq key (see "Groq key protection")
+    groqKeyHint: '', // last 4 characters, to recognise which key is saved
     emailjs: {
         publicKey: '',
         serviceId: '',
@@ -58,7 +72,12 @@ function saveState() {
                 homeSchedule: appState.homeSchedule,
                 homework: appState.homework,
                 emailVerified: appState.emailVerified,
-                groqKey: appState.groqKey,
+                friendsList: appState.friendsList || [],
+                holidays: appState.holidays || {},
+                halfdayDates: appState.halfdayDates || {},
+                groqKeyEnc: appState.groqKeyEnc || null,
+                groqKeyHint: appState.groqKeyHint || '',
+                groqKey: appState.groqKey || undefined, // old readable key, kept only until it's encrypted
                 emailjs: appState.emailjs
             }
         };
@@ -169,6 +188,17 @@ if (sidebar) {
 }
 
 // --- Date & Day Order Math ---
+// currentDayOrder belongs to the last school day on or before lastUpdatedDate.
+// Weekends and holidays have no Day Order and are skipped when counting.
+function getHoliday(date) {
+    return (appState.holidays || {})[formatDateString(date)];
+}
+
+function isSchoolDay(date) {
+    const dow = date.getDay(); // 0 is Sunday, 6 is Saturday
+    return dow !== 0 && dow !== 6 && getHoliday(date) === undefined;
+}
+
 function updateDayOrderIfNeeded() {
     if (!appState.settings.lastUpdatedDate) {
         appState.settings.lastUpdatedDate = new Date().toDateString();
@@ -197,8 +227,7 @@ function updateDayOrderIfNeeded() {
         let weekdays = 0;
         while (temp < today) {
             temp.setDate(temp.getDate() + 1);
-            let dayOfWeek = temp.getDay(); // 0 is Sunday, 6 is Saturday
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
@@ -223,13 +252,40 @@ function updateDayOrderIfNeeded() {
     return false;
 }
 
-function getTomorrowDayOrder() {
-    // If today is Day Order X, tomorrow is Day Order X+1 (wrapping around)
-    let current = parseInt(appState.settings.currentDayOrder);
-    let total = parseInt(appState.settings.totalDays);
-    let tmrw = current + 1;
-    if (tmrw > total) tmrw = 1;
-    return tmrw;
+// The next school day after today (skips weekends and holidays)
+function getNextSchoolDay() {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 366; i++) {
+        date.setDate(date.getDate() + 1);
+        if (isSchoolDay(date)) return date;
+    }
+    return date;
+}
+
+// Add (name = string) or remove (name = null) a holiday. Every school day after it shifts by one.
+// Future dates shift automatically; for today or a past date, the stored Day Order is shifted too.
+function setHoliday(date, name) {
+    if (!appState.holidays) appState.holidays = {};
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const key = formatDateString(day);
+    const wasSchoolDay = isSchoolDay(day);
+    if (name === null) {
+        delete appState.holidays[key];
+    } else {
+        appState.holidays[key] = name;
+    }
+
+    const lastDate = new Date(appState.settings.lastUpdatedDate);
+    lastDate.setHours(0, 0, 0, 0);
+    if (day <= lastDate && wasSchoolDay !== isSchoolDay(day)) {
+        const total = parseInt(appState.settings.totalDays) || 6;
+        const current = parseInt(appState.settings.currentDayOrder) || 1;
+        const step = isSchoolDay(day) ? 1 : -1;
+        appState.settings.currentDayOrder = ((current - 1 + step + total) % total) + 1;
+    }
+    saveState();
 }
 
 // --- Calendar Logic ---
@@ -241,9 +297,8 @@ function getDayOrderForDate(targetDate) {
     const targetCopy = new Date(targetDate);
     targetCopy.setHours(0,0,0,0);
     
-    const dow = targetCopy.getDay();
-    if (dow === 0 || dow === 6) return null; // Weekend has no Day Order
-    
+    if (!isSchoolDay(targetCopy)) return null; // Weekends and holidays have no Day Order
+
     let lastDate = new Date(appState.settings.lastUpdatedDate);
     lastDate.setHours(0,0,0,0);
     
@@ -260,25 +315,20 @@ function getDayOrderForDate(targetDate) {
     if (targetCopy > lastDate) {
         while (temp.getTime() < targetCopy.getTime()) {
             temp.setDate(temp.getDate() + 1);
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
         return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
     } else {
+        // Mirror of the forward case: count school days in (target, lastDate]
         while (temp.getTime() > targetCopy.getTime()) {
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
             temp.setDate(temp.getDate() - 1);
         }
-        let d = temp.getDay();
-        if (d !== 0 && d !== 6) {
-            weekdays++;
-        }
-        
+
         let newDay = (currentDayOrder - 1 - weekdays) % totalDays;
         if (newDay < 0) newDay += totalDays;
         return newDay + 1;
@@ -316,7 +366,7 @@ function showCalendarDayDetails(date) {
         html += `
             <div class="calendar-detail-section">
                 <h4>Required Uniform</h4>
-                <p>${uniform}</p>
+                <p>${escapeHTML(uniform)}</p>
             </div>
         `;
         
@@ -324,7 +374,7 @@ function showCalendarDayDetails(date) {
         let subjectsHtml = '';
         daySubjects.forEach((sub, idx) => {
             if (sub.trim() !== '') {
-                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${sub}</li>`;
+                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${escapeHTML(sub)}</li>`;
             }
         });
         if (subjectsHtml === '') {
@@ -339,6 +389,15 @@ function showCalendarDayDetails(date) {
                 </ul>
             </div>
         `;
+    } else if (getHoliday(date) !== undefined) {
+        const holidayName = getHoliday(date);
+        html += `
+            <div class="calendar-detail-section holiday-section">
+                <h4>Holiday</h4>
+                <p>${holidayName ? escapeHTML(holidayName) : 'School holiday'}</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">No Day Order. The schedule continues on the next school day.</p>
+            </div>
+        `;
     } else {
         html += `
             <div class="calendar-detail-section" style="background: rgba(148, 163, 184, 0.05);">
@@ -347,15 +406,35 @@ function showCalendarDayDetails(date) {
             </div>
         `;
     }
-    
+
+    // Holiday controls (weekdays only; weekends already have no Day Order)
+    const dow = date.getDay();
+    if (dow !== 0 && dow !== 6) {
+        if (getHoliday(date) !== undefined) {
+            html += `
+                <div class="calendar-detail-section">
+                    <button type="button" id="cal-remove-holiday" class="btn secondary-btn holiday-btn">Remove Holiday</button>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="calendar-detail-section">
+                    <h4>Holiday?</h4>
+                    <input type="text" id="cal-holiday-name" class="holiday-name-input" maxlength="60" placeholder="Name (optional), e.g. Diwali">
+                    <button type="button" id="cal-mark-holiday" class="btn primary-btn holiday-btn">Mark as Holiday</button>
+                </div>
+            `;
+        }
+    }
+
     const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
     let hwHtml = '';
     if (matchingHw.length > 0) {
         matchingHw.forEach(hw => {
             hwHtml += `
                 <li class="calendar-detail-hw-item">
-                    <strong style="color: var(--danger); font-size: 0.95rem;">${hw.task}</strong>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">Subject: ${hw.subject}</div>
+                    <strong style="color: var(--danger); font-size: 0.95rem;">${escapeHTML(hw.task)}</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.15rem;">Subject: ${escapeHTML(hw.subject)}</div>
                 </li>
             `;
         });
@@ -373,6 +452,16 @@ function showCalendarDayDetails(date) {
     `;
     
     detailsContent.innerHTML = html;
+
+    document.getElementById('cal-mark-holiday')?.addEventListener('click', () => {
+        setHoliday(date, document.getElementById('cal-holiday-name').value.trim());
+    });
+    document.getElementById('cal-remove-holiday')?.addEventListener('click', () => {
+        setHoliday(date, null);
+    });
+    document.getElementById('cal-holiday-name')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('cal-mark-holiday')?.click();
+    });
 }
 
 function createDayCell(date, isCurrentMonth) {
@@ -420,6 +509,13 @@ function createDayCell(date, isCurrentMonth) {
             uniBadge.title = `Uniform: ${uniform}`;
             infoDiv.appendChild(uniBadge);
         }
+    } else if (getHoliday(date) !== undefined) {
+        cell.classList.add('holiday');
+        const holidayBadge = document.createElement('span');
+        holidayBadge.className = 'calendar-mini-badge holiday-badge';
+        holidayBadge.innerText = 'Holiday';
+        holidayBadge.title = getHoliday(date) || 'Holiday';
+        infoDiv.appendChild(holidayBadge);
     }
     
     const formattedDate = formatDateString(date);
@@ -510,6 +606,9 @@ function renderAllViews() {
     updateRobotExpression();
     renderCalendar();
     renderEmailJSSettings();
+    if (typeof renderFriends === 'function') {
+        renderFriends();
+    }
     if (typeof renderHomeSchedule === 'function') {
         const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
         renderHomeSchedule(activeFilter);
@@ -680,7 +779,7 @@ function renderHomework() {
         list.innerHTML += `
             <li>
                 <div class="hw-info">
-                    <strong>${hw.task} (${hw.subject})</strong>
+                    <strong>${escapeHTML(hw.task)} (${escapeHTML(hw.subject)})</strong>
                     <span>Due: ${new Date(hw.date).toLocaleDateString()}</span>
                 </div>
                 <button class="done-btn" onclick="completeHomework(${index})">Mark Done</button>
@@ -690,8 +789,23 @@ function renderHomework() {
 }
 
 function renderDashboard() {
-    const tmrwDay = getTomorrowDayOrder();
-    document.getElementById('dash-day-order-display').innerText = `Tomorrow is Day Order: ${tmrwDay}`;
+    // Plan for the next school day, skipping weekends and holidays
+    const nextSchoolDay = getNextSchoolDay();
+    const tmrwDay = getDayOrderForDate(nextSchoolDay);
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = nextSchoolDay.getTime() === tomorrow.getTime();
+    const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
+    const tomorrowLabel = document.getElementById('dash-tomorrow-label');
+    if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
+    let dayOrderText = `${nextLabel} is Day Order: ${tmrwDay}`;
+    if (!isTomorrow) {
+        const holidayName = getHoliday(tomorrow);
+        const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
+        dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, Day Order ${tmrwDay}`;
+    }
+    document.getElementById('dash-day-order-display').innerText = dayOrderText;
 
     // Uniform
     const unif = appState.uniforms[tmrwDay];
@@ -720,7 +834,7 @@ function renderDashboard() {
         packListEl.innerHTML = '<li class="empty-state">No subjects set for tomorrow.</li>';
     } else {
         tmrwSubjects.forEach(sub => {
-            packListEl.innerHTML += `<li>${sub}</li>`;
+            packListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
         });
     }
 
@@ -730,7 +844,7 @@ function renderDashboard() {
     let leftBehind = 0;
     allSubjects.forEach(sub => {
         if (!tmrwSubjects.has(sub)) {
-            leaveListEl.innerHTML += `<li>${sub}</li>`;
+            leaveListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
             leftBehind++;
         }
     });
@@ -749,7 +863,7 @@ function renderDashboard() {
         const diffTime = new Date(hw.date) - now;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         if (diffDays <= 3) { // Shows due soon
-            hwList.innerHTML += `<li>${hw.task} - Due in ${diffDays} days</li>`;
+            hwList.innerHTML += `<li>${escapeHTML(hw.task)} - Due in ${diffDays} days</li>`;
             urgentHw++;
         }
     });
@@ -757,7 +871,79 @@ function renderDashboard() {
     if (urgentHw === 0) {
         hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
     }
+
+    renderStudyPlan();
 }
+
+// --- Dashboard: today's home study blocks ---
+// Which Home Study Plan category applies today: weekday, halfday, weekend or holiday (uses weekend blocks)
+function getTodayStudyCategory() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!isSchoolDay(today)) return getHoliday(today) !== undefined ? 'holiday' : 'weekend';
+    return (appState.halfdayDates || {})[formatDateString(today)] ? 'halfday' : 'weekday';
+}
+
+function renderStudyPlan() {
+    const list = document.getElementById('dash-study-list');
+    const badge = document.getElementById('dash-study-daytype');
+    const halfdayBtn = document.getElementById('dash-halfday-toggle');
+    if (!list) return;
+
+    const category = getTodayStudyCategory();
+    const labels = { weekday: 'Weekday plan', halfday: 'Half-day plan', weekend: 'Weekend plan', holiday: 'Holiday: weekend plan' };
+    if (badge) badge.innerText = labels[category];
+    if (halfdayBtn) {
+        halfdayBtn.style.display = (category === 'weekday' || category === 'halfday') ? '' : 'none';
+        halfdayBtn.innerText = category === 'halfday' ? 'Back to full day' : 'Half-day today?';
+    }
+
+    const daycat = category === 'holiday' ? 'weekend' : category;
+    const blocks = (appState.homeSchedule || [])
+        .filter(item => item.daycat === daycat)
+        .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+    if (blocks.length === 0) {
+        list.innerHTML = `
+            <li class="empty-state">No study blocks for this kind of day yet.</li>
+            <li><button type="button" class="btn secondary-btn study-plan-link">Plan study time</button></li>
+        `;
+        list.querySelector('.study-plan-link').addEventListener('click', () => {
+            document.querySelector('li[data-tab="timetable"]')?.click();
+            showTimetableTab('home');
+        });
+        return;
+    }
+
+    const now = new Date();
+    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const actLabels = { study: 'Study', homework: 'Homework', revision: 'Revision', break: 'Break' };
+    list.innerHTML = '';
+    blocks.forEach(item => {
+        let status = '';
+        if (item.end && item.end <= nowTime) status = 'done';
+        else if (item.start && item.start <= nowTime && (!item.end || nowTime < item.end)) status = 'now';
+        const timeStr = item.start && item.end ? `${item.start} – ${item.end}` : (item.start || item.end || '');
+        const li = document.createElement('li');
+        li.className = `study-plan-item act-${escapeHTML(item.acttype)} ${status}`;
+        li.innerHTML = `
+            <span class="study-plan-time">${escapeHTML(timeStr)}</span>
+            <span class="study-plan-subject">${escapeHTML(item.subject || actLabels[item.acttype] || 'Study')}</span>
+            <span class="study-plan-tag">${status === 'now' ? 'Now' : escapeHTML(actLabels[item.acttype] || item.acttype)}</span>
+        `;
+        list.appendChild(li);
+    });
+}
+
+document.getElementById('dash-halfday-toggle')?.addEventListener('click', () => {
+    if (!appState.halfdayDates) appState.halfdayDates = {};
+    const key = formatDateString(new Date());
+    if (appState.halfdayDates[key]) delete appState.halfdayDates[key];
+    else appState.halfdayDates[key] = true;
+    saveState();
+});
+
+setInterval(renderStudyPlan, 60000); // keep the "Now" highlight current
 
 function renderProfile() {
     if (appState.user) {
@@ -840,11 +1026,11 @@ function renderHomeSchedule(filter = 'all') {
         div.innerHTML = `
             <div class="schedule-item-color-bar" style="background: ${color};"></div>
             <div class="schedule-item-body">
-                <div class="schedule-item-time">${timeStr}</div>
-                <div class="schedule-item-subject">${item.subject || 'General'}</div>
+                <div class="schedule-item-time">${escapeHTML(timeStr)}</div>
+                <div class="schedule-item-subject">${escapeHTML(item.subject || 'General')}</div>
                 <div class="schedule-item-badges">
-                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${acttypeLabels[item.acttype] || item.acttype}</span>
-                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${daycatLabels[item.daycat] || item.daycat}</span>
+                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${escapeHTML(acttypeLabels[item.acttype] || item.acttype)}</span>
+                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${escapeHTML(daycatLabels[item.daycat] || item.daycat)}</span>
                 </div>
             </div>
             <button class="schedule-delete-btn" onclick="deleteScheduleItem('${item.id}')" title="Remove">
@@ -917,38 +1103,21 @@ window.deleteScheduleItem = function(id) {
     });
 })();
 
-// Timetable tab switch
-document.getElementById('tt-school-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
-    const homeBtn = document.getElementById('tt-home-btn');
-    if(homeBtn) {
-        homeBtn.classList.remove('active');
-        homeBtn.style.background = 'transparent';
-        homeBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'block';
-    document.getElementById('home-timetable-view').style.display = 'none';
-});
-
-document.getElementById('tt-home-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
+// Timetable tab switch ('school' or 'home')
+function showTimetableTab(tab) {
+    const isHome = tab === 'home';
     const schoolBtn = document.getElementById('tt-school-btn');
-    if(schoolBtn) {
-        schoolBtn.classList.remove('active');
-        schoolBtn.style.background = 'transparent';
-        schoolBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'none';
-    document.getElementById('home-timetable-view').style.display = 'block';
-});
+    const homeBtn = document.getElementById('tt-home-btn');
+    schoolBtn?.classList.toggle('active', !isHome);
+    homeBtn?.classList.toggle('active', isHome);
+    schoolBtn?.setAttribute('aria-selected', String(!isHome));
+    homeBtn?.setAttribute('aria-selected', String(isHome));
+    document.getElementById('school-timetable-view').style.display = isHome ? 'none' : 'block';
+    document.getElementById('home-timetable-view').style.display = isHome ? 'block' : 'none';
+}
+
+document.getElementById('tt-school-btn')?.addEventListener('click', () => showTimetableTab('school'));
+document.getElementById('tt-home-btn')?.addEventListener('click', () => showTimetableTab('home'));
 
 
 // Helper to calculate the next working day (excluding Saturday/Sunday)
@@ -1063,8 +1232,8 @@ function renderNotebooks() {
         li.innerHTML = `
             <input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" ${isChecked ? 'checked' : ''}>
             <div style="flex: 1; min-width: 0;" class="nb-item-click-target">
-                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${nb.title || 'Untitled Note'}</h4>
-                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? nb.content.substring(0, 30) + '...' : 'No content'}</p>
+                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${escapeHTML(nb.title || 'Untitled Note')}</h4>
+                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? escapeHTML(nb.content.substring(0, 30)) + '...' : 'No content'}</p>
             </div>
         `;
         
@@ -1105,7 +1274,7 @@ function renderNotebooks() {
                 const container = document.createElement('div');
                 container.className = 'gallery-img-container';
                 container.innerHTML = `
-                    <img src="${imgUrl}" alt="Notebook Image">
+                    <img src="${escapeHTML(imgUrl)}" alt="Notebook Image">
                     <button class="gallery-img-delete" onclick="deleteNotebookImage(${idx})">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                     </button>
@@ -1600,6 +1769,7 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', () => {
+    groqKeyCache = null;
     localStorage.removeItem(SESSION_KEY);
     appState = JSON.parse(JSON.stringify(defaultState));
     checkAuth();
@@ -1613,9 +1783,11 @@ function checkAuth() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         
+        protectLegacyGroqKey();
+
         // Setup greeting & sidebar
         const firstName = appState.user.name.split(' ')[0];
-        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${firstName}</span>!`;
+        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
         document.getElementById('sidebar-user-class').innerText = `Class: ${appState.user.class}`;
         
         // Update day order if date has changed
@@ -1921,9 +2093,8 @@ function renderEmailJSSettings() {
     const svcIdEl = document.getElementById('emailjs-service-id');
     const tmplIdEl = document.getElementById('emailjs-template-id');
     
-    // Update Groq Key input value from state
-    const groqKeyEl = document.getElementById('groq-api-key');
-    if (groqKeyEl) groqKeyEl.value = appState.groqKey || '';
+    // The saved Groq key is never put back into the page; only its status is shown
+    renderGroqKeyStatus();
     
     if (appState.emailjs) {
         if (pubKeyEl) pubKeyEl.value = appState.emailjs.publicKey || '';
@@ -2545,11 +2716,122 @@ function addMessage(text, isBot = true) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-async function callGroq(prompt) {
-    const apiKey = appState.groqKey;
+// --- Groq key protection ---
+// The key is encrypted (AES-GCM) with a browser-generated key that can never be exported,
+// kept in this browser's IndexedDB. Saved data only holds the encrypted form, the page
+// never displays the key again, and it is only ever sent to api.groq.com.
+const SECRET_DB_NAME = 'procrastinote-secrets';
+let groqKeyCache = null; // { email, key }: decrypted key for the logged-in user, in memory only
+
+function openSecretDb() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(SECRET_DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('keys');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function getDeviceKey() {
+    const db = await openSecretDb();
+    const read = () => new Promise((resolve, reject) => {
+        const req = db.transaction('keys').objectStore('keys').get('device');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    const existing = await read();
+    if (existing) return existing;
+    const created = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    // add() fails if another tab created one first; then use theirs
+    await new Promise(resolve => {
+        const tx = db.transaction('keys', 'readwrite');
+        tx.objectStore('keys').add(created, 'device');
+        tx.oncomplete = resolve;
+        tx.onerror = (e) => { e.preventDefault(); resolve(); };
+    });
+    return read();
+}
+
+const toBase64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const fromBase64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+
+async function encryptSecret(plain, email) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        new TextEncoder().encode(plain)
+    );
+    return { iv: toBase64(iv), data: toBase64(data) };
+}
+
+async function decryptSecret(box, email) {
+    const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64(box.iv), additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        fromBase64(box.data)
+    );
+    return new TextDecoder().decode(plain);
+}
+
+// Save (string) or remove (empty) the logged-in user's Groq key
+async function setGroqKey(plain) {
+    const email = appState.user.email.toLowerCase();
+    if (!plain) {
+        appState.groqKeyEnc = null;
+        appState.groqKeyHint = '';
+        groqKeyCache = null;
+    } else {
+        appState.groqKeyEnc = await encryptSecret(plain, email);
+        appState.groqKeyHint = plain.slice(-4);
+        groqKeyCache = { email, key: plain };
+    }
+    delete appState.groqKey; // never keep the readable copy
+    saveState();
+}
+
+async function getGroqKey() {
+    if (!appState.user) return '';
+    const email = appState.user.email.toLowerCase();
+    if (groqKeyCache?.email === email) return groqKeyCache.key;
+    if (!appState.groqKeyEnc) return '';
+    try {
+        const key = await decryptSecret(appState.groqKeyEnc, email);
+        groqKeyCache = { email, key };
+        return key;
+    } catch (e) {
+        // Browser data was cleared, so the lock is gone: the saved key can't be read anymore
+        return '';
+    }
+}
+
+// Older versions saved the key as readable text; encrypt it once
+async function protectLegacyGroqKey() {
+    if (!appState.user || !appState.groqKey) return;
+    try {
+        await setGroqKey(appState.groqKey);
+    } catch (e) {
+        console.error('Could not encrypt the saved Groq key:', e.message);
+    }
+}
+
+function renderGroqKeyStatus() {
+    const status = document.getElementById('groq-key-status');
+    const removeBtn = document.getElementById('btn-remove-ai-key');
+    if (!status) return;
+    const saved = !!(appState.groqKeyEnc || appState.groqKey);
+    status.innerText = saved
+        ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
+        : 'No key saved.';
+    if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
+}
+
+async function callGroq(prompt, systemPrompt = null) {
+    const apiKey = await getGroqKey();
     if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
 
     const url = AI_CONFIG.baseUrl;
+    const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
     
     try {
         const response = await fetch(url, {
@@ -2563,7 +2845,7 @@ async function callGroq(prompt) {
                 messages: [
                     {
                         role: "system",
-                        content: "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging."
+                        content: sys
                     },
                     {
                         role: "user",
@@ -2636,15 +2918,15 @@ function handleAICommand(input) {
 
     // 3. Theme commands
     if (text.includes('dark mode') || text.includes('dark theme')) {
-        if (!document.body.hasAttribute('data-theme')) {
-            document.getElementById('theme-checkbox')?.click();
-        }
+        appState.settings.theme = 'dark';
+        applyTheme();
+        saveState();
         return "Switching to Dark Mode. 🌙";
     }
     if (text.includes('light mode') || text.includes('light theme')) {
-        if (document.body.hasAttribute('data-theme')) {
-            document.getElementById('theme-checkbox')?.click();
-        }
+        appState.settings.theme = 'light';
+        applyTheme();
+        saveState();
         return "Switching to Light Mode. ☀️";
     }
 
@@ -2698,11 +2980,83 @@ document.getElementById('ai-user-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') processAIInput();
 });
 
-document.getElementById('btn-save-ai-key')?.addEventListener('click', () => {
-    const key = document.getElementById('groq-api-key').value;
-    appState.groqKey = key;
-    saveState();
-    alert("AI Settings Saved!");
+// --- Password lock for the AI key settings ---
+// Someone using an already logged-in computer can't change or remove the key without the password.
+let aiKeyRelockTimer = null;
+let aiUnlockFailures = 0;
+let aiUnlockBlockedUntil = 0;
+
+async function verifyAccountPassword(pass) {
+    return !!appState.user?.pass && pass === appState.user.pass;
+}
+
+function lockAiKeySettings() {
+    clearTimeout(aiKeyRelockTimer);
+    document.getElementById('ai-key-lock')?.removeAttribute('hidden');
+    document.getElementById('ai-key-controls')?.setAttribute('hidden', '');
+    const keyInput = document.getElementById('groq-api-key');
+    if (keyInput) keyInput.value = '';
+    const passInput = document.getElementById('ai-unlock-password');
+    if (passInput) passInput.value = '';
+}
+
+document.getElementById('btn-unlock-ai-key')?.addEventListener('click', async () => {
+    const passInput = document.getElementById('ai-unlock-password');
+    if (Date.now() < aiUnlockBlockedUntil) {
+        alert(`Too many wrong tries. Wait ${Math.ceil((aiUnlockBlockedUntil - Date.now()) / 1000)} seconds.`);
+        return;
+    }
+    if (!(await verifyAccountPassword(passInput.value))) {
+        aiUnlockFailures++;
+        if (aiUnlockFailures >= 5) {
+            aiUnlockFailures = 0;
+            aiUnlockBlockedUntil = Date.now() + 30000;
+        }
+        passInput.classList.add('shake-error');
+        setTimeout(() => passInput.classList.remove('shake-error'), 750);
+        passInput.value = '';
+        return;
+    }
+    aiUnlockFailures = 0;
+    passInput.value = '';
+    document.getElementById('ai-key-lock').setAttribute('hidden', '');
+    document.getElementById('ai-key-controls').removeAttribute('hidden');
+    renderGroqKeyStatus();
+    aiKeyRelockTimer = setTimeout(lockAiKeySettings, 5 * 60 * 1000); // relock after 5 minutes
+});
+
+document.getElementById('ai-unlock-password')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-unlock-ai-key')?.click();
+});
+document.getElementById('btn-lock-ai-key')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('btn-go-security')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('logout-btn')?.addEventListener('click', lockAiKeySettings);
+
+document.getElementById('btn-save-ai-key')?.addEventListener('click', async () => {
+    const input = document.getElementById('groq-api-key');
+    const key = input.value.trim();
+    if (!key) {
+        alert("Type your Groq key first. To delete the saved key, press Remove Key.");
+        return;
+    }
+    if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
+        alert("That doesn't look like a Groq key. Groq keys start with gsk_.");
+        return;
+    }
+    try {
+        await setGroqKey(key);
+        input.value = '';
+        alert("Key saved and encrypted on this device.");
+    } catch (e) {
+        alert("Your browser couldn't store the key securely, so it wasn't saved. Try a normal (not private) window.");
+    }
+});
+
+document.getElementById('btn-remove-ai-key')?.addEventListener('click', async () => {
+    if (!confirm("Remove your saved Groq key from this device?")) return;
+    await setGroqKey('');
+    document.getElementById('groq-api-key').value = '';
+    alert("Key removed.");
 });
 
 // --- Picture-in-Picture Widget Logic ---
@@ -3335,6 +3689,435 @@ if (new Date().toDateString() === 'Mon Jun 01 2026' && !localStorage.getItem('pr
     localStorage.setItem('procrastinote_june1_fixed', 'true');
     saveState();
 }
+
+// --- Friends & Chat Logic ---
+const CHATS_KEY = 'school_planner_chats';
+const AI_BUDDIES = [
+    {
+        id: 'procrasti-bot',
+        name: 'Procrasti-Bot',
+        role: 'Study Coach',
+        desc: 'Productivity tips & motivation.',
+        avatar: 'PB',
+        systemPrompt: 'You are Procrasti-Bot, a friendly and encouraging productivity coach for Procrastinote. Give students quick, actionable tips to beat procrastination. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Hey there! Ready to crush some tasks today? Remember, even a 5-minute study session is better than zero. Give it a shot! 🚀",
+            "You've got this! Try setting a small, specific goal right now. What's one tiny thing you can complete in the next 15 minutes? ⏱️",
+            "Productivity tip: Put your phone in another room or turn on Zen Mode! It works wonders. 🧘",
+            "Don't wait for motivation. Action builds motivation. Start small, just do one problem or write one line!"
+        ]
+    },
+    {
+        id: 'zen-master',
+        name: 'Zen Master',
+        role: 'Mindfulness Guide',
+        desc: 'Calm breathing & relaxation.',
+        avatar: 'ZM',
+        systemPrompt: 'You are Zen Master, a calm mindfulness guide for Procrastinote. Suggest brief breathing exercises, quick stretches, or relaxing thoughts to help stressed students. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Take a deep breath. Inhale for 4 seconds, hold for 4, exhale for 4. Feel the tension leaving your shoulders. 🌸",
+            "Remember, you are doing your best, and that is enough. Let's take a 1-minute mindfulness break together. 🧘",
+            "A calm mind is a powerful mind. If you're feeling overwhelmed, try listening to some Rain sounds in Zen Mode. 🌧️",
+            "Relax your jaw, roll your shoulders, and take a long, slow breath. You are capable of handling whatever comes today."
+        ]
+    },
+    {
+        id: 'study-buddy',
+        name: 'Study Buddy',
+        role: 'Study Partner',
+        desc: 'Help with subjects & ideas.',
+        avatar: 'SB',
+        systemPrompt: 'You are Study Buddy, a helpful peer study partner for Procrastinote. Answer academic questions or help brainstorm ideas. Keep it short (1-3 sentences).',
+        offlineResponses: [
+            "Hey! What subject are we working on? I'm ready to help brainstorm or solve some problems. 📚",
+            "That homework won't know what hit it! Let me know if you need to explain a concept to me - teaching is the best way to learn. ✏️",
+            "I'm checking my virtual notebook now. Feel free to ask me a question about math, science, or history! 🧠",
+            "Let's tackle this concept together. Break it down into smaller parts and let's go step-by-step!"
+        ]
+    }
+];
+
+let activeChatCategory = 'ai'; // 'ai' or 'humans'
+let activeChatId = null; // AI buddy ID or human email
+
+function getChats() {
+    return JSON.parse(localStorage.getItem(CHATS_KEY)) || {};
+}
+
+function saveChats(chats) {
+    localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+}
+
+function getRoomId(friendId) {
+    if (!appState.user) return null;
+    const currentEmail = appState.user.email.toLowerCase();
+    
+    // If it's an AI buddy, the chat room is scoped to the current user's session
+    const isAi = AI_BUDDIES.some(b => b.id === friendId);
+    if (isAi) {
+        return `room_${currentEmail}_${friendId}`;
+    }
+    
+    // For human friends, room ID is sorted alphabetically to be shared
+    const sortedEmails = [currentEmail, friendId.toLowerCase()].sort();
+    return `room_${sortedEmails[0]}_${sortedEmails[1]}`;
+}
+
+function syncIncomingFriends() {
+    if (!appState.user || !appState.user.email) return;
+    const currentUserEmail = appState.user.email.toLowerCase();
+    const chats = getChats();
+    let updated = false;
+    
+    if (!appState.friendsList) appState.friendsList = [];
+    
+    Object.keys(chats).forEach(roomKey => {
+        if (roomKey.startsWith('room_')) {
+            const content = roomKey.substring(5);
+            if (content.includes(currentUserEmail)) {
+                const idx = content.indexOf(currentUserEmail);
+                let otherEmail = '';
+                if (idx === 0) {
+                    otherEmail = content.substring(currentUserEmail.length + 1);
+                } else {
+                    otherEmail = content.substring(0, idx - 1);
+                }
+                
+                if (otherEmail) {
+                    const isAi = AI_BUDDIES.some(b => b.id === otherEmail);
+                    if (!isAi && !appState.friendsList.includes(otherEmail)) {
+                        appState.friendsList.push(otherEmail);
+                        updated = true;
+                    }
+                }
+            }
+        }
+    });
+    
+    if (updated) {
+        const email = appState.user.email.toLowerCase();
+        if (allUsers[email]) {
+            if (!allUsers[email].data) allUsers[email].data = {};
+            allUsers[email].data.friendsList = appState.friendsList;
+            localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+        }
+    }
+}
+
+function renderFriends() {
+    syncIncomingFriends();
+    const list = document.getElementById('friends-list');
+    if (!list) return;
+    list.innerHTML = '';
+    
+    if (activeChatCategory === 'ai') {
+        AI_BUDDIES.forEach(buddy => {
+            const isActive = activeChatId === buddy.id;
+            const li = document.createElement('li');
+            li.className = `friend-item-wrapper ${isActive ? 'active' : ''}`;
+            li.innerHTML = `
+                <div class="friend-item-avatar-wrapper">
+                    <div class="friend-avatar" style="background: linear-gradient(135deg, #06b6d4, #8b5cf6);">${buddy.avatar}</div>
+                    <span class="friend-status-dot online"></span>
+                </div>
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${buddy.name}</div>
+                    <div class="friend-item-subtext">${buddy.role} &bull; ${buddy.desc}</div>
+                </div>
+            `;
+            li.addEventListener('click', () => {
+                activeChatId = buddy.id;
+                renderFriends();
+                renderChatWindow();
+            });
+            list.appendChild(li);
+        });
+    } else {
+        // Human Friends
+        const friends = appState.friendsList || [];
+        if (friends.length === 0) {
+            list.innerHTML = '<li class="empty-state" style="padding: 2rem 1rem; text-align: center; color: var(--text-secondary);">No friends added yet. Add a friend using their email above!</li>';
+            return;
+        }
+        
+        friends.forEach(email => {
+            const isActive = activeChatId === email;
+            const isOnline = (email.toLowerCase() === localStorage.getItem(SESSION_KEY)); // Online if it's the current user (just for demo/fallback)
+            
+            // Get user's name from allUsers database if exists
+            const friendProfile = allUsers[email.toLowerCase()]?.profile || { name: email.split('@')[0], class: 'Unknown' };
+            const initials = friendProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            
+            const li = document.createElement('li');
+            li.className = `friend-item-wrapper ${isActive ? 'active' : ''}`;
+            li.innerHTML = `
+                <div class="friend-item-avatar-wrapper">
+                    <div class="friend-avatar" style="background: linear-gradient(135deg, #3b82f6, #10b981);">${escapeHTML(initials)}</div>
+                    <span class="friend-status-dot ${isOnline ? 'online' : 'offline'}"></span>
+                </div>
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${escapeHTML(friendProfile.name)}</div>
+                    <div class="friend-item-subtext">${escapeHTML(friendProfile.class)} &bull; ${escapeHTML(email)}</div>
+                </div>
+            `;
+            li.addEventListener('click', () => {
+                activeChatId = email;
+                renderFriends();
+                renderChatWindow();
+            });
+            list.appendChild(li);
+        });
+    }
+}
+
+function renderChatWindow() {
+    const container = document.getElementById('chat-messages-container');
+    const headerName = document.getElementById('chat-active-name');
+    const headerStatus = document.getElementById('chat-active-status');
+    const headerAvatar = document.getElementById('chat-active-avatar');
+    const inputWrapper = document.getElementById('chat-input-wrapper');
+    const typingIndicator = document.getElementById('chat-typing-indicator');
+    
+    if (!container) return;
+    
+    if (!activeChatId) {
+        container.innerHTML = `
+            <div class="chat-empty-state">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p>Select an AI Buddy or add a friend to start chatting!</p>
+            </div>
+        `;
+        if (headerName) headerName.innerText = 'Select a conversation';
+        if (headerStatus) {
+            headerStatus.innerText = 'Offline';
+            headerStatus.className = 'chat-status-label';
+        }
+        if (headerAvatar) {
+            headerAvatar.innerText = 'AI';
+            headerAvatar.style.background = 'var(--accent-color)';
+        }
+        if (inputWrapper) inputWrapper.style.display = 'none';
+        if (typingIndicator) typingIndicator.style.display = 'none';
+        return;
+    }
+    
+    // Find active conversation details
+    let name = '';
+    let statusText = 'Offline';
+    let isOnline = false;
+    let avatarInitials = '';
+    let avatarBg = '';
+    
+    const buddy = AI_BUDDIES.find(b => b.id === activeChatId);
+    if (buddy) {
+        name = buddy.name;
+        statusText = 'Online';
+        isOnline = true;
+        avatarInitials = buddy.avatar;
+        avatarBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
+    } else {
+        const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0], class: 'Unknown' };
+        name = friendProfile.name;
+        isOnline = (activeChatId.toLowerCase() === localStorage.getItem(SESSION_KEY));
+        statusText = isOnline ? 'Online' : 'Offline';
+        avatarInitials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        avatarBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+    }
+    
+    if (headerName) headerName.innerText = name;
+    if (headerStatus) {
+        headerStatus.innerText = statusText;
+        headerStatus.className = `chat-status-label ${isOnline ? 'online' : ''}`;
+    }
+    if (headerAvatar) {
+        headerAvatar.innerText = avatarInitials;
+        headerAvatar.style.background = avatarBg;
+    }
+    if (inputWrapper) inputWrapper.style.display = 'flex';
+    if (typingIndicator) typingIndicator.style.display = 'none';
+    
+    // Load messages
+    container.innerHTML = '';
+    const roomId = getRoomId(activeChatId);
+    const chats = getChats();
+    const messages = chats[roomId] || [];
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="chat-empty-state">
+                <p>No messages yet. Say hello! 👋</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const currentUserEmail = appState.user.email.toLowerCase();
+    
+    messages.forEach(msg => {
+        const isOutgoing = msg.sender.toLowerCase() === currentUserEmail;
+        const msgWrapper = document.createElement('div');
+        msgWrapper.className = `chat-msg-bubble-wrapper ${isOutgoing ? 'outgoing' : 'incoming'}`;
+        
+        let senderName = '';
+        let senderInitials = '';
+        let senderBg = '';
+        
+        if (isOutgoing) {
+            senderName = appState.user.name;
+            senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+        } else if (buddy) {
+            senderName = buddy.name;
+            senderInitials = buddy.avatar;
+            senderBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
+        } else {
+            const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0] };
+            senderName = friendProfile.name;
+            senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
+        }
+        
+        const dateStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        msgWrapper.innerHTML = `
+            <div class="friend-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; background: ${senderBg};">${escapeHTML(senderInitials)}</div>
+            <div class="chat-msg-bubble">
+                <div>${escapeHTML(msg.text)}</div>
+                <span class="chat-msg-time">${dateStr}</span>
+            </div>
+        `;
+        container.appendChild(msgWrapper);
+    });
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-message-input');
+    const text = input.value.trim();
+    if (!text || !activeChatId || !appState.user) return;
+    
+    input.value = '';
+    const currentUserEmail = appState.user.email.toLowerCase();
+    const roomId = getRoomId(activeChatId);
+    
+    const newMessage = {
+        sender: currentUserEmail,
+        text: text,
+        timestamp: Date.now()
+    };
+    
+    // Save locally
+    const chats = getChats();
+    if (!chats[roomId]) chats[roomId] = [];
+    chats[roomId].push(newMessage);
+    saveChats(chats);
+    
+    // Render immediately
+    renderChatWindow();
+    
+    // Check if conversation is with AI
+    const buddy = AI_BUDDIES.find(b => b.id === activeChatId);
+    if (buddy) {
+        const typingIndicator = document.getElementById('chat-typing-indicator');
+        const container = document.getElementById('chat-messages-container');
+        if (typingIndicator) typingIndicator.style.display = 'flex';
+        if (container) container.scrollTop = container.scrollHeight;
+        
+        // Prepare prompt
+        const prompt = `Student says: "${text}"\nRespond directly as their educational mascot companion.`;
+        
+        let aiResponse = "";
+        
+        // If Groq key is available, let's call API
+        if ((await getGroqKey()).startsWith('gsk_')) {
+            aiResponse = await callGroq(prompt, buddy.systemPrompt);
+        }
+        
+        // If empty, failed, or standard key is used (we fallback if it looks like default/error)
+        if (!aiResponse || aiResponse.includes("API Error") || aiResponse.includes("brain right now") || aiResponse.includes("API key")) {
+            // Wait slightly to simulate writing
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 800));
+            const fallbacks = buddy.offlineResponses;
+            aiResponse = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        }
+        
+        const aiMessage = {
+            sender: buddy.id,
+            text: aiResponse,
+            timestamp: Date.now()
+        };
+        
+        chats[roomId].push(aiMessage);
+        saveChats(chats);
+        
+        if (typingIndicator) typingIndicator.style.display = 'none';
+        renderChatWindow();
+    }
+}
+
+// Bind Friends UI actions
+(function initFriendsActions() {
+    // Add Friend
+    document.getElementById('btn-add-friend')?.addEventListener('click', () => {
+        const input = document.getElementById('friend-search-input');
+        const email = input.value.trim().toLowerCase();
+        if (!email) return;
+        
+        if (!appState.user || !appState.user.email) {
+            alert("Please log in first!");
+            return;
+        }
+        
+        if (email === appState.user.email.toLowerCase()) {
+            alert("You cannot add yourself as a friend!");
+            return;
+        }
+        
+        if (!email.includes('@')) {
+            alert("Please enter a valid email address!");
+            return;
+        }
+        
+        if (!appState.friendsList) appState.friendsList = [];
+        if (appState.friendsList.includes(email)) {
+            alert("You have already added this friend!");
+            return;
+        }
+        
+        appState.friendsList.push(email);
+        saveState();
+        input.value = '';
+        alert("Friend added successfully!");
+    });
+    
+    // Search Box Enter Key
+    document.getElementById('friend-search-input')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('btn-add-friend')?.click();
+        }
+    });
+    
+    // Category Tabs Switching
+    document.querySelectorAll('.friends-cat-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.friends-cat-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            activeChatCategory = tab.getAttribute('data-category') || 'ai';
+            activeChatId = null; // Reset selection
+            renderFriends();
+            renderChatWindow();
+        });
+    });
+    
+    // Chat Send message
+    document.getElementById('chat-send-btn')?.addEventListener('click', sendChatMessage);
+    document.getElementById('chat-message-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendChatMessage();
+    });
+})();
 
 updateTimerDisplay();
 updateRobotExpression();
