@@ -84,6 +84,12 @@ h1, h2, h3, h4, h5, h6, .logo, .login-logo {
     width: auto;
 }
 
+.landing-logo-full {
+    height: 120px;
+    width: auto;
+    max-width: 100%;
+}
+
 .landing-brand-name {
     font-family: 'Montserrat', sans-serif;
     font-size: 1.5rem;
@@ -474,9 +480,28 @@ body {
     transition: opacity 0.3s;
 }
 
-.sidebar.collapsed .logo span, 
+.sidebar.collapsed .logo span,
 .sidebar.collapsed .logo p {
     display: none;
+}
+
+/* Full logo when the sidebar is open, small square icon when it is collapsed */
+.logo .logo-full {
+    display: block;
+    width: 100%;
+    max-width: 190px;
+    height: auto;
+}
+
+.logo .logo-icon,
+.sidebar.collapsed .logo .logo-full {
+    display: none;
+}
+
+.sidebar.collapsed .logo .logo-icon {
+    display: block;
+    width: 44px;
+    height: 44px;
 }
 
 .nav-links {
