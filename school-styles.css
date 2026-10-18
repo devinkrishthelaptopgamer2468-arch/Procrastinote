@@ -2747,6 +2747,148 @@ body.external-pip-body .pip-header {
     border: 1px solid var(--border);
 }
 
+/* Dashboard: Today's Study Plan */
+.study-plan-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.study-daytype-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-color);
+    background: rgba(59, 130, 246, 0.12);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+}
+
+.study-halfday-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.study-halfday-btn:hover {
+    color: var(--accent-color);
+}
+
+.study-plan-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.study-plan-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border);
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+}
+
+.study-plan-item.act-homework { border-left-color: #8b5cf6; }
+.study-plan-item.act-revision { border-left-color: #10b981; }
+.study-plan-item.act-break { border-left-color: #f59e0b; }
+
+.study-plan-item.now {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--accent-color);
+    border-left-width: 4px;
+}
+
+.study-plan-item.done {
+    opacity: 0.5;
+}
+
+.study-plan-time {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    font-family: 'Montserrat', sans-serif;
+    white-space: nowrap;
+}
+
+.study-plan-subject {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.study-plan-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.study-plan-item.now .study-plan-tag {
+    color: white;
+    background: var(--accent-color);
+    padding: 0.1rem 0.45rem;
+    border-radius: 5px;
+}
+
+.study-plan-link {
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+/* Timetable: School / Home Study tabs */
+.timetable-switch {
+    display: inline-flex;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    margin-bottom: 1.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    max-width: 100%;
+    flex-wrap: wrap;
+}
+
+.tt-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.3rem;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: 'Montserrat', sans-serif;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.tt-tab:hover:not(.active) {
+    color: var(--text-primary);
+    background: var(--sidebar-hover);
+}
+
+.tt-tab.active {
+    background: var(--accent-color);
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
 .hs-pill {
     background: transparent;
     border: none;

@@ -306,21 +306,38 @@
                         <ul id="dash-homework-list">
                         </ul>
                     </div>
+
+                    <div class="card study-plan-card">
+                        <div class="card-title-wrap">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--accent-color)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <h3>Today's Study Plan</h3>
+                        </div>
+                        <div class="study-plan-meta">
+                            <span id="dash-study-daytype" class="study-daytype-badge">Weekday</span>
+                            <button type="button" id="dash-halfday-toggle" class="study-halfday-btn">Half-day today?</button>
+                        </div>
+                        <ul id="dash-study-list" class="study-plan-list"></ul>
+                    </div>
                 </div>
             </section>
 
             <!-- Timetable View -->
             <section id="timetable" class="view">
-                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                    <div>
-                        <h2>Timetable & Subjects</h2>
-                        <p class="subtitle">Set your schedule</p>
-                    </div>
-                    <div class="timetable-switch" style="display: flex; background: var(--bg-card); border-radius: 8px; padding: 4px; border: 1px solid var(--border-color);">
-                        <button id="tt-school-btn" class="btn" style="border: none; background: var(--primary-color); color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">School</button>
-                        <button id="tt-home-btn" class="btn" style="border: none; background: transparent; color: var(--text-primary); padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">Home Study</button>
-                    </div>
+                <header class="view-header">
+                    <h2>Timetable & Subjects</h2>
+                    <p class="subtitle">Set your school day orders and your home study plan</p>
                 </header>
+
+                <div class="timetable-switch" role="tablist">
+                    <button id="tt-school-btn" class="tt-tab active" role="tab" aria-selected="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
+                        School Timetable
+                    </button>
+                    <button id="tt-home-btn" class="tt-tab" role="tab" aria-selected="false">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z"/></svg>
+                        Home Study Plan
+                    </button>
+                </div>
                 
                 <div id="school-timetable-view">
                 <div class="card">
@@ -543,6 +560,15 @@
                     <div class="card">
                         <h3>AI Assistant Settings</h3>
                         <p class="subtitle" style="margin-bottom: 1.5rem;">Manage your Groq API key for advanced intelligence.</p>
+                        <!-- Locked until the account password is entered again -->
+                        <div id="ai-key-lock">
+                            <div class="form-group">
+                                <label for="ai-unlock-password">Enter your password to manage the key</label>
+                                <input type="password" id="ai-unlock-password" placeholder="••••••••" autocomplete="off">
+                            </div>
+                            <button class="btn secondary-btn" style="width: 100%;" id="btn-unlock-ai-key">Unlock</button>
+                        </div>
+                        <div id="ai-key-controls" hidden>
                         <div class="form-group">
                             <label for="groq-api-key">Groq API Key</label>
                             <!-- Plain text box with masked characters, so browsers don't offer to save the key as a password -->
@@ -551,6 +577,8 @@
                         </div>
                         <button class="btn secondary-btn" style="width: 100%;" id="btn-save-ai-key">Save Key</button>
                         <button class="btn danger-btn" style="width: 100%; margin-top: 0.5rem; display: none;" id="btn-remove-ai-key">Remove Key</button>
+                        <button class="btn secondary-btn" style="width: 100%; margin-top: 0.5rem; border: none;" id="btn-lock-ai-key">Lock</button>
+                        </div>
                     </div>
 
                     <!-- Email verification is turned off for now; remove the hidden attributes to bring it back -->

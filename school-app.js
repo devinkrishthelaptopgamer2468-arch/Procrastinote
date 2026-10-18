@@ -35,6 +35,7 @@ let defaultState = {
     emailVerified: false,
     friendsList: [], // Holds list of added friend emails
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
+    halfdayDates: {}, // e.g. { "2026-10-19": true }: use the half-day study plan that day
     groqKeyEnc: null, // encrypted Groq key (see "Groq key protection")
     groqKeyHint: '', // last 4 characters, to recognise which key is saved
     emailjs: {
@@ -73,6 +74,7 @@ function saveState() {
                 emailVerified: appState.emailVerified,
                 friendsList: appState.friendsList || [],
                 holidays: appState.holidays || {},
+                halfdayDates: appState.halfdayDates || {},
                 groqKeyEnc: appState.groqKeyEnc || null,
                 groqKeyHint: appState.groqKeyHint || '',
                 groqKey: appState.groqKey || undefined, // old readable key, kept only until it's encrypted
@@ -869,7 +871,79 @@ function renderDashboard() {
     if (urgentHw === 0) {
         hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
     }
+
+    renderStudyPlan();
 }
+
+// --- Dashboard: today's home study blocks ---
+// Which Home Study Plan category applies today: weekday, halfday, weekend or holiday (uses weekend blocks)
+function getTodayStudyCategory() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!isSchoolDay(today)) return getHoliday(today) !== undefined ? 'holiday' : 'weekend';
+    return (appState.halfdayDates || {})[formatDateString(today)] ? 'halfday' : 'weekday';
+}
+
+function renderStudyPlan() {
+    const list = document.getElementById('dash-study-list');
+    const badge = document.getElementById('dash-study-daytype');
+    const halfdayBtn = document.getElementById('dash-halfday-toggle');
+    if (!list) return;
+
+    const category = getTodayStudyCategory();
+    const labels = { weekday: 'Weekday plan', halfday: 'Half-day plan', weekend: 'Weekend plan', holiday: 'Holiday: weekend plan' };
+    if (badge) badge.innerText = labels[category];
+    if (halfdayBtn) {
+        halfdayBtn.style.display = (category === 'weekday' || category === 'halfday') ? '' : 'none';
+        halfdayBtn.innerText = category === 'halfday' ? 'Back to full day' : 'Half-day today?';
+    }
+
+    const daycat = category === 'holiday' ? 'weekend' : category;
+    const blocks = (appState.homeSchedule || [])
+        .filter(item => item.daycat === daycat)
+        .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+    if (blocks.length === 0) {
+        list.innerHTML = `
+            <li class="empty-state">No study blocks for this kind of day yet.</li>
+            <li><button type="button" class="btn secondary-btn study-plan-link">Plan study time</button></li>
+        `;
+        list.querySelector('.study-plan-link').addEventListener('click', () => {
+            document.querySelector('li[data-tab="timetable"]')?.click();
+            showTimetableTab('home');
+        });
+        return;
+    }
+
+    const now = new Date();
+    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const actLabels = { study: 'Study', homework: 'Homework', revision: 'Revision', break: 'Break' };
+    list.innerHTML = '';
+    blocks.forEach(item => {
+        let status = '';
+        if (item.end && item.end <= nowTime) status = 'done';
+        else if (item.start && item.start <= nowTime && (!item.end || nowTime < item.end)) status = 'now';
+        const timeStr = item.start && item.end ? `${item.start} – ${item.end}` : (item.start || item.end || '');
+        const li = document.createElement('li');
+        li.className = `study-plan-item act-${escapeHTML(item.acttype)} ${status}`;
+        li.innerHTML = `
+            <span class="study-plan-time">${escapeHTML(timeStr)}</span>
+            <span class="study-plan-subject">${escapeHTML(item.subject || actLabels[item.acttype] || 'Study')}</span>
+            <span class="study-plan-tag">${status === 'now' ? 'Now' : escapeHTML(actLabels[item.acttype] || item.acttype)}</span>
+        `;
+        list.appendChild(li);
+    });
+}
+
+document.getElementById('dash-halfday-toggle')?.addEventListener('click', () => {
+    if (!appState.halfdayDates) appState.halfdayDates = {};
+    const key = formatDateString(new Date());
+    if (appState.halfdayDates[key]) delete appState.halfdayDates[key];
+    else appState.halfdayDates[key] = true;
+    saveState();
+});
+
+setInterval(renderStudyPlan, 60000); // keep the "Now" highlight current
 
 function renderProfile() {
     if (appState.user) {
@@ -1029,38 +1103,21 @@ window.deleteScheduleItem = function(id) {
     });
 })();
 
-// Timetable tab switch
-document.getElementById('tt-school-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
-    const homeBtn = document.getElementById('tt-home-btn');
-    if(homeBtn) {
-        homeBtn.classList.remove('active');
-        homeBtn.style.background = 'transparent';
-        homeBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'block';
-    document.getElementById('home-timetable-view').style.display = 'none';
-});
-
-document.getElementById('tt-home-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
+// Timetable tab switch ('school' or 'home')
+function showTimetableTab(tab) {
+    const isHome = tab === 'home';
     const schoolBtn = document.getElementById('tt-school-btn');
-    if(schoolBtn) {
-        schoolBtn.classList.remove('active');
-        schoolBtn.style.background = 'transparent';
-        schoolBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'none';
-    document.getElementById('home-timetable-view').style.display = 'block';
-});
+    const homeBtn = document.getElementById('tt-home-btn');
+    schoolBtn?.classList.toggle('active', !isHome);
+    homeBtn?.classList.toggle('active', isHome);
+    schoolBtn?.setAttribute('aria-selected', String(!isHome));
+    homeBtn?.setAttribute('aria-selected', String(isHome));
+    document.getElementById('school-timetable-view').style.display = isHome ? 'none' : 'block';
+    document.getElementById('home-timetable-view').style.display = isHome ? 'block' : 'none';
+}
+
+document.getElementById('tt-school-btn')?.addEventListener('click', () => showTimetableTab('school'));
+document.getElementById('tt-home-btn')?.addEventListener('click', () => showTimetableTab('home'));
 
 
 // Helper to calculate the next working day (excluding Saturday/Sunday)
@@ -2922,6 +2979,58 @@ document.getElementById('ai-send-btn')?.addEventListener('click', processAIInput
 document.getElementById('ai-user-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') processAIInput();
 });
+
+// --- Password lock for the AI key settings ---
+// Someone using an already logged-in computer can't change or remove the key without the password.
+let aiKeyRelockTimer = null;
+let aiUnlockFailures = 0;
+let aiUnlockBlockedUntil = 0;
+
+async function verifyAccountPassword(pass) {
+    return !!appState.user?.pass && pass === appState.user.pass;
+}
+
+function lockAiKeySettings() {
+    clearTimeout(aiKeyRelockTimer);
+    document.getElementById('ai-key-lock')?.removeAttribute('hidden');
+    document.getElementById('ai-key-controls')?.setAttribute('hidden', '');
+    const keyInput = document.getElementById('groq-api-key');
+    if (keyInput) keyInput.value = '';
+    const passInput = document.getElementById('ai-unlock-password');
+    if (passInput) passInput.value = '';
+}
+
+document.getElementById('btn-unlock-ai-key')?.addEventListener('click', async () => {
+    const passInput = document.getElementById('ai-unlock-password');
+    if (Date.now() < aiUnlockBlockedUntil) {
+        alert(`Too many wrong tries. Wait ${Math.ceil((aiUnlockBlockedUntil - Date.now()) / 1000)} seconds.`);
+        return;
+    }
+    if (!(await verifyAccountPassword(passInput.value))) {
+        aiUnlockFailures++;
+        if (aiUnlockFailures >= 5) {
+            aiUnlockFailures = 0;
+            aiUnlockBlockedUntil = Date.now() + 30000;
+        }
+        passInput.classList.add('shake-error');
+        setTimeout(() => passInput.classList.remove('shake-error'), 750);
+        passInput.value = '';
+        return;
+    }
+    aiUnlockFailures = 0;
+    passInput.value = '';
+    document.getElementById('ai-key-lock').setAttribute('hidden', '');
+    document.getElementById('ai-key-controls').removeAttribute('hidden');
+    renderGroqKeyStatus();
+    aiKeyRelockTimer = setTimeout(lockAiKeySettings, 5 * 60 * 1000); // relock after 5 minutes
+});
+
+document.getElementById('ai-unlock-password')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-unlock-ai-key')?.click();
+});
+document.getElementById('btn-lock-ai-key')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('btn-go-security')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('logout-btn')?.addEventListener('click', lockAiKeySettings);
 
 document.getElementById('btn-save-ai-key')?.addEventListener('click', async () => {
     const input = document.getElementById('groq-api-key');
