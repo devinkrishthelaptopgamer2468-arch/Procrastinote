@@ -52,6 +52,14 @@
     --fluid-blob-opacity: 0.35;
 }
 
+/* Older names still used in some inline styles in index.html */
+:root {
+    --bg-card: var(--card-bg);
+    --border-color: var(--border);
+    --primary-color: var(--accent-color);
+    --bg-secondary: var(--bg-color);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -3484,6 +3492,210 @@ body.external-pip-body .pip-header {
 @keyframes typingBounce {
     0%, 80%, 100% { transform: scale(0); }
     40% { transform: scale(1.0); }
+}
+
+/* ===== Phones and small tablets ===== */
+@media (max-width: 768px) {
+    body {
+        overflow-x: hidden;
+    }
+
+    /* Sidebar stays a slim icon rail (school-app.js keeps it collapsed on small screens) */
+    .sidebar,
+    .sidebar.collapsed {
+        width: 64px;
+        padding: 1rem 0;
+    }
+
+    .content-area {
+        padding: 4rem 1rem 6rem; /* room for the clock above and the robot button below */
+        min-width: 0;
+    }
+
+    .top-clock {
+        top: 0.75rem;
+        right: 0.75rem;
+        padding: 0.35rem 0.7rem;
+    }
+
+    #clock-time {
+        font-size: 0.95rem;
+    }
+
+    .view-header {
+        margin-bottom: 1.25rem;
+    }
+
+    .view-header h2 {
+        font-size: 1.5rem;
+    }
+
+    .card {
+        padding: 1.1rem;
+    }
+
+    /* Every two-column layout becomes one column */
+    .dashboard-grid,
+    .checklist-grid,
+    .settings-grid,
+    .homework-layout,
+    .zen-layout,
+    .home-schedule-layout,
+    .calendar-layout,
+    .friends-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-grid > * {
+        grid-column: auto;
+    }
+
+    /* Let cards and form fields shrink to the screen instead of pushing it wider */
+    .content-area .card,
+    .content-area .form-group,
+    .content-area input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .home-schedule-form-card div[style*="grid-template-columns"] {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        gap: 0.6rem !important;
+    }
+
+    .home-schedule-form-card .time-input {
+        padding: 0.6rem 0.5rem !important;
+    }
+
+    .hs-filter-pills {
+        flex-wrap: wrap;
+        max-width: 100%;
+    }
+
+    .hs-pill {
+        padding: 5px 10px;
+    }
+
+    .notebook-layout {
+        grid-template-columns: 1fr !important;
+        height: auto !important;
+    }
+
+    .timetable-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Timetable tabs fill the width */
+    .timetable-switch {
+        display: flex;
+        width: 100%;
+    }
+
+    .tt-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 0.6rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    /* Calendar: compact cells, keep only the Day Order / holiday / homework badges */
+    .calendar-controls {
+        padding: 0.35rem 0.6rem !important;
+        gap: 0.5rem !important;
+    }
+
+    .calendar-days-grid {
+        gap: 0.25rem;
+        min-height: 300px;
+    }
+
+    .calendar-day-cell {
+        padding: 0.25rem;
+        border-radius: 6px;
+        min-width: 0;
+    }
+
+    .calendar-day-num {
+        font-size: 0.8rem;
+    }
+
+    .calendar-mini-badge {
+        font-size: 0.5rem;
+        padding: 0.1rem 0.2rem;
+    }
+
+    .calendar-mini-badge.regular-uniform,
+    .calendar-mini-badge.sports-uniform {
+        display: none;
+    }
+
+    /* Zen timer */
+    .timer-display {
+        width: 200px;
+        height: 200px;
+        max-width: 100%;
+        margin: 1rem auto;
+    }
+
+    .timer-text {
+        font-size: 2.6rem;
+    }
+
+    /* Floating pieces */
+    .ai-assistant {
+        right: 1rem;
+        bottom: 1rem;
+    }
+
+    .ai-chat-window {
+        width: calc(100vw - 2rem);
+        max-width: 350px;
+        height: 70vh;
+    }
+
+    .pip-widget {
+        left: 1rem;
+        width: calc(100vw - 2rem);
+        max-width: 280px;
+    }
+
+    /* Landing and login */
+    .landing-header {
+        padding: 1.25rem 1.5rem;
+    }
+
+    .landing-logo-full {
+        height: 80px;
+    }
+
+    .landing-hero {
+        padding: 0 1rem 5rem;
+    }
+
+    .hero-words {
+        font-size: 2.4rem;
+        letter-spacing: -1px;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .landing-credit {
+        left: 1rem;
+        bottom: 1rem;
+        font-size: 0.8rem;
+    }
+
+    .login-box {
+        padding: 2rem 1.25rem;
+    }
+
+    .fullpage-intro h1 {
+        font-size: 1.8rem;
+    }
 }
 
 
