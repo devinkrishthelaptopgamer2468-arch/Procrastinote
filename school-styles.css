@@ -924,7 +924,8 @@ input {
     cursor: url('ibeam.svg') 12 12, text;
 }
 
-input[type="text"], input[type="date"], input[type="number"] {
+input[type="text"], input[type="date"], input[type="number"],
+.view input[type="password"] {
     width: 100%;
     padding: 0.75rem;
     background-color: var(--card-bg);
