@@ -3418,6 +3418,13 @@ const pipDivider = document.getElementById('pip-divider');
 let pipMinimized = false;
 let currentActiveTab = 'dashboard'; // Track the current tab
 
+// Once sound has been played, keep the music player in the PiP even while paused
+let musicWasStarted = false;
+function musicInSession() {
+    if (typeof isMusicPlaying !== 'undefined' && isMusicPlaying) musicWasStarted = true;
+    return musicWasStarted;
+}
+
 // Determine if PiP should be visible
 function shouldShowPip() {
     if (currentActiveTab === 'zen' && !extPipWindow) return false;
@@ -3431,7 +3438,7 @@ function shouldShowPip() {
     const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
     const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
     const timerActive = running || (currentSecs > 0 && currentSecs < total);
-    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+    const musicActive = musicInSession();
 
     return timerActive || musicActive;
 }
@@ -3445,7 +3452,7 @@ function updatePipSections() {
     const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
     const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
     const timerActive = running || (currentSecs > 0 && currentSecs < total);
-    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+    const musicActive = musicInSession();
 
     // Show/hide timer section
     if (timerActive) {
@@ -3457,7 +3464,7 @@ function updatePipSections() {
     // Show/hide music section
     if (musicActive) {
         pipMusicSection.classList.remove('hidden');
-        pipMusicSection.classList.add('playing');
+        pipMusicSection.classList.toggle('playing', !!isMusicPlaying);
     } else {
         pipMusicSection.classList.remove('playing');
         pipMusicSection.classList.add('hidden');
