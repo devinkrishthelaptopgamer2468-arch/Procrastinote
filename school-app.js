@@ -17,12 +17,74 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
+// --- In-page notes instead of pop-up alerts ---
+// Some browsers (and in-app browsers) block alert() pop-ups, which hid sign-up messages.
+// Every alert() in the app now shows as a small note at the top of the page.
+function showToast(message) {
+    let stack = document.getElementById('toast-stack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toast-stack';
+        stack.className = 'toast-stack';
+        stack.setAttribute('role', 'status');
+        stack.setAttribute('aria-live', 'polite');
+        document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = String(message ?? '');
+    const dismiss = () => {
+        toast.classList.add('leaving');
+        setTimeout(() => toast.remove(), 350);
+    };
+    toast.addEventListener('click', dismiss);
+    stack.appendChild(toast);
+    setTimeout(dismiss, Math.min(9000, 3500 + toast.textContent.length * 45));
+}
+window.alert = showToast;
+
+// --- Online backend (Supabase) for accounts, planner sync & friends chat ---
+// Accounts, friend messages and each account's planner live online; localStorage keeps a copy
+// so the app still opens offline. If supabase-config.js is empty, `cloud` is null and the app
+// works local-only like before.
+function isSecretSupabaseKey(key) {
+    if (key.startsWith('sb_secret_')) return true;
+    try {
+        const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        return payload.role === 'service_role';
+    } catch (e) {
+        return false;
+    }
+}
+
+const cloud = (function createCloudClient() {
+    const cfg = window.PROCRASTINOTE_SUPABASE || {};
+    const url = (cfg.url || '').trim();
+    const key = (cfg.publishableKey || '').trim();
+    if (!url || !key || !window.supabase) return null;
+    if (isSecretSupabaseKey(key)) {
+        console.error('supabase-config.js contains a SECRET key. Replace it with the publishable (anon) key. Online chat is disabled.');
+        return null;
+    }
+    return window.supabase.createClient(url, key);
+})();
+
+// Planner sync state (see "Planner sync" near the friends chat code)
+const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates'];
+let plannerReady = false;     // false until this device has loaded the online copy after logging in
+let plannerDirty = false;     // local changes not saved online yet
+let plannerSyncTimer = null;
+let plannerLastSynced = null; // updated_at of the online copy this device last saved or loaded
+let plannerBase = {};         // field -> JSON of the online copy as of plannerLastSynced
+let applyingRemotePlanner = false;
+
 let defaultState = {
     settings: {
         totalDays: 6,
         currentDayOrder: 1, // Represents 'Today'
         lastUpdatedDate: new Date().toDateString(),
-        theme: 'light'
+        theme: 'system' // follow the device until the person picks light or dark
     },
     user: null, // Holds profile info
     notebooks: [], // e.g. [{id, title, content, images: []}]
@@ -81,8 +143,18 @@ function saveState() {
                 emailjs: appState.emailjs
             }
         };
-        localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
-        localStorage.setItem(SESSION_KEY, email);
+        try {
+            localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+            localStorage.setItem(SESSION_KEY, email);
+        } catch (e) {
+            // The browser's storage for this site is full (usually from pictures in notes)
+            if (!saveState._warned) {
+                alert('Your browser storage is full, so changes on this device may not be saved. Remove some pictures from your notes to free up space.');
+                saveState._warned = true;
+                setTimeout(() => { saveState._warned = false; }, 60000);
+            }
+        }
+        schedulePlannerSync();
     }
     renderAllViews();
 }
@@ -149,52 +221,93 @@ document.addEventListener('click', (e) => {
 });
 
 // --- Navigation Logic ---
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const phoneNav = window.matchMedia('(max-width: 820px)');
+
 document.querySelectorAll('.nav-links li').forEach(link => {
     link.addEventListener('click', (e) => {
         const li = e.currentTarget;
         document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-        
+
         li.classList.add('active');
         const tabId = li.getAttribute('data-tab');
         document.getElementById(tabId).classList.add('active-view');
+        closePhoneNav();
+        window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
     });
 });
 
-
-// Sidebar Auto-collapse Logic
-let sidebarTimer;
-const sidebar = document.querySelector('.sidebar');
-
-function resetSidebarTimer() {
-    clearTimeout(sidebarTimer);
-    sidebarTimer = setTimeout(() => {
-        sidebar.classList.add('collapsed');
-    }, 1000);
+// When any view becomes visible (dock, back buttons, mini player...), its cards float in one after another
+function playViewEntrance(view) {
+    if (!view || reducedMotion.matches) return;
+    const items = view.querySelectorAll(':scope > .view-header, .card, .timetable-switch');
+    items.forEach((el, i) => el.style.setProperty('--i', Math.min(i, 10)));
+    view.classList.remove('entering');
+    void view.offsetWidth; // restart the animation
+    view.classList.add('entering');
+    clearTimeout(view._enterTimer);
+    view._enterTimer = setTimeout(() => view.classList.remove('entering'), 1500);
 }
 
-// On phones the sidebar stays a slim icon rail; opening it would cover most of the screen
-const smallScreen = window.matchMedia('(max-width: 768px)');
-
-if (sidebar) {
-    if (smallScreen.matches) sidebar.classList.add('collapsed');
-    smallScreen.addEventListener('change', (e) => {
-        if (e.matches) sidebar.classList.add('collapsed');
+const viewObserver = new MutationObserver(mutations => {
+    mutations.forEach(m => {
+        const view = m.target;
+        const wasActive = (m.oldValue || '').split(' ').includes('active-view');
+        if (view.classList.contains('active-view') && !wasActive) playViewEntrance(view);
     });
+});
+document.querySelectorAll('.view').forEach(view => {
+    viewObserver.observe(view, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+});
 
-    sidebar.addEventListener('mouseenter', () => {
-        if (smallScreen.matches) return;
-        clearTimeout(sidebarTimer);
-        sidebar.classList.remove('collapsed');
-    });
-
-    sidebar.addEventListener('mouseleave', () => {
-        resetSidebarTimer();
-    });
-
-    // Start timer on load
-    resetSidebarTimer();
+// Phone menu: the dock slides in from the left
+function closePhoneNav() {
+    document.body.classList.remove('nav-open');
+    document.getElementById('nav-toggle')?.setAttribute('aria-expanded', 'false');
 }
+
+document.getElementById('nav-toggle')?.addEventListener('click', () => {
+    const open = document.body.classList.toggle('nav-open');
+    document.getElementById('nav-toggle').setAttribute('aria-expanded', String(open));
+});
+document.getElementById('nav-scrim')?.addEventListener('click', closePhoneNav);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePhoneNav();
+});
+phoneNav.addEventListener('change', closePhoneNav);
+
+// Dock magnify: icons near the mouse grow, like a Mac dock
+(function setupDockMagnify() {
+    const dock = document.getElementById('app-dock');
+    if (!dock) return;
+    const items = Array.from(dock.querySelectorAll('.dock-item'));
+    let centers = [];
+
+    const reset = () => items.forEach(item => item.style.setProperty('--mag', '1'));
+    dock.addEventListener('mouseenter', () => {
+        // Measure while everything is at normal size, so growing icons don't shift the targets
+        centers = items.map(item => {
+            const r = item.getBoundingClientRect();
+            return r.left + r.width / 2;
+        });
+    });
+    dock.addEventListener('mousemove', (e) => {
+        if (phoneNav.matches || reducedMotion.matches || !centers.length) return;
+        items.forEach((item, i) => {
+            const distance = Math.abs(e.clientX - centers[i]);
+            const mag = 1 + 0.4 * Math.max(0, 1 - distance / 120);
+            item.style.setProperty('--mag', mag.toFixed(3));
+        });
+    });
+    dock.addEventListener('mouseleave', reset);
+    phoneNav.addEventListener('change', reset);
+})();
+
+// Top bar turns frosted once the page scrolls
+window.addEventListener('scroll', () => {
+    document.querySelector('.app-topbar')?.classList.toggle('scrolled', window.scrollY > 8);
+}, { passive: true });
 
 // --- Date & Day Order Math ---
 // currentDayOrder belongs to the last school day on or before lastUpdatedDate.
@@ -344,6 +457,13 @@ function getDayOrderForDate(targetDate) {
     }
 }
 
+// "2026-10-20" means that day where you live. new Date("2026-10-20") would read it as midnight
+// in London, which shows the day before for anyone west of the UK.
+function parseDay(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 function formatDateString(date) {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -436,7 +556,7 @@ function showCalendarDayDetails(date) {
         }
     }
 
-    const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    const matchingHw = appState.homework.filter(hw => formatDateString(parseDay(hw.date)) === formattedDate);
     let hwHtml = '';
     if (matchingHw.length > 0) {
         matchingHw.forEach(hw => {
@@ -528,7 +648,7 @@ function createDayCell(date, isCurrentMonth) {
     }
     
     const formattedDate = formatDateString(date);
-    const hasHw = appState.homework.some(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    const hasHw = appState.homework.some(hw => formatDateString(parseDay(hw.date)) === formattedDate);
     if (hasHw) {
         const hwBadge = document.createElement('span');
         hwBadge.className = 'calendar-mini-badge hw-due';
@@ -634,7 +754,7 @@ function updateRobotExpression() {
     now.setHours(0, 0, 0, 0); 
     
     for (let hw of appState.homework) {
-        const hwDate = new Date(hw.date);
+        const hwDate = parseDay(hw.date);
         hwDate.setHours(0, 0, 0, 0);
         if (hwDate < now) {
             isOverdue = true;
@@ -777,7 +897,7 @@ function renderHomework() {
     list.innerHTML = '';
 
     // Sort by date mostly
-    appState.homework.sort((a, b) => new Date(a.date) - new Date(b.date));
+    appState.homework.sort((a, b) => parseDay(a.date) - parseDay(b.date));
 
     if (appState.homework.length === 0) {
         list.innerHTML = '<li class="empty-state">No active homework!</li>';
@@ -786,18 +906,24 @@ function renderHomework() {
 
     appState.homework.forEach((hw, index) => {
         list.innerHTML += `
-            <li>
+            <li style="animation-delay: ${Math.min(index, 8) * 40}ms">
                 <div class="hw-info">
-                    <strong>${escapeHTML(hw.task)} (${escapeHTML(hw.subject)})</strong>
-                    <span>Due: ${new Date(hw.date).toLocaleDateString()}</span>
+                    <strong>${escapeHTML(hw.task)}</strong>
+                    <span>${escapeHTML(hw.subject)} · Due ${parseDay(hw.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
-                <button class="done-btn" onclick="completeHomework(${index})">Mark Done</button>
+                <button class="done-btn" onclick="completeHomework(${index}, this)">
+                    <span class="done-circle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path class="done-check" d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+                    Done
+                </button>
             </li>
         `;
     });
 }
 
 function renderDashboard() {
+    const dateLine = document.getElementById('dash-date');
+    if (dateLine) dateLine.innerText = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
     // Plan for the next school day, skipping weekends and holidays
     const nextSchoolDay = getNextSchoolDay();
     const tmrwDay = getDayOrderForDate(nextSchoolDay);
@@ -808,7 +934,7 @@ function renderDashboard() {
     const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
     const tomorrowLabel = document.getElementById('dash-tomorrow-label');
     if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
-    let dayOrderText = `${nextLabel} is Day Order: ${tmrwDay}`;
+    let dayOrderText = `Day Order ${tmrwDay}`;
     if (!isTomorrow) {
         const holidayName = getHoliday(tomorrow);
         const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
@@ -818,12 +944,14 @@ function renderDashboard() {
 
     // Uniform
     const unif = appState.uniforms[tmrwDay];
-    document.getElementById('dash-uniform').innerText = unif ? unif : "Not Set up - Check settings!";
+    document.getElementById('dash-uniform').innerText = unif ? unif : "Not set yet";
 
     // Subjects & Books
     // Get ALL unique subjects to know our master list
     let allSubjects = new Set();
-    Object.values(appState.timetable).forEach(dayList => {
+    const totalDays = parseInt(appState.settings.totalDays) || 6;
+    Object.entries(appState.timetable).forEach(([day, dayList]) => {
+        if (parseInt(day) > totalDays) return; // ignore day orders that were removed in setup
         dayList.forEach(sub => {
             if (sub.trim() !== '') allSubjects.add(sub.trim());
         });
@@ -869,16 +997,17 @@ function renderDashboard() {
     let urgentHw = 0;
 
     appState.homework.forEach(hw => {
-        const diffTime = new Date(hw.date) - now;
+        const diffTime = parseDay(hw.date) - now;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         if (diffDays <= 3) { // Shows due soon
-            hwList.innerHTML += `<li>${escapeHTML(hw.task)} - Due in ${diffDays} days</li>`;
+            const when = diffDays < 0 ? 'Overdue' : diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : `In ${diffDays} days`;
+            hwList.innerHTML += `<li class="${diffDays < 0 ? 'overdue' : ''}"><span class="due-task">${escapeHTML(hw.task)}</span><span class="due-when">${when}</span></li>`;
             urgentHw++;
         }
     });
 
     if (urgentHw === 0) {
-        hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
+        hwList.innerHTML = '<li class="empty-state">Nothing due soon. Nice.</li>';
     }
 
     renderStudyPlan();
@@ -1089,6 +1218,14 @@ window.deleteScheduleItem = function(id) {
             return;
         }
 
+        if (start && end && end <= start) {
+            const endInput = document.getElementById('hs-end');
+            endInput.classList.add('shake-error');
+            setTimeout(() => endInput.classList.remove('shake-error'), 600);
+            alert('The end time needs to be after the start time.');
+            return;
+        }
+
         if (!appState.homeSchedule) appState.homeSchedule = [];
         appState.homeSchedule.push({ id: 'hs_' + Date.now(), daycat, acttype, subject, start, end });
         saveState();
@@ -1147,13 +1284,29 @@ function getNextWorkingDay() {
 // Homework setup
 document.getElementById('homework-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    const taskInput = document.getElementById('hw-task');
+    const task = taskInput.value.trim();
+    const subject = document.getElementById('hw-subject').value;
+    if (!task) {
+        taskInput.classList.add('shake-error');
+        setTimeout(() => taskInput.classList.remove('shake-error'), 600);
+        return;
+    }
+    if (!subject) {
+        const subjectDisplay = document.getElementById('hw-subject-display');
+        subjectDisplay?.classList.add('shake-error');
+        setTimeout(() => subjectDisplay?.classList.remove('shake-error'), 600);
+        alert('Pick a subject for this homework.');
+        return;
+    }
     let deadlineDate = document.getElementById('hw-deadline').value;
     if (!deadlineDate) {
         deadlineDate = getNextWorkingDay();
     }
     const hw = {
-        task: document.getElementById('hw-task').value,
-        subject: document.getElementById('hw-subject').value,
+        id: 'hw_' + Date.now(), // lets account sync merge changes from two devices
+        task,
+        subject,
         date: deadlineDate
     };
     appState.homework.push(hw);
@@ -1172,10 +1325,27 @@ document.getElementById('homework-form').addEventListener('submit', (e) => {
     saveState();
 });
 
-window.completeHomework = function(index) {
-    appState.homework.splice(index, 1);
-    saveState();
-    triggerConfetti();
+// Finishing homework: the check draws itself, then the item slides away
+window.completeHomework = function(index, button) {
+    const li = button?.closest('li');
+    if (!li || reducedMotion.matches) {
+        appState.homework.splice(index, 1);
+        saveState();
+        return;
+    }
+    if (li.classList.contains('completing')) return; // already on its way out
+    const task = appState.homework[index];
+    li.classList.add('completing');
+    setTimeout(() => {
+        li.style.height = `${li.offsetHeight}px`;
+        void li.offsetHeight;
+        li.classList.add('leaving');
+    }, 420);
+    setTimeout(() => {
+        const current = appState.homework.indexOf(task);
+        if (current !== -1) appState.homework.splice(current, 1);
+        saveState();
+    }, 1050);
 }
 
 // --- Notebook Logic ---
@@ -1462,8 +1632,9 @@ document.getElementById('notebook-image-file')?.addEventListener('change', (e) =
     const file = e.target.files[0];
     if (file) {
         const reader = new FileReader();
-        reader.onload = (ev) => {
-            const dataUrl = ev.target.result;
+        reader.onload = async (ev) => {
+            // Phone photos are several MB; the browser only stores about 5 MB per site, so shrink them first
+            const dataUrl = await shrinkImage(ev.target.result);
             const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
             if (activeNb) {
                 if (!activeNb.images) activeNb.images = [];
@@ -1476,6 +1647,27 @@ document.getElementById('notebook-image-file')?.addEventListener('change', (e) =
     }
     e.target.value = '';
 });
+
+// Resize a picture to at most 1600px and re-save it as a JPEG (usually 150-400 KB)
+function shrinkImage(dataUrl, maxSide = 1600, quality = 0.82) {
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            if (scale === 1 && dataUrl.length < 600000) return resolve(dataUrl);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; // transparent PNGs get a white background in JPEG
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });
+}
 
 window.deleteNotebookImage = function(index) {
     showConfirm("Are you sure you want to delete this image?", () => {
@@ -1599,19 +1791,57 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
 });
 
 // --- Theme Toggle Logic ---
+// 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function resolvedTheme() {
+    const theme = appState.settings?.theme || 'system';
+    if (theme === 'system') return prefersDark.matches ? 'dark' : 'light';
+    return theme;
+}
+
 function applyTheme() {
-    const theme = appState.settings.theme || 'light';
+    const theme = resolvedTheme();
     document.documentElement.setAttribute('data-theme', theme);
-    
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#070A12' : '#EEF1F7');
+
     // Update switch visually
     const toggleSwitch = document.getElementById('theme-checkbox');
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
 }
 
+prefersDark.addEventListener('change', () => {
+    if ((appState.settings?.theme || 'system') === 'system') applyTheme();
+});
+
+// Switching theme reveals the new one in a circle growing from the toggle
+function switchThemeWithReveal(nextTheme, originEl) {
+    const change = () => {
+        appState.settings.theme = nextTheme;
+        applyTheme();
+        saveState();
+    };
+    if (!document.startViewTransition || reducedMotion.matches) {
+        document.documentElement.classList.add('theme-fade');
+        change();
+        setTimeout(() => document.documentElement.classList.remove('theme-fade'), 500);
+        return;
+    }
+    const rect = originEl?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    const transition = document.startViewTransition(change);
+    transition.ready.then(() => {
+        document.documentElement.animate(
+            { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+            { duration: 650, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' }
+        );
+    }).catch(() => {});
+}
+
 document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
-    appState.settings.theme = e.target.checked ? 'light' : 'dark';
-    applyTheme();
-    saveState();
+    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'));
 });
 
 // --- Auth / Login Logic ---
@@ -1734,13 +1964,109 @@ document.getElementById('btn-signup')?.addEventListener('click', () => {
     document.getElementById('login-name').setAttribute('required', 'true');
 });
 
-document.getElementById('login-form').addEventListener('submit', (e) => {
+function shakePasswordInput(id) {
+    const passInput = document.getElementById(id);
+    passInput.classList.add('shake-error');
+    setTimeout(() => passInput.classList.remove('shake-error'), 750);
+}
+
+// Build appState from an online account, keeping this browser's planner data for that email
+function loadUserFromCloud(user) {
+    const email = user.email.toLowerCase();
+    const meta = user.user_metadata || {};
+    const local = allUsers[email];
+    appState = { ...JSON.parse(JSON.stringify(defaultState)), ...(local ? local.data : {}) };
+    appState.user = {
+        name: local?.profile.name || meta.name || email.split('@')[0],
+        class: local?.profile.class || meta.class || '',
+        email,
+        cloudId: user.id
+    }; // no password stored locally anymore
+}
+
+async function cloudSignup(name, cls, email, pass) {
+    const { data, error } = await cloud.auth.signUp({
+        email,
+        password: pass,
+        options: { data: { name, class: cls }, emailRedirectTo: window.location.origin }
+    });
+    if (error) {
+        if (/rate limit/i.test(error.message)) {
+            alert('Too many sign-up emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.');
+        } else {
+            alert(`Sign up failed: ${error.message}`);
+        }
+        return false;
+    }
+    // Supabase answers "success" for an email that already has an account, but sends nothing
+    // and returns a user with no identities. Say so instead of promising an email.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        alert('This email already has an account. Log in with it instead.');
+        document.getElementById('btn-login')?.click();
+        return false;
+    }
+    if (!data.session) {
+        alert(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`);
+        document.getElementById('btn-login')?.click();
+        return false;
+    }
+    loadUserFromCloud(data.user);
+    return true;
+}
+
+async function cloudLogin(email, pass) {
+    const { data, error } = await cloud.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+        // One-time move: an old local-only account becomes an online account with the same password
+        const local = allUsers[email];
+        if (/invalid login/i.test(error.message) && local?.profile.pass && local.profile.pass === pass) {
+            return cloudSignup(local.profile.name, local.profile.class, email, pass);
+        }
+        if (/not confirmed/i.test(error.message)) {
+            alert('Please click the confirmation link in your email first, then log in.');
+        } else if (/invalid login/i.test(error.message)) {
+            shakePasswordInput('login-password');
+        } else {
+            alert(`Log in failed: ${error.message}`);
+        }
+        return false;
+    }
+    loadUserFromCloud(data.user);
+    return true;
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('login-name').value;
     const cls = hiddenClassInput ? hiddenClassInput.value : '';
-    const email = document.getElementById('login-email').value.toLowerCase();
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
     const pass = document.getElementById('login-password').value;
-    
+
+    if (cloud) {
+        if (currentAuthMode === 'signup' && !cls) {
+            alert("Please select a Class / Grade!");
+            return;
+        }
+        const submitBtn = document.getElementById('auth-submit-btn');
+        submitBtn.disabled = true;
+        let ok = false;
+        try {
+            ok = currentAuthMode === 'login'
+                ? await cloudLogin(email, pass)
+                : await cloudSignup(name, cls, email, pass);
+        } catch (err) {
+            alert(`Could not reach the server: ${err.message}`);
+        } finally {
+            submitBtn.disabled = false;
+        }
+        if (!ok) return;
+        saveState();
+        checkAuth();
+        startCloudChat();
+        startPlannerSync(); // loads this account's planner from other devices
+        return;
+    }
+
     if (currentAuthMode === 'login') {
         const userEntry = allUsers[email];
         if (!userEntry) {
@@ -1779,26 +2105,40 @@ document.getElementById('login-form').addEventListener('submit', (e) => {
 
 document.getElementById('logout-btn').addEventListener('click', () => {
     groqKeyCache = null;
+    if (cloud) {
+        stopCloudChat();
+        // Save any last changes online before signing out (the request is built before appState resets)
+        const lastSave = plannerReady ? pushPlannerData() : Promise.resolve();
+        stopPlannerSync();
+        lastSave.finally(() => cloud.auth.signOut());
+    }
     localStorage.removeItem(SESSION_KEY);
     appState = JSON.parse(JSON.stringify(defaultState));
     checkAuth();
 });
 
+function greetingForNow() {
+    const hour = new Date().getHours();
+    if (hour < 5) return 'Up late';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+}
+
 function checkAuth() {
     if (appState.user && appState.user.name) {
         // User is logged in
         document.getElementById('landing-view').style.display = 'none';
-        document.getElementById('fullpage-intro').style.display = 'none';
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
-        
+
         protectLegacyGroqKey();
 
-        // Setup greeting & sidebar
+        // Greeting and the name in the phone menu
         const firstName = appState.user.name.split(' ')[0];
-        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
-        document.getElementById('sidebar-user-class').innerText = `Class: ${appState.user.class}`;
-        
+        document.getElementById('greeting-header').innerHTML = `${greetingForNow()}, <span class="highlight">${escapeHTML(firstName)}</span>`;
+        document.getElementById('sidebar-user-class').innerText = `${appState.user.name}${appState.user.class ? ' · ' + appState.user.class : ''}`;
+
         // Update day order if date has changed
         if (updateDayOrderIfNeeded()) {
             saveState();
@@ -1806,125 +2146,54 @@ function checkAuth() {
             renderAllViews();
         }
         applyTheme(); // Ensure user preference is applied
+        playViewEntrance(document.querySelector('.view.active-view'));
     } else {
-        // User not logged in - Force Dark Mode
-        document.documentElement.setAttribute('data-theme', 'dark');
         document.getElementById('main-app').style.display = 'none';
-        
-        // Show Intro Typewriter FIRST
-        document.getElementById('fullpage-intro').style.display = 'flex';
-        document.getElementById('fullpage-intro').style.transform = 'translateY(0)';
-        document.getElementById('landing-view').style.display = 'flex';
-        document.getElementById('landing-view').style.transform = 'translateY(0)';
-        document.getElementById('login-overlay').style.display = 'none';
-
-        typewriterEffect();
-
-        document.getElementById('get-started-btn').onclick = () => {
-            // Slide up landing page to reveal login
-            document.getElementById('landing-view').style.transform = 'translateY(-100vh)';
-            setTimeout(() => {
-                document.getElementById('landing-view').style.display = 'none';
-                document.getElementById('login-overlay').style.display = 'flex';
-            }, 800);
-        };
+        closePhoneNav();
+        applyTheme(); // logged out: follow the device's light or dark setting
+        showWelcome();
     }
 }
 
-function startLandingSequence() {
-    const spans = document.querySelectorAll('.hero-words span');
-    if (!spans.length) return;
+// --- Welcome page and sign-in flow ---
+function showWelcome() {
+    const landing = document.getElementById('landing-view');
+    document.getElementById('login-overlay').style.display = 'none';
+    landing.classList.remove('leaving', 'is-ready');
+    landing.style.display = 'flex';
+    // Next frame, start the entrance animation (title words rise, cards float in).
+    // The timeout is a backup for background tabs, where animation frames are paused.
+    const start = () => landing.classList.add('is-ready');
+    requestAnimationFrame(() => requestAnimationFrame(start));
+    setTimeout(start, 150);
+}
 
-    // Reset states
-    spans.forEach(s => { s.style.opacity = '0'; s.style.transform = 'translateY(20px)'; });
-    document.getElementById('landing-hero-subtitle').innerHTML = '';
-    document.getElementById('get-started-btn').style.opacity = '0';
-    document.getElementById('get-started-btn').style.transform = 'translateY(20px)';
-
-    // 1. Words appear 1 after the other (Snappier)
-    spans.forEach((span, index) => {
-        setTimeout(() => {
-            span.style.opacity = "1";
-            span.style.transform = "translateY(0)";
-        }, index * 250); 
-    });
-
-    // 2. Start typewriter right after the last word appears
+function openAuth(mode) {
+    const landing = document.getElementById('landing-view');
+    const overlay = document.getElementById('login-overlay');
+    landing.classList.add('leaving');
     setTimeout(() => {
-        typeHeroSubtitle();
-    }, (spans.length * 250) + 100);
+        landing.style.display = 'none';
+        overlay.style.display = 'flex';
+        document.getElementById(mode === 'login' ? 'btn-login' : 'btn-signup')?.click();
+        document.getElementById(mode === 'login' ? 'login-email' : 'login-name')?.focus({ preventScroll: true });
+    }, reducedMotion.matches ? 0 : 380);
 }
 
-function typeHeroSubtitle() {
-    const text = "Your very own Educational Planner";
-    const el = document.getElementById('landing-hero-subtitle');
-    const btn = document.getElementById('get-started-btn');
-    if (!el) return;
+document.getElementById('get-started-btn')?.addEventListener('click', () => openAuth('signup'));
+document.getElementById('welcome-login-btn')?.addEventListener('click', () => openAuth('login'));
+document.getElementById('auth-back-btn')?.addEventListener('click', showWelcome);
 
-    el.innerHTML = "";
-    let i = 0;
-    const speed = 25; // Faster typing
-
-    function type() {
-        if (i < text.length) {
-            el.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        } else {
-            // Fade in the button right after typing finishes
-            btn.style.opacity = "1";
-            btn.style.transform = "translateY(0)";
-        }
-    }
-    type();
-}
-
-let hasTyped = false;
-function typewriterEffect() {
-    if (hasTyped) return;
-    hasTyped = true;
-    
-    const text = "Welcome to Procrastinote. The smartest way to organize your school life.";
-    const introEl = document.getElementById('fullpage-intro');
-    const landingEl = document.getElementById('landing-view');
-    const typeEl = document.getElementById('fullpage-typewriter');
-    
-    introEl.style.display = 'flex';
-    typeEl.innerHTML = "";
-    
-    let i = 0;
-    const speed = 15; // Much faster typing
-    
-    function type() {
-        if (i < text.length) {
-            typeEl.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        } else {
-            // Finished typing, wait then SLIDE UP Intro to reveal Landing Page
-            setTimeout(() => {
-                introEl.style.transform = 'translateY(-100vh)'; 
-                
-                // Logic to setup music presets
-                document.querySelectorAll('.preset-btn').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        // Update player logic here
-                    });
-                });
-
-                setTimeout(() => {
-                    introEl.style.display = 'none';
-                    // Start the landing sequence (words, hero typing)
-                    startLandingSequence();
-                }, 800); 
-            }, 600); 
-        }
-    }
-    
-    setTimeout(type, 200);
-}
+// Gentle parallax on the floating preview cards
+document.getElementById('landing-view')?.addEventListener('mousemove', (e) => {
+    if (reducedMotion.matches) return;
+    const visual = document.querySelector('.welcome-visual');
+    if (!visual) return;
+    const x = (e.clientX / window.innerWidth - 0.5) * 2;
+    const y = (e.clientY / window.innerHeight - 0.5) * 2;
+    visual.style.setProperty('--px', x.toFixed(3));
+    visual.style.setProperty('--py', y.toFixed(3));
+});
 
 // --- Robot Pupil Tracker ---
 let mouseX = 0, mouseY = 0;
@@ -1948,7 +2217,7 @@ function animatePupils() {
         const deltaX = mouseX - robotX;
         const deltaY = mouseY - robotY;
         const angle = Math.atan2(deltaY, deltaX);
-        const maxDist = 3.5;
+        const maxDist = robot.offsetWidth * 0.055; // stay inside the eye
         
         const targetX = Math.cos(angle) * maxDist;
         const targetY = Math.sin(angle) * maxDist;
@@ -1965,42 +2234,9 @@ function animatePupils() {
 }
 requestAnimationFrame(animatePupils);
 
-// --- Confetti Logic ---
-let confettiTriggered = false;
-
-function triggerConfetti() {
-    if (confettiTriggered) return;
-    confettiTriggered = true;
-    
-    const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.width = '100vw';
-    container.style.height = '100vh';
-    container.style.pointerEvents = 'none';
-    container.style.zIndex = '9999';
-    container.style.overflow = 'hidden';
-    document.body.appendChild(container);
-    
-    const colors = ['#f87171', '#4ade80', '#facc15', '#3b82f6', '#a855f7'];
-    
-    for (let i = 0; i < 70; i++) {
-        const conf = document.createElement('div');
-        conf.className = 'confetti-piece';
-        conf.style.left = Math.random() * 100 + 'vw';
-        conf.style.animationDelay = (Math.random() * 0.3) + 's';
-        conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        conf.style.transform = `rotate(${Math.random() * 360}deg)`;
-        container.appendChild(conf);
-    }
-    
-    setTimeout(() => {
-        if(container.parentNode) container.remove();
-        // Resetting confetti triggered logic slightly so it happens again if user interacts and empties
-        setTimeout(() => { confettiTriggered = false; }, 3000);
-    }, 1500); 
-}
+// --- Celebrations ---
+// Confetti was removed in the redesign; finishing things now has its own quiet animations
+function triggerConfetti() {}
 
 // --- Password Update Flow Logic ---
 function switchPwStep(stepId) {
@@ -2013,11 +2249,17 @@ function switchPwStep(stepId) {
     }
 }
 
-document.getElementById('btn-verify-old')?.addEventListener('click', () => {
+document.getElementById('btn-verify-old')?.addEventListener('click', async () => {
     const input = document.getElementById('old-password');
     const oldPass = input.value;
 
-    if (oldPass === appState.user.pass) {
+    let correct = oldPass === appState.user.pass;
+    if (cloud) {
+        const { error } = await cloud.auth.signInWithPassword({ email: appState.user.email, password: oldPass });
+        correct = !error;
+    }
+
+    if (correct) {
         switchPwStep('pw-step-2');
     } else {
         input.classList.add('shake-error');
@@ -2026,18 +2268,20 @@ document.getElementById('btn-verify-old')?.addEventListener('click', () => {
     }
 });
 
-document.getElementById('btn-update-password')?.addEventListener('click', () => {
+document.getElementById('btn-update-password')?.addEventListener('click', async () => {
     const newPassInput = document.getElementById('new-password');
     const confirmPassInput = document.getElementById('confirm-password');
     const newPass = newPassInput.value;
     const confirmPass = confirmPassInput.value;
+    const minLength = cloud ? 6 : 4; // Supabase's default minimum
 
-    if (!newPass || newPass.length < 4) {
-        alert("Password must be at least 4 characters.");
+    if (!newPass || newPass.length < minLength) {
+        alert(`Password must be at least ${minLength} characters.`);
         return;
     }
 
-    if (newPass === appState.user.pass) {
+    const oldPass = cloud ? document.getElementById('old-password').value : appState.user.pass;
+    if (newPass === oldPass) {
         alert("New password cannot be the same as the old password.");
         return;
     }
@@ -2048,8 +2292,17 @@ document.getElementById('btn-update-password')?.addEventListener('click', () => 
         return;
     }
 
+    if (cloud) {
+        const { error } = await cloud.auth.updateUser({ password: newPass });
+        if (error) {
+            alert(`Could not change password: ${error.message}`);
+            return;
+        }
+    } else {
+        appState.user.pass = newPass;
+    }
+
     // Success!
-    appState.user.pass = newPass;
     saveState();
     switchPwStep('pw-step-success');
     triggerConfetti();
@@ -2424,7 +2677,7 @@ let isMusicPlaying = false;
 let activeNodes = [];
 let beatTimeoutId = null;
 let birdTimeoutId = null;
-let currentSound = 'white';
+let currentSound = 'tone852';
 
 const musicToggleBtn = document.getElementById('music-toggle');
 const musicPlayIcon = document.getElementById('music-play-icon');
@@ -2497,8 +2750,31 @@ function stopAllNodes() {
     activeNodes = [];
 }
 
-function startWhiteNoise(ctx) {
-    makeNoise(ctx, 'white', 'lowpass', 10000, null, 0.2);
+// 852 Hz tone. A pure tone sounds much sharper than noise at the same volume, so it plays
+// quietly and fades in over 2 seconds instead of starting at full level.
+function startTone852(ctx) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 852;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 2);
+    osc.connect(g); g.connect(masterGain);
+    osc.start();
+    activeNodes.push(osc);
+}
+
+// The 852 Hz warning only shows while that tone is selected
+function updateToneWarning() {
+    const isTone = currentSound === 'tone852';
+    const warning = document.getElementById('tone-warning');
+    if (warning) warning.hidden = !isTone;
+    const hint = document.querySelector('.headphones-hint');
+    if (hint) {
+        hint.classList.toggle('no-headphones', isTone);
+        const label = hint.querySelector('span');
+        if (label) label.innerText = isTone ? 'Headphones not recommended' : 'Best with headphones';
+    }
 }
 
 function startRain(ctx) {
@@ -2630,8 +2906,16 @@ function updateBackgroundAnimation() {
 function startSound(soundKey) {
     const ctx = getAudioCtx();
     stopAllNodes();
+    // Keep the buttons, track name and warning in step (sounds can also start from the AI assistant)
+    currentSound = soundKey;
+    const btn = document.querySelector(`.noise-btn[data-sound="${soundKey}"]`);
+    if (btn) {
+        document.querySelectorAll('.noise-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('track-name').innerText = btn.getAttribute('data-name');
+    }
+    updateToneWarning();
     switch(soundKey) {
-        case 'white':  startWhiteNoise(ctx); break;
+        case 'tone852': startTone852(ctx); break;
         case 'rain':   startRain(ctx);   break;
         case 'forest': startForest(ctx); break;
         case 'ocean':  startOcean(ctx);  break;
@@ -2681,9 +2965,11 @@ document.querySelectorAll('.noise-btn').forEach(btn => {
         btn.classList.add('active');
         document.getElementById('track-name').innerText = name;
         currentSound = sound;
+        updateToneWarning();
         if (isMusicPlaying) startSound(sound);
     });
 });
+updateToneWarning();
 
 // --- Real-time Clock Logic ---
 function updateClock() {
@@ -2956,7 +3242,7 @@ function handleAICommand(input) {
         if (text.includes('rain')) { startSound('rain'); setPlayingUI(true); return "Playing relaxing rain sounds. 🌧️"; }
         if (text.includes('forest')) { startSound('forest'); setPlayingUI(true); return "Playing peaceful forest sounds. 🌲"; }
         if (text.includes('ocean')) { startSound('ocean'); setPlayingUI(true); return "Playing calming ocean waves. 🌊"; }
-        if (text.includes('white noise')) { startSound('white'); setPlayingUI(true); return "Playing white noise. 🎧"; }
+        if (text.includes('852') || text.includes('tone')) { startSound('tone852'); setPlayingUI(true); return "Playing the 852 Hz tone. Keep the volume low, and it's best without headphones. 🔈"; }
     }
     
     if (text.includes('stop') || text.includes('pause')) {
@@ -3045,7 +3331,13 @@ let aiUnlockFailures = 0;
 let aiUnlockBlockedUntil = 0;
 
 async function verifyAccountPassword(pass) {
-    return !!appState.user?.pass && pass === appState.user.pass;
+    if (!appState.user) return false;
+    if (cloud) {
+        // Online accounts keep no password in the browser, so ask Supabase
+        const { error } = await cloud.auth.signInWithPassword({ email: appState.user.email, password: pass });
+        return !error;
+    }
+    return !!appState.user.pass && pass === appState.user.pass;
 }
 
 function lockAiKeySettings() {
@@ -3126,6 +3418,13 @@ const pipDivider = document.getElementById('pip-divider');
 let pipMinimized = false;
 let currentActiveTab = 'dashboard'; // Track the current tab
 
+// Once sound has been played, keep the music player in the PiP even while paused
+let musicWasStarted = false;
+function musicInSession() {
+    if (typeof isMusicPlaying !== 'undefined' && isMusicPlaying) musicWasStarted = true;
+    return musicWasStarted;
+}
+
 // Determine if PiP should be visible
 function shouldShowPip() {
     if (currentActiveTab === 'zen' && !extPipWindow) return false;
@@ -3139,7 +3438,7 @@ function shouldShowPip() {
     const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
     const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
     const timerActive = running || (currentSecs > 0 && currentSecs < total);
-    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+    const musicActive = musicInSession();
 
     return timerActive || musicActive;
 }
@@ -3153,7 +3452,7 @@ function updatePipSections() {
     const running = typeof isTimerRunning !== 'undefined' ? isTimerRunning : false;
     const currentSecs = typeof timerSeconds !== 'undefined' ? timerSeconds : total;
     const timerActive = running || (currentSecs > 0 && currentSecs < total);
-    const musicActive = typeof isMusicPlaying !== 'undefined' ? isMusicPlaying : false;
+    const musicActive = musicInSession();
 
     // Show/hide timer section
     if (timerActive) {
@@ -3165,7 +3464,7 @@ function updatePipSections() {
     // Show/hide music section
     if (musicActive) {
         pipMusicSection.classList.remove('hidden');
-        pipMusicSection.classList.add('playing');
+        pipMusicSection.classList.toggle('playing', !!isMusicPlaying);
     } else {
         pipMusicSection.classList.remove('playing');
         pipMusicSection.classList.add('hidden');
@@ -3272,7 +3571,7 @@ async function openExternalPip() {
         extPipWindow.document.body.classList.add('external-pip-body');
 
         // Apply theme attributes
-        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        const theme = document.documentElement.getAttribute('data-theme') || 'light';
         extPipWindow.document.documentElement.setAttribute('data-theme', theme);
 
         // Copy stylesheets to PiP window
@@ -3364,9 +3663,8 @@ function drawAutoPipCanvas() {
     const w = autoPipCanvas.width;
     const h = autoPipCanvas.height;
 
-    // Get current theme from state or document attribute
-    const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
-    const isDark = theme === 'dark';
+    // Get the theme actually showing (it may be following the device)
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     // Solid themed background colors
     const bgCol = isDark ? '#0b0f19' : '#f8fafc';
@@ -3636,7 +3934,7 @@ if (typeof applyTheme === 'function') {
     const originalApplyTheme = applyTheme;
     applyTheme = function() {
         originalApplyTheme();
-        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        const theme = document.documentElement.getAttribute('data-theme') || 'light';
         if (extPipWindow) {
             extPipWindow.document.documentElement.setAttribute('data-theme', theme);
         }
@@ -3821,6 +4119,332 @@ function getRoomId(friendId) {
     return `room_${sortedEmails[0]}_${sortedEmails[1]}`;
 }
 
+// --- Online friends chat (only when `cloud` is set up; AI buddy chats stay local) ---
+let cloudRooms = {};          // roomId -> [{ id, sender, text, timestamp }]
+let loadedRooms = new Set();  // rooms whose history has been fetched
+let friendProfiles = {};      // email -> { id, name, class } from the profiles table
+let onlineUserIds = new Set();
+let cloudChannels = [];
+
+// Friends are shown by name, never by email
+function getFriendProfile(email) {
+    const key = email.toLowerCase();
+    const profile = friendProfiles[key] || allUsers[key]?.profile || {};
+    return { ...profile, name: (profile.name || '').trim() || 'Friend', class: profile.class || '' };
+}
+
+function isFriendOnline(email) {
+    const id = friendProfiles[email.toLowerCase()]?.id;
+    return !!id && onlineUserIds.has(id);
+}
+
+function addFriendIfNew(email) {
+    if (!appState.friendsList) appState.friendsList = [];
+    if (appState.friendsList.includes(email)) return;
+    appState.friendsList.push(email);
+    saveState();
+    fetchFriendProfiles([email]);
+}
+
+async function fetchFriendProfiles(emails) {
+    if (!cloud || emails.length === 0) return;
+    const { data, error } = await cloud.rpc('get_profiles', { emails });
+    if (error) {
+        console.error('Could not load friend profiles:', error.message);
+        return;
+    }
+    data.forEach(p => { friendProfiles[p.email] = { id: p.id, name: p.name, class: p.class }; });
+    renderFriends();
+    renderChatHeaderStatus();
+}
+
+function addCloudMessage(row, render) {
+    const myEmail = appState.user.email.toLowerCase();
+    if (!cloudRooms[row.room_id]) cloudRooms[row.room_id] = [];
+    const list = cloudRooms[row.room_id];
+    if (list.some(m => m.id === row.id)) return;
+    list.push({ id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) });
+    list.sort((a, b) => a.timestamp - b.timestamp);
+
+    addFriendIfNew(row.member_a === myEmail ? row.member_b : row.member_a);
+    if (render && activeChatId && getRoomId(activeChatId) === row.room_id) renderChatWindow();
+}
+
+async function loadCloudRoom(roomId) {
+    loadedRooms.add(roomId);
+    const { data, error } = await cloud.from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+        .limit(500);
+    if (error) {
+        loadedRooms.delete(roomId);
+        console.error('Could not load messages:', error.message);
+        return;
+    }
+    if (!cloudRooms[roomId]) cloudRooms[roomId] = [];
+    data.forEach(row => addCloudMessage(row, false));
+    if (activeChatId && getRoomId(activeChatId) === roomId) renderChatWindow();
+}
+
+// Friends who messaged you show up in your list even if you never added them
+async function loadCloudFriends() {
+    const myEmail = appState.user.email.toLowerCase();
+    const { data, error } = await cloud.from('messages')
+        .select('member_a, member_b')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+    if (error) {
+        console.error('Could not load chats:', error.message);
+        return;
+    }
+    if (!appState.friendsList) appState.friendsList = [];
+    let updated = false;
+    data.forEach(row => {
+        const other = row.member_a === myEmail ? row.member_b : row.member_a;
+        if (!appState.friendsList.includes(other)) {
+            appState.friendsList.push(other);
+            updated = true;
+        }
+    });
+    if (updated) saveState();
+    fetchFriendProfiles(appState.friendsList);
+}
+
+function startCloudChat() {
+    if (!cloud || !appState.user?.cloudId || cloudChannels.length) return;
+
+    // Database security rules make sure we only receive messages from our own rooms
+    const messagesChannel = cloud.channel('my-messages')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+            payload => addCloudMessage(payload.new, true))
+        .subscribe();
+
+    // Presence shares only your account ID while the app is open, not your email
+    const presenceChannel = cloud.channel('online-users', {
+        config: { presence: { key: appState.user.cloudId } }
+    });
+    presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+            onlineUserIds = new Set(Object.keys(presenceChannel.presenceState()));
+            renderFriends();
+            renderChatHeaderStatus();
+        })
+        .subscribe(status => {
+            if (status === 'SUBSCRIBED') presenceChannel.track({ online_at: new Date().toISOString() });
+        });
+
+    cloudChannels = [messagesChannel, presenceChannel];
+    loadCloudFriends();
+}
+
+function stopCloudChat() {
+    cloudChannels.forEach(channel => cloud.removeChannel(channel));
+    cloudChannels = [];
+    cloudRooms = {};
+    loadedRooms = new Set();
+    friendProfiles = {};
+    onlineUserIds = new Set();
+}
+
+// On page load: make sure the saved login is still a valid online session
+async function restoreCloudSession() {
+    if (!cloud || !appState.user) return;
+    const { data } = await cloud.auth.getSession();
+    const user = data.session?.user;
+    if (!user || user.email.toLowerCase() !== appState.user.email.toLowerCase()) {
+        if (!appState.user.cloudId) {
+            alert('Procrastinote now has online accounts, so you can use the same account on every device. Please log in again (your planner data is kept).');
+        }
+        localStorage.removeItem(SESSION_KEY);
+        appState = JSON.parse(JSON.stringify(defaultState));
+        checkAuth();
+        return;
+    }
+    if (appState.user.cloudId !== user.id || appState.user.pass) {
+        loadUserFromCloud(user);
+        saveState();
+    }
+    startCloudChat();
+    startPlannerSync();
+}
+
+// --- Planner sync: the same account works on every device ---
+// Everything that belongs to the account is saved to Supabase (planner_data, one row per account).
+// Kept on this device only: the encrypted Groq key (locked to this browser) and pictures uploaded
+// into notes (too big for the free plan; picture links still sync). State variables are near the top.
+const isUploadedPicture = src => typeof src === 'string' && src.startsWith('data:');
+
+function buildPlannerPayload() {
+    const data = {};
+    PLANNER_SYNC_FIELDS.forEach(field => { data[field] = appState[field]; });
+    data.notebooks = (appState.notebooks || []).map(nb => ({
+        ...nb,
+        images: (nb.images || []).filter(src => !isUploadedPicture(src))
+    }));
+    return data;
+}
+
+function schedulePlannerSync() {
+    if (!cloud || !plannerReady || applyingRemotePlanner || !appState.user?.cloudId) return;
+    plannerDirty = true;
+    clearTimeout(plannerSyncTimer);
+    plannerSyncTimer = setTimeout(pushPlannerData, 1500); // wait for typing to pause
+}
+
+// Combine changes made here and on another device since the last sync (base).
+// Lists of items (homework, notes...) and maps (holidays, timetable...) merge item by item:
+// additions from both sides are kept, deletions are respected, and an item edited here wins.
+function mergeEntries(baseEntries, localEntries, remoteEntries) {
+    const base = new Map(baseEntries.map(([k, v]) => [k, JSON.stringify(v)]));
+    const local = new Map(localEntries);
+    const result = [];
+    const seen = new Set();
+    remoteEntries.forEach(([k, remoteValue]) => {
+        seen.add(k);
+        if (local.has(k)) {
+            const localValue = local.get(k);
+            result.push([k, JSON.stringify(localValue) !== base.get(k) ? localValue : remoteValue]);
+        } else if (!base.has(k)) {
+            result.push([k, remoteValue]); // added on the other device
+        } // else: deleted here
+    });
+    localEntries.forEach(([k, localValue]) => {
+        if (!seen.has(k) && !base.has(k)) result.push([k, localValue]); // added here
+    });
+    return result;
+}
+
+function mergePlannerField(baseJson, localValue, remoteValue) {
+    if (remoteValue === undefined) return localValue;
+    if (JSON.stringify(localValue) === baseJson) return remoteValue;  // only the other device changed it
+    if (JSON.stringify(remoteValue) === baseJson) return localValue;  // only this device changed it
+    const base = baseJson === undefined ? undefined : JSON.parse(baseJson);
+    if (Array.isArray(localValue) && Array.isArray(remoteValue)) {
+        const keyOf = item => (item && typeof item === 'object' && 'id' in item) ? `id:${item.id}` : `v:${JSON.stringify(item)}`;
+        const toEntries = arr => (Array.isArray(arr) ? arr : []).map(item => [keyOf(item), item]);
+        return mergeEntries(toEntries(base), toEntries(localValue), toEntries(remoteValue)).map(([, v]) => v);
+    }
+    const isMap = v => v && typeof v === 'object' && !Array.isArray(v);
+    if (isMap(localValue) && isMap(remoteValue)) {
+        return Object.fromEntries(mergeEntries(Object.entries(isMap(base) ? base : {}), Object.entries(localValue), Object.entries(remoteValue)));
+    }
+    return localValue; // simple values: the change made here wins
+}
+
+function rememberPlannerBase(data, updatedAt) {
+    plannerBase = {};
+    PLANNER_SYNC_FIELDS.forEach(field => { plannerBase[field] = JSON.stringify(data[field]); });
+    plannerLastSynced = updatedAt;
+}
+
+async function pushPlannerData() {
+    clearTimeout(plannerSyncTimer);
+    if (!cloud || !plannerDirty || !appState.user?.cloudId) return true;
+    const userId = appState.user.cloudId;
+    const local = buildPlannerPayload(); // built before any await, so logging out right after is safe
+    const base = plannerBase;
+    plannerDirty = false;
+
+    let toSave = local;
+    // If another device saved since we last synced, merge instead of overwriting its changes
+    if (plannerLastSynced) {
+        const { data: remote } = await cloud.from('planner_data').select('data, updated_at').eq('user_id', userId).maybeSingle();
+        if (remote && remote.updated_at !== plannerLastSynced) {
+            toSave = { ...(remote.data || {}) };
+            PLANNER_SYNC_FIELDS.forEach(field => {
+                toSave[field] = mergePlannerField(base[field], local[field], (remote.data || {})[field]);
+            });
+            if (appState.user?.cloudId === userId) applyRemotePlanner(toSave);
+        }
+    }
+
+    const updatedAt = new Date().toISOString();
+    const { error } = await cloud.from('planner_data').upsert({ user_id: userId, data: toSave, updated_at: updatedAt });
+    if (error) {
+        plannerDirty = true; // try again on the next change, when the tab is hidden, or when back online
+        console.error('Could not save your planner online:', error.message);
+        return false;
+    }
+    rememberPlannerBase(toSave, updatedAt);
+    return true;
+}
+
+function applyRemotePlanner(remote) {
+    // Keep pictures that were uploaded into notes on this device
+    const localPictures = {};
+    (appState.notebooks || []).forEach(nb => { localPictures[nb.id] = (nb.images || []).filter(isUploadedPicture); });
+
+    PLANNER_SYNC_FIELDS.forEach(field => { if (remote[field] !== undefined) appState[field] = remote[field]; });
+    appState.notebooks = (appState.notebooks || []).map(nb => ({
+        ...nb,
+        images: [...(nb.images || []), ...(localPictures[nb.id] || [])]
+    }));
+
+    applyingRemotePlanner = true;
+    try {
+        updateDayOrderIfNeeded(); // the online copy may be from an earlier day
+        saveState();
+        applyTheme();
+    } finally {
+        applyingRemotePlanner = false;
+    }
+}
+
+async function pullPlannerData() {
+    if (!cloud || !appState.user?.cloudId) return;
+    if (plannerDirty) {
+        await pushPlannerData(); // merges with the online copy, so unsaved changes here aren't lost
+        return;
+    }
+    const { data, error } = await cloud.from('planner_data')
+        .select('data, updated_at')
+        .eq('user_id', appState.user.cloudId)
+        .maybeSingle();
+    if (error) {
+        console.error('Could not load your planner:', error.message);
+        return;
+    }
+    if (!data) {
+        // First time this account is online: upload the planner from this device
+        plannerDirty = true;
+        await pushPlannerData();
+        return;
+    }
+    if (data.updated_at === plannerLastSynced) return;
+    applyRemotePlanner(data.data || {});
+    rememberPlannerBase(data.data || {}, data.updated_at);
+}
+
+async function startPlannerSync() {
+    if (!cloud || !appState.user?.cloudId) return;
+    plannerReady = false;
+    plannerDirty = false;
+    plannerLastSynced = null;
+    plannerBase = {};
+    await pullPlannerData();
+    plannerReady = true;
+}
+
+function stopPlannerSync() {
+    clearTimeout(plannerSyncTimer);
+    plannerReady = false;
+    plannerDirty = false;
+    plannerLastSynced = null;
+    plannerBase = {};
+}
+
+// Pick up changes made on other devices, and save before the tab is hidden or closed
+document.addEventListener('visibilitychange', () => {
+    if (!plannerReady) return;
+    if (document.visibilityState === 'hidden') pushPlannerData();
+    else pullPlannerData();
+});
+window.addEventListener('online', () => { if (plannerReady) pushPlannerData(); });
+setInterval(() => {
+    if (plannerReady && document.visibilityState === 'visible') pullPlannerData();
+}, 60000);
+
 function syncIncomingFriends() {
     if (!appState.user || !appState.user.email) return;
     const currentUserEmail = appState.user.email.toLowerCase();
@@ -3900,10 +4524,8 @@ function renderFriends() {
         
         friends.forEach(email => {
             const isActive = activeChatId === email;
-            const isOnline = (email.toLowerCase() === localStorage.getItem(SESSION_KEY)); // Online if it's the current user (just for demo/fallback)
-            
-            // Get user's name from allUsers database if exists
-            const friendProfile = allUsers[email.toLowerCase()]?.profile || { name: email.split('@')[0], class: 'Unknown' };
+            const isOnline = isFriendOnline(email);
+            const friendProfile = getFriendProfile(email);
             const initials = friendProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
             
             const li = document.createElement('li');
@@ -3915,7 +4537,7 @@ function renderFriends() {
                 </div>
                 <div class="friend-item-info">
                     <div class="friend-item-name">${escapeHTML(friendProfile.name)}</div>
-                    <div class="friend-item-subtext">${escapeHTML(friendProfile.class)} &bull; ${escapeHTML(email)}</div>
+                    <div class="friend-item-subtext">${friendProfile.class ? `${escapeHTML(friendProfile.class)} &bull; ` : ''}${isOnline ? 'Online' : 'Offline'}</div>
                 </div>
             `;
             li.addEventListener('click', () => {
@@ -3976,9 +4598,9 @@ function renderChatWindow() {
         avatarInitials = buddy.avatar;
         avatarBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
     } else {
-        const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0], class: 'Unknown' };
+        const friendProfile = getFriendProfile(activeChatId);
         name = friendProfile.name;
-        isOnline = (activeChatId.toLowerCase() === localStorage.getItem(SESSION_KEY));
+        isOnline = isFriendOnline(activeChatId);
         statusText = isOnline ? 'Online' : 'Offline';
         avatarInitials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         avatarBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
@@ -3999,9 +4621,22 @@ function renderChatWindow() {
     // Load messages
     container.innerHTML = '';
     const roomId = getRoomId(activeChatId);
-    const chats = getChats();
-    const messages = chats[roomId] || [];
-    
+    let messages;
+    if (cloud && !buddy) {
+        if (!loadedRooms.has(roomId)) {
+            container.innerHTML = `
+                <div class="chat-empty-state">
+                    <p>Loading messages...</p>
+                </div>
+            `;
+            loadCloudRoom(roomId);
+            return;
+        }
+        messages = cloudRooms[roomId] || [];
+    } else {
+        messages = getChats()[roomId] || [];
+    }
+
     if (messages.length === 0) {
         container.innerHTML = `
             <div class="chat-empty-state">
@@ -4031,8 +4666,7 @@ function renderChatWindow() {
             senderInitials = buddy.avatar;
             senderBg = 'linear-gradient(135deg, #06b6d4, #8b5cf6)';
         } else {
-            const friendProfile = allUsers[activeChatId.toLowerCase()]?.profile || { name: activeChatId.split('@')[0] };
-            senderName = friendProfile.name;
+            senderName = getFriendProfile(activeChatId).name;
             senderInitials = senderName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
             senderBg = 'linear-gradient(135deg, #3b82f6, #10b981)';
         }
@@ -4052,15 +4686,45 @@ function renderChatWindow() {
     container.scrollTop = container.scrollHeight;
 }
 
+// Update only the Online/Offline label so presence changes don't redraw the messages
+function renderChatHeaderStatus() {
+    const headerStatus = document.getElementById('chat-active-status');
+    if (!headerStatus || !activeChatId || AI_BUDDIES.some(b => b.id === activeChatId)) return;
+    const isOnline = isFriendOnline(activeChatId);
+    headerStatus.innerText = isOnline ? 'Online' : 'Offline';
+    headerStatus.className = `chat-status-label ${isOnline ? 'online' : ''}`;
+}
+
 async function sendChatMessage() {
     const input = document.getElementById('chat-message-input');
     const text = input.value.trim();
     if (!text || !activeChatId || !appState.user) return;
-    
+
     input.value = '';
     const currentUserEmail = appState.user.email.toLowerCase();
     const roomId = getRoomId(activeChatId);
-    
+
+    if (cloud && !AI_BUDDIES.some(b => b.id === activeChatId)) {
+        if (text.length > 2000) {
+            alert('Messages can be at most 2000 characters.');
+            input.value = text;
+            return;
+        }
+        // Same sorted order as getRoomId, so the database's room_id matches
+        const [memberA, memberB] = [currentUserEmail, activeChatId.toLowerCase()].sort();
+        const { data, error } = await cloud.from('messages')
+            .insert({ member_a: memberA, member_b: memberB, sender_email: currentUserEmail, text })
+            .select()
+            .single();
+        if (error) {
+            alert(`Message not sent: ${error.message}`);
+            input.value = text;
+            return;
+        }
+        addCloudMessage(data, true);
+        return;
+    }
+
     const newMessage = {
         sender: currentUserEmail,
         text: text,
@@ -4118,8 +4782,16 @@ async function sendChatMessage() {
 
 // Bind Friends UI actions
 (function initFriendsActions() {
+    // Friends & Chat stays "Coming Soon" until supabase-config.js is filled in
+    if (cloud) {
+        const comingSoon = document.getElementById('friends-coming-soon');
+        if (comingSoon) comingSoon.style.display = 'none'; // its class sets display, so [hidden] wouldn't win
+        const layout = document.getElementById('friends-layout');
+        if (layout) layout.style.display = '';
+    }
+
     // Add Friend
-    document.getElementById('btn-add-friend')?.addEventListener('click', () => {
+    document.getElementById('btn-add-friend')?.addEventListener('click', async () => {
         const input = document.getElementById('friend-search-input');
         const email = input.value.trim().toLowerCase();
         if (!email) return;
@@ -4144,7 +4816,20 @@ async function sendChatMessage() {
             alert("You have already added this friend!");
             return;
         }
-        
+
+        if (cloud) {
+            const { data, error } = await cloud.rpc('get_profiles', { emails: [email] });
+            if (error) {
+                alert(`Could not check that email: ${error.message}`);
+                return;
+            }
+            if (!data || data.length === 0) {
+                alert("No Procrastinote account uses that email yet. Ask your friend to sign up first!");
+                return;
+            }
+            friendProfiles[email] = { id: data[0].id, name: data[0].name, class: data[0].class };
+        }
+
         appState.friendsList.push(email);
         saveState();
         input.value = '';
@@ -4181,4 +4866,5 @@ updateTimerDisplay();
 updateRobotExpression();
 applyTheme();
 checkAuth();
+restoreCloudSession();
 
