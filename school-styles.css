@@ -4171,6 +4171,51 @@ body.external-pip-body .pip-header {
     transform: scale(0.92);
 }
 
+/* ---------- In-page notes (replace alert pop-ups) ---------- */
+.toast-stack {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    width: min(440px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    width: 100%;
+    padding: 0.85rem 1.1rem;
+    border-radius: 16px;
+    background: var(--surface-strong);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--shadow-lg);
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 500;
+    line-height: 1.45;
+    text-align: center;
+    animation: toastIn 0.45s var(--ease-spring) both;
+    transition: opacity 0.3s ease, transform 0.3s var(--ease-out);
+    cursor: url('hand.svg') 12 1, pointer;
+}
+
+.toast.leaving {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+    to { opacity: 1; transform: none; }
+}
+
 /* ---------- Confirm dialog ---------- */
 .confirm-overlay {
     position: fixed;

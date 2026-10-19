@@ -17,6 +17,32 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
+// --- In-page notes instead of pop-up alerts ---
+// Some browsers (and in-app browsers) block alert() pop-ups, which hid sign-up messages.
+// Every alert() in the app now shows as a small note at the top of the page.
+function showToast(message) {
+    let stack = document.getElementById('toast-stack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toast-stack';
+        stack.className = 'toast-stack';
+        stack.setAttribute('role', 'status');
+        stack.setAttribute('aria-live', 'polite');
+        document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = String(message ?? '');
+    const dismiss = () => {
+        toast.classList.add('leaving');
+        setTimeout(() => toast.remove(), 350);
+    };
+    toast.addEventListener('click', dismiss);
+    stack.appendChild(toast);
+    setTimeout(dismiss, Math.min(9000, 3500 + toast.textContent.length * 45));
+}
+window.alert = showToast;
+
 // --- Online backend (Supabase) for accounts, planner sync & friends chat ---
 // Accounts, friend messages and each account's planner live online; localStorage keeps a copy
 // so the app still opens offline. If supabase-config.js is empty, `cloud` is null and the app
@@ -1901,7 +1927,11 @@ async function cloudSignup(name, cls, email, pass) {
         options: { data: { name, class: cls }, emailRedirectTo: window.location.origin }
     });
     if (error) {
-        alert(`Sign up failed: ${error.message}`);
+        if (/rate limit/i.test(error.message)) {
+            alert('Too many sign-up emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.');
+        } else {
+            alert(`Sign up failed: ${error.message}`);
+        }
         return false;
     }
     if (!data.session) {
