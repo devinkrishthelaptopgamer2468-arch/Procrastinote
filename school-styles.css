@@ -2605,6 +2605,27 @@ li.completing .done-check {
     text-transform: uppercase;
 }
 
+.headphones-hint.no-headphones {
+    background: var(--amber-soft);
+    color: var(--amber-text);
+}
+
+.tone-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin: 0.9rem 0 0.2rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 14px;
+    background: var(--amber-soft);
+    color: var(--amber-text);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+.tone-warning svg { flex-shrink: 0; margin-top: 0.1rem; }
+.tone-warning p { margin: 0; }
+.tone-warning[hidden] { display: none; }
+
 .noise-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

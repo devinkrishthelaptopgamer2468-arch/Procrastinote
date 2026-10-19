@@ -686,17 +686,17 @@
                                 <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span>
                                 <h3>Zen sounds</h3>
                             </div>
-                            <div class="headphones-hint">
+                            <div class="headphones-hint no-headphones">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
-                                <span>Best with headphones</span>
+                                <span>Headphones not recommended</span>
                             </div>
                         </div>
-                        <p class="subtitle">Calm noise and nature sounds</p>
+                        <p class="subtitle">A calming tone and nature sounds</p>
 
                         <div class="noise-grid">
-                            <button class="noise-btn active" data-sound="white" data-name="White Noise">
-                                <div class="noise-icon" style="background: #c7cbd6;"></div>
-                                <span>White Noise</span>
+                            <button class="noise-btn active" data-sound="tone852" data-name="852 Hz Tone">
+                                <div class="noise-icon" style="background: #b49cff;"></div>
+                                <span>852 Hz Tone</span>
                             </button>
                             <button class="noise-btn" data-sound="rain" data-name="Rain Sounds">
                                 <div class="noise-icon" style="background: #6b8cff;"></div>
@@ -712,13 +712,18 @@
                             </button>
                         </div>
 
+                        <div id="tone-warning" class="tone-warning" role="note">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                            <p><strong>Keep the volume low.</strong> Loud tones can damage your hearing. Headphones are not recommended for the 852 Hz tone.</p>
+                        </div>
+
                         <div class="music-player-ui">
                             <div class="player-info">
                                 <div class="music-icon-animated">
                                     <span></span><span></span><span></span><span></span>
                                 </div>
                                 <div class="player-text">
-                                    <strong id="track-name">White Noise</strong>
+                                    <strong id="track-name">852 Hz Tone</strong>
                                     <p id="player-status" class="subtitle">Press play to start</p>
                                 </div>
                                 <div class="player-controls">
@@ -987,7 +992,7 @@
                     <span></span><span></span><span></span><span></span>
                 </div>
                 <div class="pip-music-info">
-                    <span class="pip-music-track" id="pip-music-track">White Noise</span>
+                    <span class="pip-music-track" id="pip-music-track">852 Hz Tone</span>
                     <span class="pip-music-status" id="pip-music-status">Playing</span>
                 </div>
                 <button class="pip-ctrl-btn active" id="pip-music-toggle" title="Play or pause sounds" aria-label="Play or pause sounds">

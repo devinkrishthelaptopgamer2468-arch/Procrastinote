@@ -2677,7 +2677,7 @@ let isMusicPlaying = false;
 let activeNodes = [];
 let beatTimeoutId = null;
 let birdTimeoutId = null;
-let currentSound = 'white';
+let currentSound = 'tone852';
 
 const musicToggleBtn = document.getElementById('music-toggle');
 const musicPlayIcon = document.getElementById('music-play-icon');
@@ -2750,8 +2750,31 @@ function stopAllNodes() {
     activeNodes = [];
 }
 
-function startWhiteNoise(ctx) {
-    makeNoise(ctx, 'white', 'lowpass', 10000, null, 0.2);
+// 852 Hz tone. A pure tone sounds much sharper than noise at the same volume, so it plays
+// quietly and fades in over 2 seconds instead of starting at full level.
+function startTone852(ctx) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 852;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 2);
+    osc.connect(g); g.connect(masterGain);
+    osc.start();
+    activeNodes.push(osc);
+}
+
+// The 852 Hz warning only shows while that tone is selected
+function updateToneWarning() {
+    const isTone = currentSound === 'tone852';
+    const warning = document.getElementById('tone-warning');
+    if (warning) warning.hidden = !isTone;
+    const hint = document.querySelector('.headphones-hint');
+    if (hint) {
+        hint.classList.toggle('no-headphones', isTone);
+        const label = hint.querySelector('span');
+        if (label) label.innerText = isTone ? 'Headphones not recommended' : 'Best with headphones';
+    }
 }
 
 function startRain(ctx) {
@@ -2883,8 +2906,16 @@ function updateBackgroundAnimation() {
 function startSound(soundKey) {
     const ctx = getAudioCtx();
     stopAllNodes();
+    // Keep the buttons, track name and warning in step (sounds can also start from the AI assistant)
+    currentSound = soundKey;
+    const btn = document.querySelector(`.noise-btn[data-sound="${soundKey}"]`);
+    if (btn) {
+        document.querySelectorAll('.noise-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('track-name').innerText = btn.getAttribute('data-name');
+    }
+    updateToneWarning();
     switch(soundKey) {
-        case 'white':  startWhiteNoise(ctx); break;
+        case 'tone852': startTone852(ctx); break;
         case 'rain':   startRain(ctx);   break;
         case 'forest': startForest(ctx); break;
         case 'ocean':  startOcean(ctx);  break;
@@ -2934,9 +2965,11 @@ document.querySelectorAll('.noise-btn').forEach(btn => {
         btn.classList.add('active');
         document.getElementById('track-name').innerText = name;
         currentSound = sound;
+        updateToneWarning();
         if (isMusicPlaying) startSound(sound);
     });
 });
+updateToneWarning();
 
 // --- Real-time Clock Logic ---
 function updateClock() {
@@ -3209,7 +3242,7 @@ function handleAICommand(input) {
         if (text.includes('rain')) { startSound('rain'); setPlayingUI(true); return "Playing relaxing rain sounds. 🌧️"; }
         if (text.includes('forest')) { startSound('forest'); setPlayingUI(true); return "Playing peaceful forest sounds. 🌲"; }
         if (text.includes('ocean')) { startSound('ocean'); setPlayingUI(true); return "Playing calming ocean waves. 🌊"; }
-        if (text.includes('white noise')) { startSound('white'); setPlayingUI(true); return "Playing white noise. 🎧"; }
+        if (text.includes('852') || text.includes('tone')) { startSound('tone852'); setPlayingUI(true); return "Playing the 852 Hz tone. Keep the volume low, and it's best without headphones. 🔈"; }
     }
     
     if (text.includes('stop') || text.includes('pause')) {
