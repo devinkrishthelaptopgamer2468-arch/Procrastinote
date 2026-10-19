@@ -2709,10 +2709,15 @@ setInterval(updateClock, 1000);
 updateClock(); // Initial call
 
 // --- AI Assistant Logic ---
+// Groq retires models from time to time (llama-3.1-8b-instant was shut down on 16 Aug 2026).
+// The first model is used normally; if Groq says it's gone, the app asks Groq which models
+// this key can use and switches to the first one from this list (or any other chat model).
 const AI_CONFIG = {
-    model: "llama-3.1-8b-instant",
-    baseUrl: "https://api.groq.com/openai/v1/chat/completions"
+    models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
+    baseUrl: "https://api.groq.com/openai/v1/chat/completions",
+    modelsUrl: "https://api.groq.com/openai/v1/models"
 };
+let activeGroqModel = AI_CONFIG.models[0];
 
 function addMessage(text, isBot = true) {
     const chatMessages = document.getElementById('ai-chat-messages');
@@ -2835,37 +2840,70 @@ function renderGroqKeyStatus() {
     if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
 }
 
+async function requestGroqChat(apiKey, model, sys, prompt) {
+    const response = await fetch(AI_CONFIG.baseUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                { role: "system", content: sys },
+                { role: "user", content: prompt }
+            ],
+            // gpt-oss models think before answering; keep it short so replies stay quick
+            ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: "low" } : {})
+        })
+    });
+    const data = await response.json();
+    console.log("[Groq API Response]", data);
+    return data;
+}
+
+function isModelUnavailableError(error) {
+    const text = `${error.code || ''} ${error.message || ''}`.toLowerCase();
+    return text.includes('model_not_found') || text.includes('model_decommissioned') ||
+        text.includes('does not exist') || text.includes('decommissioned') || text.includes('do not have access');
+}
+
+// Ask Groq which models this key can use; prefer our list, else any text chat model
+async function pickAvailableGroqModel(apiKey) {
+    try {
+        const response = await fetch(AI_CONFIG.modelsUrl, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        const data = await response.json();
+        const ids = (data.data || []).filter(m => m.active !== false).map(m => m.id);
+        const preferred = AI_CONFIG.models.find(id => ids.includes(id) && id !== activeGroqModel);
+        if (preferred) return preferred;
+        // Skip speech, safety-filter and other non-chat models
+        return ids.find(id => id !== activeGroqModel && !/whisper|guard|tts|playai|orpheus|prompt-guard|safeguard/i.test(id)) || null;
+    } catch (e) {
+        console.error("Could not get the Groq model list:", e);
+        return null;
+    }
+}
+
 async function callGroq(prompt, systemPrompt = null) {
     const apiKey = await getGroqKey();
     if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
 
-    const url = AI_CONFIG.baseUrl;
     const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
-    
+
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: AI_CONFIG.model,
-                messages: [
-                    {
-                        role: "system",
-                        content: sys
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ]
-            })
-        });
-        
-        const data = await response.json();
-        console.log("[Groq API Response]", data);
+        let data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+
+        // The model was retired or isn't available to this key: pick another one and retry once
+        if (data.error && isModelUnavailableError(data.error)) {
+            const replacement = await pickAvailableGroqModel(apiKey);
+            if (replacement && replacement !== activeGroqModel) {
+                console.warn(`[Groq] ${activeGroqModel} is unavailable, switching to ${replacement}`);
+                activeGroqModel = replacement;
+                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+            }
+        }
 
         if (data.error) {
             return `API Error: ${data.error.message || "Unknown error occurred."}`;
