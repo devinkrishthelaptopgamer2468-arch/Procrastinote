@@ -1123,6 +1123,18 @@
                 <div class="ai-message bot-message">
                     Hello! I'm your Procrastinote assistant. How can I help you today?
                 </div>
+                <!-- Shown only while no Groq key is saved (see renderGroqKeyStatus) -->
+                <div id="ai-key-guide" class="ai-message bot-message ai-key-guide">
+                    <strong>🔑 Want real AI answers? Add a free Groq key:</strong>
+                    <ol>
+                        <li>Sign up at <b>console.groq.com</b>. Ask a parent first.</li>
+                        <li><b>API Keys → Create API Key</b>. Copy it now, it's shown only once.</li>
+                        <li>Here, go to <b>Settings → Security → AI Assistant Settings</b> and <b>Unlock</b>. Only on your own device.</li>
+                        <li>Paste the key (starts with <b>gsk_</b>), click <b>Save Key</b>, then <b>Lock</b>.</li>
+                        <li>Ask me anything! ⚠️ Never share your key. If someone sees it, delete it on Groq and make a new one.</li>
+                    </ol>
+                    <button type="button" id="ai-key-guide-btn" class="ai-key-guide-btn">Open AI settings</button>
+                </div>
             </div>
 
             <div class="ai-chat-input-area">

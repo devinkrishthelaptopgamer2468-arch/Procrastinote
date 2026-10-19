@@ -2832,8 +2832,11 @@ async function protectLegacyGroqKey() {
 function renderGroqKeyStatus() {
     const status = document.getElementById('groq-key-status');
     const removeBtn = document.getElementById('btn-remove-ai-key');
-    if (!status) return;
     const saved = !!(appState.groqKeyEnc || appState.groqKey);
+    // The setup guide in the AI chat is only needed until a key is saved
+    const guide = document.getElementById('ai-key-guide');
+    if (guide) guide.hidden = saved;
+    if (!status) return;
     status.innerText = saved
         ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
         : 'No key saved.';
@@ -3015,6 +3018,14 @@ document.getElementById('ai-mascot-fab')?.addEventListener('click', () => {
         chat.style.display = isHidden ? 'flex' : 'none';
         if (isHidden) document.getElementById('ai-user-input')?.focus();
     }
+});
+
+// "Open AI settings" in the chat's setup guide: go to Settings > Security
+document.getElementById('ai-key-guide-btn')?.addEventListener('click', () => {
+    document.querySelector('.nav-links li[data-tab="settings"]')?.click();
+    document.getElementById('btn-go-security')?.click();
+    const chat = document.getElementById('ai-chat-window');
+    if (chat) chat.style.display = 'none';
 });
 
 document.getElementById('close-chat-btn')?.addEventListener('click', () => {
