@@ -7,6 +7,6 @@
 //
 // Leave both empty to keep using local-only accounts (chat stays on this device).
 window.PROCRASTINOTE_SUPABASE = {
-    url: '',            // e.g. 'https://abcdefghijklmnop.supabase.co'
-    publishableKey: ''  // starts with 'sb_publishable_' (or the older 'anon' 'public' key)
+    url: 'https://nyjhisnjsuhihjonktfc.supabase.co',
+    publishableKey: 'sb_publishable_QkUL8INjcDCwR6M8ZHzphw_kF4jJGgv'  // public key, safe to share
 };
