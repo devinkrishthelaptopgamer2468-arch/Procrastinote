@@ -1998,6 +1998,13 @@ async function cloudSignup(name, cls, email, pass) {
         }
         return false;
     }
+    // Supabase answers "success" for an email that already has an account, but sends nothing
+    // and returns a user with no identities. Say so instead of promising an email.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        alert('This email already has an account. Log in with it instead.');
+        document.getElementById('btn-login')?.click();
+        return false;
+    }
     if (!data.session) {
         alert(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`);
         document.getElementById('btn-login')?.click();
