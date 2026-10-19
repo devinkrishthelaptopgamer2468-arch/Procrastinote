@@ -143,8 +143,17 @@ function saveState() {
                 emailjs: appState.emailjs
             }
         };
-        localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
-        localStorage.setItem(SESSION_KEY, email);
+        try {
+            localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+            localStorage.setItem(SESSION_KEY, email);
+        } catch (e) {
+            // The browser's storage for this site is full (usually from pictures in notes)
+            if (!saveState._warned) {
+                alert('Your browser storage is full, so changes on this device may not be saved. Remove some pictures from your notes to free up space.');
+                saveState._warned = true;
+                setTimeout(() => { saveState._warned = false; }, 60000);
+            }
+        }
         schedulePlannerSync();
     }
     renderAllViews();
@@ -448,6 +457,13 @@ function getDayOrderForDate(targetDate) {
     }
 }
 
+// "2026-10-20" means that day where you live. new Date("2026-10-20") would read it as midnight
+// in London, which shows the day before for anyone west of the UK.
+function parseDay(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 function formatDateString(date) {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -540,7 +556,7 @@ function showCalendarDayDetails(date) {
         }
     }
 
-    const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    const matchingHw = appState.homework.filter(hw => formatDateString(parseDay(hw.date)) === formattedDate);
     let hwHtml = '';
     if (matchingHw.length > 0) {
         matchingHw.forEach(hw => {
@@ -632,7 +648,7 @@ function createDayCell(date, isCurrentMonth) {
     }
     
     const formattedDate = formatDateString(date);
-    const hasHw = appState.homework.some(hw => formatDateString(new Date(hw.date)) === formattedDate);
+    const hasHw = appState.homework.some(hw => formatDateString(parseDay(hw.date)) === formattedDate);
     if (hasHw) {
         const hwBadge = document.createElement('span');
         hwBadge.className = 'calendar-mini-badge hw-due';
@@ -738,7 +754,7 @@ function updateRobotExpression() {
     now.setHours(0, 0, 0, 0); 
     
     for (let hw of appState.homework) {
-        const hwDate = new Date(hw.date);
+        const hwDate = parseDay(hw.date);
         hwDate.setHours(0, 0, 0, 0);
         if (hwDate < now) {
             isOverdue = true;
@@ -881,7 +897,7 @@ function renderHomework() {
     list.innerHTML = '';
 
     // Sort by date mostly
-    appState.homework.sort((a, b) => new Date(a.date) - new Date(b.date));
+    appState.homework.sort((a, b) => parseDay(a.date) - parseDay(b.date));
 
     if (appState.homework.length === 0) {
         list.innerHTML = '<li class="empty-state">No active homework!</li>';
@@ -893,7 +909,7 @@ function renderHomework() {
             <li style="animation-delay: ${Math.min(index, 8) * 40}ms">
                 <div class="hw-info">
                     <strong>${escapeHTML(hw.task)}</strong>
-                    <span>${escapeHTML(hw.subject)} · Due ${new Date(hw.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    <span>${escapeHTML(hw.subject)} · Due ${parseDay(hw.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
                 <button class="done-btn" onclick="completeHomework(${index}, this)">
                     <span class="done-circle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path class="done-check" d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
@@ -933,7 +949,9 @@ function renderDashboard() {
     // Subjects & Books
     // Get ALL unique subjects to know our master list
     let allSubjects = new Set();
-    Object.values(appState.timetable).forEach(dayList => {
+    const totalDays = parseInt(appState.settings.totalDays) || 6;
+    Object.entries(appState.timetable).forEach(([day, dayList]) => {
+        if (parseInt(day) > totalDays) return; // ignore day orders that were removed in setup
         dayList.forEach(sub => {
             if (sub.trim() !== '') allSubjects.add(sub.trim());
         });
@@ -979,7 +997,7 @@ function renderDashboard() {
     let urgentHw = 0;
 
     appState.homework.forEach(hw => {
-        const diffTime = new Date(hw.date) - now;
+        const diffTime = parseDay(hw.date) - now;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         if (diffDays <= 3) { // Shows due soon
             const when = diffDays < 0 ? 'Overdue' : diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : `In ${diffDays} days`;
@@ -1200,6 +1218,14 @@ window.deleteScheduleItem = function(id) {
             return;
         }
 
+        if (start && end && end <= start) {
+            const endInput = document.getElementById('hs-end');
+            endInput.classList.add('shake-error');
+            setTimeout(() => endInput.classList.remove('shake-error'), 600);
+            alert('The end time needs to be after the start time.');
+            return;
+        }
+
         if (!appState.homeSchedule) appState.homeSchedule = [];
         appState.homeSchedule.push({ id: 'hs_' + Date.now(), daycat, acttype, subject, start, end });
         saveState();
@@ -1258,13 +1284,29 @@ function getNextWorkingDay() {
 // Homework setup
 document.getElementById('homework-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    const taskInput = document.getElementById('hw-task');
+    const task = taskInput.value.trim();
+    const subject = document.getElementById('hw-subject').value;
+    if (!task) {
+        taskInput.classList.add('shake-error');
+        setTimeout(() => taskInput.classList.remove('shake-error'), 600);
+        return;
+    }
+    if (!subject) {
+        const subjectDisplay = document.getElementById('hw-subject-display');
+        subjectDisplay?.classList.add('shake-error');
+        setTimeout(() => subjectDisplay?.classList.remove('shake-error'), 600);
+        alert('Pick a subject for this homework.');
+        return;
+    }
     let deadlineDate = document.getElementById('hw-deadline').value;
     if (!deadlineDate) {
         deadlineDate = getNextWorkingDay();
     }
     const hw = {
-        task: document.getElementById('hw-task').value,
-        subject: document.getElementById('hw-subject').value,
+        id: 'hw_' + Date.now(), // lets account sync merge changes from two devices
+        task,
+        subject,
         date: deadlineDate
     };
     appState.homework.push(hw);
@@ -1590,8 +1632,9 @@ document.getElementById('notebook-image-file')?.addEventListener('change', (e) =
     const file = e.target.files[0];
     if (file) {
         const reader = new FileReader();
-        reader.onload = (ev) => {
-            const dataUrl = ev.target.result;
+        reader.onload = async (ev) => {
+            // Phone photos are several MB; the browser only stores about 5 MB per site, so shrink them first
+            const dataUrl = await shrinkImage(ev.target.result);
             const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
             if (activeNb) {
                 if (!activeNb.images) activeNb.images = [];
@@ -1604,6 +1647,27 @@ document.getElementById('notebook-image-file')?.addEventListener('change', (e) =
     }
     e.target.value = '';
 });
+
+// Resize a picture to at most 1600px and re-save it as a JPEG (usually 150-400 KB)
+function shrinkImage(dataUrl, maxSide = 1600, quality = 0.82) {
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            if (scale === 1 && dataUrl.length < 600000) return resolve(dataUrl);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; // transparent PNGs get a white background in JPEG
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });
+}
 
 window.deleteNotebookImage = function(index) {
     showConfirm("Are you sure you want to delete this image?", () => {
