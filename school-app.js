@@ -17,9 +17,10 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
-// --- Online backend (Supabase) for accounts & friends chat ---
-// Planner data stays in localStorage; only accounts and friend messages live online.
-// If supabase-config.js is empty, `cloud` is null and the app works local-only like before.
+// --- Online backend (Supabase) for accounts, planner sync & friends chat ---
+// Accounts, friend messages and each account's planner live online; localStorage keeps a copy
+// so the app still opens offline. If supabase-config.js is empty, `cloud` is null and the app
+// works local-only like before.
 function isSecretSupabaseKey(key) {
     if (key.startsWith('sb_secret_')) return true;
     try {
@@ -41,6 +42,16 @@ const cloud = (function createCloudClient() {
     }
     return window.supabase.createClient(url, key);
 })();
+
+// Planner sync state (see "Planner sync" near the friends chat code)
+const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates'];
+let plannerReady = false;     // false until this device has loaded the online copy after logging in
+let plannerDirty = false;     // local changes not saved online yet
+let plannerSyncTimer = null;
+let plannerLastSynced = null; // updated_at of the online copy this device last saved or loaded
+let plannerBase = {};         // field -> JSON of the online copy as of plannerLastSynced
+let applyingRemotePlanner = false;
 
 let defaultState = {
     settings: {
@@ -108,6 +119,7 @@ function saveState() {
         };
         localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
         localStorage.setItem(SESSION_KEY, email);
+        schedulePlannerSync();
     }
     renderAllViews();
 }
@@ -1847,6 +1859,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         saveState();
         checkAuth();
         startCloudChat();
+        startPlannerSync(); // loads this account's planner from other devices
         return;
     }
 
@@ -1890,7 +1903,10 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     groqKeyCache = null;
     if (cloud) {
         stopCloudChat();
-        cloud.auth.signOut();
+        // Save any last changes online before signing out (the request is built before appState resets)
+        const lastSave = plannerReady ? pushPlannerData() : Promise.resolve();
+        stopPlannerSync();
+        lastSave.finally(() => cloud.auth.signOut());
     }
     localStorage.removeItem(SESSION_KEY);
     appState = JSON.parse(JSON.stringify(defaultState));
@@ -4081,7 +4097,7 @@ async function restoreCloudSession() {
     const user = data.session?.user;
     if (!user || user.email.toLowerCase() !== appState.user.email.toLowerCase()) {
         if (!appState.user.cloudId) {
-            alert('Procrastinote now has online accounts so you can chat with friends. Please log in again (your planner data is kept).');
+            alert('Procrastinote now has online accounts, so you can use the same account on every device. Please log in again (your planner data is kept).');
         }
         localStorage.removeItem(SESSION_KEY);
         appState = JSON.parse(JSON.stringify(defaultState));
@@ -4093,7 +4109,184 @@ async function restoreCloudSession() {
         saveState();
     }
     startCloudChat();
+    startPlannerSync();
 }
+
+// --- Planner sync: the same account works on every device ---
+// Everything that belongs to the account is saved to Supabase (planner_data, one row per account).
+// Kept on this device only: the encrypted Groq key (locked to this browser) and pictures uploaded
+// into notes (too big for the free plan; picture links still sync). State variables are near the top.
+const isUploadedPicture = src => typeof src === 'string' && src.startsWith('data:');
+
+function buildPlannerPayload() {
+    const data = {};
+    PLANNER_SYNC_FIELDS.forEach(field => { data[field] = appState[field]; });
+    data.notebooks = (appState.notebooks || []).map(nb => ({
+        ...nb,
+        images: (nb.images || []).filter(src => !isUploadedPicture(src))
+    }));
+    return data;
+}
+
+function schedulePlannerSync() {
+    if (!cloud || !plannerReady || applyingRemotePlanner || !appState.user?.cloudId) return;
+    plannerDirty = true;
+    clearTimeout(plannerSyncTimer);
+    plannerSyncTimer = setTimeout(pushPlannerData, 1500); // wait for typing to pause
+}
+
+// Combine changes made here and on another device since the last sync (base).
+// Lists of items (homework, notes...) and maps (holidays, timetable...) merge item by item:
+// additions from both sides are kept, deletions are respected, and an item edited here wins.
+function mergeEntries(baseEntries, localEntries, remoteEntries) {
+    const base = new Map(baseEntries.map(([k, v]) => [k, JSON.stringify(v)]));
+    const local = new Map(localEntries);
+    const result = [];
+    const seen = new Set();
+    remoteEntries.forEach(([k, remoteValue]) => {
+        seen.add(k);
+        if (local.has(k)) {
+            const localValue = local.get(k);
+            result.push([k, JSON.stringify(localValue) !== base.get(k) ? localValue : remoteValue]);
+        } else if (!base.has(k)) {
+            result.push([k, remoteValue]); // added on the other device
+        } // else: deleted here
+    });
+    localEntries.forEach(([k, localValue]) => {
+        if (!seen.has(k) && !base.has(k)) result.push([k, localValue]); // added here
+    });
+    return result;
+}
+
+function mergePlannerField(baseJson, localValue, remoteValue) {
+    if (remoteValue === undefined) return localValue;
+    if (JSON.stringify(localValue) === baseJson) return remoteValue;  // only the other device changed it
+    if (JSON.stringify(remoteValue) === baseJson) return localValue;  // only this device changed it
+    const base = baseJson === undefined ? undefined : JSON.parse(baseJson);
+    if (Array.isArray(localValue) && Array.isArray(remoteValue)) {
+        const keyOf = item => (item && typeof item === 'object' && 'id' in item) ? `id:${item.id}` : `v:${JSON.stringify(item)}`;
+        const toEntries = arr => (Array.isArray(arr) ? arr : []).map(item => [keyOf(item), item]);
+        return mergeEntries(toEntries(base), toEntries(localValue), toEntries(remoteValue)).map(([, v]) => v);
+    }
+    const isMap = v => v && typeof v === 'object' && !Array.isArray(v);
+    if (isMap(localValue) && isMap(remoteValue)) {
+        return Object.fromEntries(mergeEntries(Object.entries(isMap(base) ? base : {}), Object.entries(localValue), Object.entries(remoteValue)));
+    }
+    return localValue; // simple values: the change made here wins
+}
+
+function rememberPlannerBase(data, updatedAt) {
+    plannerBase = {};
+    PLANNER_SYNC_FIELDS.forEach(field => { plannerBase[field] = JSON.stringify(data[field]); });
+    plannerLastSynced = updatedAt;
+}
+
+async function pushPlannerData() {
+    clearTimeout(plannerSyncTimer);
+    if (!cloud || !plannerDirty || !appState.user?.cloudId) return true;
+    const userId = appState.user.cloudId;
+    const local = buildPlannerPayload(); // built before any await, so logging out right after is safe
+    const base = plannerBase;
+    plannerDirty = false;
+
+    let toSave = local;
+    // If another device saved since we last synced, merge instead of overwriting its changes
+    if (plannerLastSynced) {
+        const { data: remote } = await cloud.from('planner_data').select('data, updated_at').eq('user_id', userId).maybeSingle();
+        if (remote && remote.updated_at !== plannerLastSynced) {
+            toSave = { ...(remote.data || {}) };
+            PLANNER_SYNC_FIELDS.forEach(field => {
+                toSave[field] = mergePlannerField(base[field], local[field], (remote.data || {})[field]);
+            });
+            if (appState.user?.cloudId === userId) applyRemotePlanner(toSave);
+        }
+    }
+
+    const updatedAt = new Date().toISOString();
+    const { error } = await cloud.from('planner_data').upsert({ user_id: userId, data: toSave, updated_at: updatedAt });
+    if (error) {
+        plannerDirty = true; // try again on the next change, when the tab is hidden, or when back online
+        console.error('Could not save your planner online:', error.message);
+        return false;
+    }
+    rememberPlannerBase(toSave, updatedAt);
+    return true;
+}
+
+function applyRemotePlanner(remote) {
+    // Keep pictures that were uploaded into notes on this device
+    const localPictures = {};
+    (appState.notebooks || []).forEach(nb => { localPictures[nb.id] = (nb.images || []).filter(isUploadedPicture); });
+
+    PLANNER_SYNC_FIELDS.forEach(field => { if (remote[field] !== undefined) appState[field] = remote[field]; });
+    appState.notebooks = (appState.notebooks || []).map(nb => ({
+        ...nb,
+        images: [...(nb.images || []), ...(localPictures[nb.id] || [])]
+    }));
+
+    applyingRemotePlanner = true;
+    try {
+        updateDayOrderIfNeeded(); // the online copy may be from an earlier day
+        saveState();
+        applyTheme();
+    } finally {
+        applyingRemotePlanner = false;
+    }
+}
+
+async function pullPlannerData() {
+    if (!cloud || !appState.user?.cloudId) return;
+    if (plannerDirty) {
+        await pushPlannerData(); // merges with the online copy, so unsaved changes here aren't lost
+        return;
+    }
+    const { data, error } = await cloud.from('planner_data')
+        .select('data, updated_at')
+        .eq('user_id', appState.user.cloudId)
+        .maybeSingle();
+    if (error) {
+        console.error('Could not load your planner:', error.message);
+        return;
+    }
+    if (!data) {
+        // First time this account is online: upload the planner from this device
+        plannerDirty = true;
+        await pushPlannerData();
+        return;
+    }
+    if (data.updated_at === plannerLastSynced) return;
+    applyRemotePlanner(data.data || {});
+    rememberPlannerBase(data.data || {}, data.updated_at);
+}
+
+async function startPlannerSync() {
+    if (!cloud || !appState.user?.cloudId) return;
+    plannerReady = false;
+    plannerDirty = false;
+    plannerLastSynced = null;
+    plannerBase = {};
+    await pullPlannerData();
+    plannerReady = true;
+}
+
+function stopPlannerSync() {
+    clearTimeout(plannerSyncTimer);
+    plannerReady = false;
+    plannerDirty = false;
+    plannerLastSynced = null;
+    plannerBase = {};
+}
+
+// Pick up changes made on other devices, and save before the tab is hidden or closed
+document.addEventListener('visibilitychange', () => {
+    if (!plannerReady) return;
+    if (document.visibilityState === 'hidden') pushPlannerData();
+    else pullPlannerData();
+});
+window.addEventListener('online', () => { if (plannerReady) pushPlannerData(); });
+setInterval(() => {
+    if (plannerReady && document.visibilityState === 'visible') pullPlannerData();
+}, 60000);
 
 function syncIncomingFriends() {
     if (!appState.user || !appState.user.email) return;

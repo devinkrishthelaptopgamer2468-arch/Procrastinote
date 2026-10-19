@@ -1,16 +1,23 @@
-# Setting up online chat (Supabase)
+# Setting up online accounts and chat (Supabase)
 
-Right now, friend messages only save in *your* browser, so your friends never get them.
-This guide connects Procrastinote to **Supabase**, a free online database, so messages
-travel between different people on different devices, live.
+Right now, everything (your account, homework, timetable, notes, friend messages) saves only in
+*one* browser. This guide connects Procrastinote to **Supabase**, a free online database, so:
+
+- **Your account works on every device.** Log in on your phone or another computer and your
+  planner is there.
+- **Friend messages travel between people**, live.
 
 **Why Supabase?** It gives you real accounts (sign up / log in), a database, live updates and
 "who's online", all free, with no server for you to run. Its security rules are plain SQL
 you can read (they're in [`supabase/setup.sql`](supabase/setup.sql)).
 
-What stays the same: your homework, timetable, notes, etc. still save in your browser like
-before. AI Buddy chats also stay in your browser. Only **accounts** and **friend messages**
-go online.
+**Saved to your account:** homework, timetable, uniforms, day order setup, holidays, home study
+plan, half-days, notes (text and picture links), friends list and theme. Changes save
+automatically a moment after you make them, and other devices pick them up when you open the app.
+
+**Stays on each device:** your Groq AI key (it's locked to the browser where you saved it, so enter
+it again on a new device), pictures uploaded into notes (too big for the free plan), and AI Buddy
+chats.
 
 Takes about 15 minutes.
 
@@ -38,8 +45,10 @@ Takes about 15 minutes.
 That created:
 - `profiles`: your name and class, so friends see who they're talking to.
 - `messages`: the chat messages.
-- **Security rules (Row Level Security):** you can only read messages in chats that include
-  your own email, and you can only send messages as yourself. Nobody can edit or delete messages.
+- `planner_data`: each account's planner (one row per account).
+- **Security rules (Row Level Security):** only you can read or change your own planner. You can
+  only read messages in chats that include your own email, and you can only send messages as
+  yourself. Nobody can edit or delete messages.
 - Live updates for new messages.
 
 ## 3. Set up sign-in

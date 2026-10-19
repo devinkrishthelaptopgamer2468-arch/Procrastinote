@@ -110,7 +110,37 @@ create policy "Members can send to their rooms" on public.messages
 -- No update/delete policies: messages can't be edited or deleted by anyone using the app.
 
 -- =========================================================
--- 3. Live updates: new messages are pushed to the app instantly
+-- 3. Planner data: homework, timetable, notes, etc. for each account,
+--    so the same account works on every device
+-- =========================================================
+create table if not exists public.planner_data (
+    user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+    data jsonb not null default '{}'::jsonb,
+    updated_at timestamptz not null default now(),
+    check (pg_column_size(data) < 5000000) -- about 5 MB per account
+);
+
+alter table public.planner_data enable row level security;
+
+-- Only you can read, create or change your own planner
+drop policy if exists "Users can read their own planner" on public.planner_data;
+create policy "Users can read their own planner" on public.planner_data
+    for select to authenticated
+    using (user_id = auth.uid());
+
+drop policy if exists "Users can create their own planner" on public.planner_data;
+create policy "Users can create their own planner" on public.planner_data
+    for insert to authenticated
+    with check (user_id = auth.uid());
+
+drop policy if exists "Users can update their own planner" on public.planner_data;
+create policy "Users can update their own planner" on public.planner_data
+    for update to authenticated
+    using (user_id = auth.uid())
+    with check (user_id = auth.uid());
+
+-- =========================================================
+-- 4. Live updates: new messages are pushed to the app instantly
 -- =========================================================
 do $$
 begin
