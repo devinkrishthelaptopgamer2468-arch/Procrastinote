@@ -3953,9 +3953,11 @@ let friendProfiles = {};      // email -> { id, name, class } from the profiles 
 let onlineUserIds = new Set();
 let cloudChannels = [];
 
+// Friends are shown by name, never by email
 function getFriendProfile(email) {
     const key = email.toLowerCase();
-    return friendProfiles[key] || allUsers[key]?.profile || { name: key.split('@')[0], class: 'Unknown' };
+    const profile = friendProfiles[key] || allUsers[key]?.profile || {};
+    return { ...profile, name: (profile.name || '').trim() || 'Friend', class: profile.class || '' };
 }
 
 function isFriendOnline(email) {
@@ -4185,7 +4187,7 @@ function renderFriends() {
                 </div>
                 <div class="friend-item-info">
                     <div class="friend-item-name">${escapeHTML(friendProfile.name)}</div>
-                    <div class="friend-item-subtext">${escapeHTML(friendProfile.class)} &bull; ${escapeHTML(email)}</div>
+                    <div class="friend-item-subtext">${friendProfile.class ? `Class ${escapeHTML(friendProfile.class)} &bull; ` : ''}${isOnline ? 'Online' : 'Offline'}</div>
                 </div>
             `;
             li.addEventListener('click', () => {
