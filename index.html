@@ -3,8 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Security rules: the page may only send data to the services it needs (Groq for the AI key,
+         EmailJS, Supabase for accounts and chat, and the CDN for the text-recognition files),
+         so injected code can't leak keys elsewhere. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https://api.groq.com https://api.emailjs.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta name="referrer" content="no-referrer">
     <title>Procrastinote | Educational Planner</title>
-    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <meta name="description" content="Personal school planner for day orders, uniforms, and homework.">
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@500;600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="school-styles.css">
@@ -25,17 +32,7 @@
     <!-- Landing Page / Introduction -->
     <section id="landing-view" class="landing-view">
         <header class="landing-header">
-            <svg class="landing-logo-img animated-logo-svg" viewBox="0 0 100 100" width="80" height="80">
-                <defs>
-                    <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#06b6d4" />
-                        <stop offset="100%" stop-color="#8b5cf6" />
-                    </linearGradient>
-                </defs>
-                <text x="50" y="65" font-family="'Quicksand', sans-serif" font-size="50" font-weight="bold" fill="url(#logo-gradient)" text-anchor="middle">P</text>
-                <path class="box-line" d="M 60 85 L 85 85 L 85 15 L 15 15 L 15 85 L 40 85" fill="none" stroke="url(#logo-gradient)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="landing-brand-name">Procrastinote</span>
+            <img class="landing-logo-full" src="logo-full.png" alt="Procrastinote: Plan. Organize. Study">
         </header>
         <div class="landing-hero">
             <h1 class="hero-words">
@@ -48,6 +45,7 @@
             <p class="hero-subtitle" id="landing-hero-subtitle"></p>
             <button class="get-started-btn" id="get-started-btn" style="opacity: 0;">Get Started</button>
         </div>
+        <p class="landing-credit">Created by Devin Krish</p>
     </section>
 
     <!-- Full-page Intro Overlay -->
@@ -127,17 +125,8 @@
         <nav class="sidebar">
             <div class="logo">
                 <h1 style="display:flex; align-items:center; gap:6px;">
-                    <svg class="animated-logo-svg" viewBox="0 0 100 100" width="32" height="32">
-                        <defs>
-                            <linearGradient id="logo-gradient-sidebar" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#06b6d4" />
-                                <stop offset="100%" stop-color="#8b5cf6" />
-                            </linearGradient>
-                        </defs>
-                        <text x="50" y="65" font-family="'Quicksand', sans-serif" font-size="50" font-weight="bold" fill="url(#logo-gradient-sidebar)" text-anchor="middle">P</text>
-                        <path class="box-line" d="M 60 85 L 85 85 L 85 15 L 15 15 L 15 85 L 40 85" fill="none" stroke="url(#logo-gradient-sidebar)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span>Procrastinote</span>
+                    <img class="logo-full" src="logo-full.png" alt="Procrastinote: Plan. Organize. Study">
+                    <img class="logo-icon" src="logo-icon.png" alt="" aria-hidden="true">
                 </h1>
                 <p id="sidebar-user-class" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.4rem;"></p>
             </div>
@@ -318,21 +307,38 @@
                         <ul id="dash-homework-list">
                         </ul>
                     </div>
+
+                    <div class="card study-plan-card">
+                        <div class="card-title-wrap">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--accent-color)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <h3>Today's Study Plan</h3>
+                        </div>
+                        <div class="study-plan-meta">
+                            <span id="dash-study-daytype" class="study-daytype-badge">Weekday</span>
+                            <button type="button" id="dash-halfday-toggle" class="study-halfday-btn">Half-day today?</button>
+                        </div>
+                        <ul id="dash-study-list" class="study-plan-list"></ul>
+                    </div>
                 </div>
             </section>
 
             <!-- Timetable View -->
             <section id="timetable" class="view">
-                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                    <div>
-                        <h2>Timetable & Subjects</h2>
-                        <p class="subtitle">Set your schedule</p>
-                    </div>
-                    <div class="timetable-switch" style="display: flex; background: var(--bg-card); border-radius: 8px; padding: 4px; border: 1px solid var(--border-color);">
-                        <button id="tt-school-btn" class="btn" style="border: none; background: var(--primary-color); color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">School</button>
-                        <button id="tt-home-btn" class="btn" style="border: none; background: transparent; color: var(--text-primary); padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s;">Home Study</button>
-                    </div>
+                <header class="view-header">
+                    <h2>Timetable & Subjects</h2>
+                    <p class="subtitle">Set your school day orders and your home study plan</p>
                 </header>
+
+                <div class="timetable-switch" role="tablist">
+                    <button id="tt-school-btn" class="tt-tab active" role="tab" aria-selected="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
+                        School Timetable
+                    </button>
+                    <button id="tt-home-btn" class="tt-tab" role="tab" aria-selected="false">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z"/></svg>
+                        Home Study Plan
+                    </button>
+                </div>
                 
                 <div id="school-timetable-view">
                 <div class="card">
@@ -478,7 +484,7 @@
                             </svg>
                             <h3>Security</h3>
                         </div>
-                        <p class="subtitle">Password, email verification and account safety.</p>
+                        <p class="subtitle">Password, AI assistant key and account safety.</p>
                         <div class="card-footer-action">
                             <span>Manage Security</span>
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -555,14 +561,29 @@
                     <div class="card">
                         <h3>AI Assistant Settings</h3>
                         <p class="subtitle" style="margin-bottom: 1.5rem;">Manage your Groq API key for advanced intelligence.</p>
+                        <!-- Locked until the account password is entered again -->
+                        <div id="ai-key-lock">
+                            <div class="form-group">
+                                <label for="ai-unlock-password">Enter your password to manage the key</label>
+                                <input type="password" id="ai-unlock-password" placeholder="••••••••" autocomplete="off">
+                            </div>
+                            <button class="btn secondary-btn" style="width: 100%;" id="btn-unlock-ai-key">Unlock</button>
+                        </div>
+                        <div id="ai-key-controls" hidden>
                         <div class="form-group">
                             <label for="groq-api-key">Groq API Key</label>
-                            <input type="password" id="groq-api-key" placeholder="gsk_..." value="">
+                            <!-- Plain text box with masked characters, so browsers don't offer to save the key as a password -->
+                            <input type="text" id="groq-api-key" class="secret-input" placeholder="gsk_..." autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
+                            <p id="groq-key-status" class="key-status">No key saved.</p>
                         </div>
                         <button class="btn secondary-btn" style="width: 100%;" id="btn-save-ai-key">Save Key</button>
+                        <button class="btn danger-btn" style="width: 100%; margin-top: 0.5rem; display: none;" id="btn-remove-ai-key">Remove Key</button>
+                        <button class="btn secondary-btn" style="width: 100%; margin-top: 0.5rem; border: none;" id="btn-lock-ai-key">Lock</button>
+                        </div>
                     </div>
 
-                    <div class="card" id="email-verify-card">
+                    <!-- Email verification is turned off for now; remove the hidden attributes to bring it back -->
+                    <div class="card" id="email-verify-card" hidden>
                         <h3>Verify Email</h3>
                         <p class="subtitle" style="margin-bottom: 1.5rem;" id="email-verify-status">Confirm your email address for account recovery.</p>
                         
@@ -594,7 +615,7 @@
                         </div>
                     </div>
 
-                    <div class="card">
+                    <div class="card" id="email-service-card" hidden>
                         <h3>Email Service Settings</h3>
                         <p class="subtitle" style="margin-bottom: 1.5rem;">Configure EmailJS credentials to enable real email verification.</p>
                         <div class="form-group">
@@ -920,7 +941,16 @@
                     <p class="subtitle">Connect and chat with your friends and AI Companions</p>
                 </header>
 
-                <div class="friends-layout">
+                <!-- Shown until supabase-config.js is filled in; school-app.js swaps in the chat once it is -->
+                <div id="friends-coming-soon" class="card chat-empty-state" style="max-width: 560px; margin: 2rem auto; padding: 3rem 2rem; text-align: center;">
+                    <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <h3 style="margin: 1rem 0 0.5rem;">Coming Soon</h3>
+                    <p style="color: var(--text-secondary);">Chatting with friends and AI Buddies is on its way. Check back soon!</p>
+                </div>
+
+                <div id="friends-layout" class="friends-layout" style="display: none;">
                     <!-- Friends Sidebar -->
                     <div class="friends-sidebar-card card">
                         <div class="friends-search-box">

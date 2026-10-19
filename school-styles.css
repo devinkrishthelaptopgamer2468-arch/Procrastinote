@@ -15,19 +15,23 @@
     background: var(--accent-color);
 }
 
+/* Light mode: soft blue-grey instead of pure white, so it's bright but easy on the eyes */
 :root {
-    --bg-color: #f7f9fa;
-    --sidebar-bg: #f7f9fad9; /* 85% opacity of bg-color */
-    --sidebar-hover: #e2e8f080;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
+    --bg-color: #e9eef5;
+    --sidebar-bg: #eef2f8d9; /* 85% opacity */
+    --sidebar-hover: #d5deea80;
+    --text-primary: #1e293b;
+    --text-secondary: #556479;
     --accent-color: #3b82f6;
     --accent-hover: #2563eb;
-    --card-bg: #ffffff;
+    --card-bg: #f8fafc;
     --danger: #ef4444;
     --success: #10b981;
-    --border: #e2e8f0;
+    --border: #d6dee8;
     --robot-mouth-color: #ffffff;
+    --glass-bg: rgba(248, 250, 252, 0.75); /* floating panels: clock, mini timer */
+    --fluid-base: #e3eaf3; /* animated background behind the app */
+    --fluid-blob-opacity: 0.22;
 }
 
 [data-theme="dark"] {
@@ -43,6 +47,17 @@
     --success: #10b981;
     --border: #334155;
     --robot-mouth-color: #0f172a;
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --fluid-base: #0f172a;
+    --fluid-blob-opacity: 0.35;
+}
+
+/* Older names still used in some inline styles in index.html */
+:root {
+    --bg-card: var(--card-bg);
+    --border-color: var(--border);
+    --primary-color: var(--accent-color);
+    --bg-secondary: var(--bg-color);
 }
 
 * {
@@ -82,6 +97,24 @@ h1, h2, h3, h4, h5, h6, .logo, .login-logo {
 .landing-logo-img {
     height: 50px;
     width: auto;
+}
+
+.landing-logo-full {
+    height: 120px;
+    width: auto;
+    max-width: 100%;
+}
+
+.landing-credit {
+    position: absolute;
+    left: 2rem;
+    bottom: 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+    opacity: 0;
+    animation: fadeInUp 0.8s ease 1s forwards;
 }
 
 .landing-brand-name {
@@ -437,7 +470,14 @@ body {
     -webkit-backdrop-filter: blur(12px);
     border-right: 1px solid var(--border);
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
+    /* Stay in place while the page scrolls, so the theme switch and Log Out are always visible */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    flex-shrink: 0;
+    overflow-x: hidden;
+    overflow-y: auto; /* very short windows can still reach the bottom buttons */
     z-index: 100;
 }
 
@@ -474,9 +514,33 @@ body {
     transition: opacity 0.3s;
 }
 
-.sidebar.collapsed .logo span, 
+.sidebar.collapsed .logo span,
 .sidebar.collapsed .logo p {
     display: none;
+}
+
+/* Full logo when the sidebar is open, small square icon when it is collapsed */
+.logo .logo-full {
+    display: block;
+    width: 100%;
+    max-width: 190px;
+    height: auto;
+}
+
+/* The logo's thin cyan lines are made for dark backgrounds; deepen them on the light sidebar */
+:root:not([data-theme="dark"]) .logo img {
+    filter: brightness(0.72) saturate(1.4);
+}
+
+.logo .logo-icon,
+.sidebar.collapsed .logo .logo-full {
+    display: none;
+}
+
+.sidebar.collapsed .logo .logo-icon {
+    display: block;
+    width: 44px;
+    height: 44px;
 }
 
 .nav-links {
@@ -880,7 +944,20 @@ input {
     cursor: url('ibeam.svg') 12 12, text;
 }
 
-input[type="text"], input[type="date"], input[type="number"] {
+/* Hides typed characters (like a password box) without browsers offering to save it */
+.secret-input {
+    -webkit-text-security: disc;
+    text-security: disc;
+}
+
+.key-status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+}
+
+input[type="text"], input[type="date"], input[type="number"],
+.view input[type="password"] {
     width: 100%;
     padding: 0.75rem;
     background-color: var(--card-bg);
@@ -1129,7 +1206,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     height: 100vh;
     z-index: -1;
     overflow: hidden;
-    background: #0f172a; /* Dark base color matching the theme */
+    background: var(--fluid-base);
     pointer-events: none;
 }
 
@@ -1139,7 +1216,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     height: 65vw;
     border-radius: 50%;
     filter: blur(100px);
-    opacity: 0.35;
+    opacity: var(--fluid-blob-opacity);
     animation: fluid-move 25s infinite alternate ease-in-out;
 }
 
@@ -1610,7 +1687,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     top: 1.5rem;
     right: 2rem;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--glass-bg);
     backdrop-filter: blur(10px);
     padding: 0.5rem 1rem;
     border-radius: 12px;
@@ -1766,7 +1843,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     right: 0;
     width: 350px;
     height: 500px;
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(248, 250, 252, 0.95);
     backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     border-radius: 24px;
@@ -1839,7 +1916,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    background: rgba(248, 250, 252, 0.5);
+    background: rgba(233, 238, 245, 0.6);
 }
 
 .ai-message {
@@ -1853,7 +1930,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
 
 .bot-message {
     align-self: flex-start;
-    background: white;
+    background: var(--card-bg);
     color: var(--text-primary);
     border-bottom-left-radius: 4px;
     border: 1px solid var(--border);
@@ -1868,7 +1945,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
 
 .ai-chat-input-area {
     padding: 1rem;
-    background: white;
+    background: var(--card-bg);
     border-top: 1px solid var(--border);
     display: flex;
     gap: 0.75rem;
@@ -2129,7 +2206,7 @@ a, button, .btn, .nav-links li, .slider, .done-btn, [type="submit"] {
     left: 2rem;
     z-index: 1999;
     width: 280px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(248, 250, 252, 0.85);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -2690,6 +2767,148 @@ body.external-pip-body .pip-header {
     border: 1px solid var(--border);
 }
 
+/* Dashboard: Today's Study Plan */
+.study-plan-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.study-daytype-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-color);
+    background: rgba(59, 130, 246, 0.12);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+}
+
+.study-halfday-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.study-halfday-btn:hover {
+    color: var(--accent-color);
+}
+
+.study-plan-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.study-plan-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border);
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+}
+
+.study-plan-item.act-homework { border-left-color: #8b5cf6; }
+.study-plan-item.act-revision { border-left-color: #10b981; }
+.study-plan-item.act-break { border-left-color: #f59e0b; }
+
+.study-plan-item.now {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--accent-color);
+    border-left-width: 4px;
+}
+
+.study-plan-item.done {
+    opacity: 0.5;
+}
+
+.study-plan-time {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    font-family: 'Montserrat', sans-serif;
+    white-space: nowrap;
+}
+
+.study-plan-subject {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.study-plan-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.study-plan-item.now .study-plan-tag {
+    color: white;
+    background: var(--accent-color);
+    padding: 0.1rem 0.45rem;
+    border-radius: 5px;
+}
+
+.study-plan-link {
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+/* Timetable: School / Home Study tabs */
+.timetable-switch {
+    display: inline-flex;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    margin-bottom: 1.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    max-width: 100%;
+    flex-wrap: wrap;
+}
+
+.tt-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.3rem;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: 'Montserrat', sans-serif;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.tt-tab:hover:not(.active) {
+    color: var(--text-primary);
+    background: var(--sidebar-hover);
+}
+
+.tt-tab.active {
+    background: var(--accent-color);
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
 .hs-pill {
     background: transparent;
     border: none;
@@ -2843,6 +3062,50 @@ body.external-pip-body .pip-header {
     background: rgba(239, 68, 68, 0.15);
     color: var(--danger);
     animation: pulse-danger 2s infinite ease-in-out;
+}
+
+/* Holidays: amber, so they stand apart from Day Orders (blue) and homework (red) */
+.calendar-mini-badge.holiday-badge {
+    background: rgba(245, 158, 11, 0.18);
+    color: #b45309;
+}
+
+.calendar-day-cell.holiday {
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.holiday-section {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.holiday-section h4 {
+    color: #b45309;
+}
+
+[data-theme="dark"] .calendar-mini-badge.holiday-badge,
+[data-theme="dark"] .holiday-section h4 {
+    color: #fbbf24;
+}
+
+.holiday-name-input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    margin: 0.25rem 0 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.holiday-name-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.holiday-btn {
+    width: 100%;
 }
 
 @keyframes pulse-danger {
@@ -3229,6 +3492,210 @@ body.external-pip-body .pip-header {
 @keyframes typingBounce {
     0%, 80%, 100% { transform: scale(0); }
     40% { transform: scale(1.0); }
+}
+
+/* ===== Phones and small tablets ===== */
+@media (max-width: 768px) {
+    body {
+        overflow-x: hidden;
+    }
+
+    /* Sidebar stays a slim icon rail (school-app.js keeps it collapsed on small screens) */
+    .sidebar,
+    .sidebar.collapsed {
+        width: 64px;
+        padding: 1rem 0;
+    }
+
+    .content-area {
+        padding: 4rem 1rem 6rem; /* room for the clock above and the robot button below */
+        min-width: 0;
+    }
+
+    .top-clock {
+        top: 0.75rem;
+        right: 0.75rem;
+        padding: 0.35rem 0.7rem;
+    }
+
+    #clock-time {
+        font-size: 0.95rem;
+    }
+
+    .view-header {
+        margin-bottom: 1.25rem;
+    }
+
+    .view-header h2 {
+        font-size: 1.5rem;
+    }
+
+    .card {
+        padding: 1.1rem;
+    }
+
+    /* Every two-column layout becomes one column */
+    .dashboard-grid,
+    .checklist-grid,
+    .settings-grid,
+    .homework-layout,
+    .zen-layout,
+    .home-schedule-layout,
+    .calendar-layout,
+    .friends-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-grid > * {
+        grid-column: auto;
+    }
+
+    /* Let cards and form fields shrink to the screen instead of pushing it wider */
+    .content-area .card,
+    .content-area .form-group,
+    .content-area input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .home-schedule-form-card div[style*="grid-template-columns"] {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        gap: 0.6rem !important;
+    }
+
+    .home-schedule-form-card .time-input {
+        padding: 0.6rem 0.5rem !important;
+    }
+
+    .hs-filter-pills {
+        flex-wrap: wrap;
+        max-width: 100%;
+    }
+
+    .hs-pill {
+        padding: 5px 10px;
+    }
+
+    .notebook-layout {
+        grid-template-columns: 1fr !important;
+        height: auto !important;
+    }
+
+    .timetable-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Timetable tabs fill the width */
+    .timetable-switch {
+        display: flex;
+        width: 100%;
+    }
+
+    .tt-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 0.6rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    /* Calendar: compact cells, keep only the Day Order / holiday / homework badges */
+    .calendar-controls {
+        padding: 0.35rem 0.6rem !important;
+        gap: 0.5rem !important;
+    }
+
+    .calendar-days-grid {
+        gap: 0.25rem;
+        min-height: 300px;
+    }
+
+    .calendar-day-cell {
+        padding: 0.25rem;
+        border-radius: 6px;
+        min-width: 0;
+    }
+
+    .calendar-day-num {
+        font-size: 0.8rem;
+    }
+
+    .calendar-mini-badge {
+        font-size: 0.5rem;
+        padding: 0.1rem 0.2rem;
+    }
+
+    .calendar-mini-badge.regular-uniform,
+    .calendar-mini-badge.sports-uniform {
+        display: none;
+    }
+
+    /* Zen timer */
+    .timer-display {
+        width: 200px;
+        height: 200px;
+        max-width: 100%;
+        margin: 1rem auto;
+    }
+
+    .timer-text {
+        font-size: 2.6rem;
+    }
+
+    /* Floating pieces */
+    .ai-assistant {
+        right: 1rem;
+        bottom: 1rem;
+    }
+
+    .ai-chat-window {
+        width: calc(100vw - 2rem);
+        max-width: 350px;
+        height: 70vh;
+    }
+
+    .pip-widget {
+        left: 1rem;
+        width: calc(100vw - 2rem);
+        max-width: 280px;
+    }
+
+    /* Landing and login */
+    .landing-header {
+        padding: 1.25rem 1.5rem;
+    }
+
+    .landing-logo-full {
+        height: 80px;
+    }
+
+    .landing-hero {
+        padding: 0 1rem 5rem;
+    }
+
+    .hero-words {
+        font-size: 2.4rem;
+        letter-spacing: -1px;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .landing-credit {
+        left: 1rem;
+        bottom: 1rem;
+        font-size: 0.8rem;
+    }
+
+    .login-box {
+        padding: 2rem 1.25rem;
+    }
+
+    .fullpage-intro h1 {
+        font-size: 1.8rem;
+    }
 }
 
 

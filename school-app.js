@@ -59,7 +59,10 @@ let defaultState = {
     homework: [], // e.g., { id, task, subject, date }
     emailVerified: false,
     friendsList: [], // Holds list of added friend emails
-    groqKey: '',
+    holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
+    halfdayDates: {}, // e.g. { "2026-10-19": true }: use the half-day study plan that day
+    groqKeyEnc: null, // encrypted Groq key (see "Groq key protection")
+    groqKeyHint: '', // last 4 characters, to recognise which key is saved
     emailjs: {
         publicKey: '',
         serviceId: '',
@@ -95,7 +98,11 @@ function saveState() {
                 homework: appState.homework,
                 emailVerified: appState.emailVerified,
                 friendsList: appState.friendsList || [],
-                groqKey: appState.groqKey,
+                holidays: appState.holidays || {},
+                halfdayDates: appState.halfdayDates || {},
+                groqKeyEnc: appState.groqKeyEnc || null,
+                groqKeyHint: appState.groqKeyHint || '',
+                groqKey: appState.groqKey || undefined, // old readable key, kept only until it's encrypted
                 emailjs: appState.emailjs
             }
         };
@@ -191,8 +198,17 @@ function resetSidebarTimer() {
     }, 1000);
 }
 
+// On phones the sidebar stays a slim icon rail; opening it would cover most of the screen
+const smallScreen = window.matchMedia('(max-width: 768px)');
+
 if (sidebar) {
+    if (smallScreen.matches) sidebar.classList.add('collapsed');
+    smallScreen.addEventListener('change', (e) => {
+        if (e.matches) sidebar.classList.add('collapsed');
+    });
+
     sidebar.addEventListener('mouseenter', () => {
+        if (smallScreen.matches) return;
         clearTimeout(sidebarTimer);
         sidebar.classList.remove('collapsed');
     });
@@ -206,6 +222,17 @@ if (sidebar) {
 }
 
 // --- Date & Day Order Math ---
+// currentDayOrder belongs to the last school day on or before lastUpdatedDate.
+// Weekends and holidays have no Day Order and are skipped when counting.
+function getHoliday(date) {
+    return (appState.holidays || {})[formatDateString(date)];
+}
+
+function isSchoolDay(date) {
+    const dow = date.getDay(); // 0 is Sunday, 6 is Saturday
+    return dow !== 0 && dow !== 6 && getHoliday(date) === undefined;
+}
+
 function updateDayOrderIfNeeded() {
     if (!appState.settings.lastUpdatedDate) {
         appState.settings.lastUpdatedDate = new Date().toDateString();
@@ -234,8 +261,7 @@ function updateDayOrderIfNeeded() {
         let weekdays = 0;
         while (temp < today) {
             temp.setDate(temp.getDate() + 1);
-            let dayOfWeek = temp.getDay(); // 0 is Sunday, 6 is Saturday
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
@@ -260,13 +286,40 @@ function updateDayOrderIfNeeded() {
     return false;
 }
 
-function getTomorrowDayOrder() {
-    // If today is Day Order X, tomorrow is Day Order X+1 (wrapping around)
-    let current = parseInt(appState.settings.currentDayOrder);
-    let total = parseInt(appState.settings.totalDays);
-    let tmrw = current + 1;
-    if (tmrw > total) tmrw = 1;
-    return tmrw;
+// The next school day after today (skips weekends and holidays)
+function getNextSchoolDay() {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 366; i++) {
+        date.setDate(date.getDate() + 1);
+        if (isSchoolDay(date)) return date;
+    }
+    return date;
+}
+
+// Add (name = string) or remove (name = null) a holiday. Every school day after it shifts by one.
+// Future dates shift automatically; for today or a past date, the stored Day Order is shifted too.
+function setHoliday(date, name) {
+    if (!appState.holidays) appState.holidays = {};
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const key = formatDateString(day);
+    const wasSchoolDay = isSchoolDay(day);
+    if (name === null) {
+        delete appState.holidays[key];
+    } else {
+        appState.holidays[key] = name;
+    }
+
+    const lastDate = new Date(appState.settings.lastUpdatedDate);
+    lastDate.setHours(0, 0, 0, 0);
+    if (day <= lastDate && wasSchoolDay !== isSchoolDay(day)) {
+        const total = parseInt(appState.settings.totalDays) || 6;
+        const current = parseInt(appState.settings.currentDayOrder) || 1;
+        const step = isSchoolDay(day) ? 1 : -1;
+        appState.settings.currentDayOrder = ((current - 1 + step + total) % total) + 1;
+    }
+    saveState();
 }
 
 // --- Calendar Logic ---
@@ -278,9 +331,8 @@ function getDayOrderForDate(targetDate) {
     const targetCopy = new Date(targetDate);
     targetCopy.setHours(0,0,0,0);
     
-    const dow = targetCopy.getDay();
-    if (dow === 0 || dow === 6) return null; // Weekend has no Day Order
-    
+    if (!isSchoolDay(targetCopy)) return null; // Weekends and holidays have no Day Order
+
     let lastDate = new Date(appState.settings.lastUpdatedDate);
     lastDate.setHours(0,0,0,0);
     
@@ -297,17 +349,15 @@ function getDayOrderForDate(targetDate) {
     if (targetCopy > lastDate) {
         while (temp.getTime() < targetCopy.getTime()) {
             temp.setDate(temp.getDate() + 1);
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
         }
         return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
     } else {
-        // Mirror of the forward case: count weekdays in (target, lastDate]
+        // Mirror of the forward case: count school days in (target, lastDate]
         while (temp.getTime() > targetCopy.getTime()) {
-            let d = temp.getDay();
-            if (d !== 0 && d !== 6) {
+            if (isSchoolDay(temp)) {
                 weekdays++;
             }
             temp.setDate(temp.getDate() - 1);
@@ -350,7 +400,7 @@ function showCalendarDayDetails(date) {
         html += `
             <div class="calendar-detail-section">
                 <h4>Required Uniform</h4>
-                <p>${uniform}</p>
+                <p>${escapeHTML(uniform)}</p>
             </div>
         `;
         
@@ -358,7 +408,7 @@ function showCalendarDayDetails(date) {
         let subjectsHtml = '';
         daySubjects.forEach((sub, idx) => {
             if (sub.trim() !== '') {
-                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${sub}</li>`;
+                subjectsHtml += `<li><strong>Period ${idx + 1}:</strong> ${escapeHTML(sub)}</li>`;
             }
         });
         if (subjectsHtml === '') {
@@ -373,6 +423,15 @@ function showCalendarDayDetails(date) {
                 </ul>
             </div>
         `;
+    } else if (getHoliday(date) !== undefined) {
+        const holidayName = getHoliday(date);
+        html += `
+            <div class="calendar-detail-section holiday-section">
+                <h4>Holiday</h4>
+                <p>${holidayName ? escapeHTML(holidayName) : 'School holiday'}</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">No Day Order. The schedule continues on the next school day.</p>
+            </div>
+        `;
     } else {
         html += `
             <div class="calendar-detail-section" style="background: rgba(148, 163, 184, 0.05);">
@@ -381,7 +440,27 @@ function showCalendarDayDetails(date) {
             </div>
         `;
     }
-    
+
+    // Holiday controls (weekdays only; weekends already have no Day Order)
+    const dow = date.getDay();
+    if (dow !== 0 && dow !== 6) {
+        if (getHoliday(date) !== undefined) {
+            html += `
+                <div class="calendar-detail-section">
+                    <button type="button" id="cal-remove-holiday" class="btn secondary-btn holiday-btn">Remove Holiday</button>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="calendar-detail-section">
+                    <h4>Holiday?</h4>
+                    <input type="text" id="cal-holiday-name" class="holiday-name-input" maxlength="60" placeholder="Name (optional), e.g. Diwali">
+                    <button type="button" id="cal-mark-holiday" class="btn primary-btn holiday-btn">Mark as Holiday</button>
+                </div>
+            `;
+        }
+    }
+
     const matchingHw = appState.homework.filter(hw => formatDateString(new Date(hw.date)) === formattedDate);
     let hwHtml = '';
     if (matchingHw.length > 0) {
@@ -407,6 +486,16 @@ function showCalendarDayDetails(date) {
     `;
     
     detailsContent.innerHTML = html;
+
+    document.getElementById('cal-mark-holiday')?.addEventListener('click', () => {
+        setHoliday(date, document.getElementById('cal-holiday-name').value.trim());
+    });
+    document.getElementById('cal-remove-holiday')?.addEventListener('click', () => {
+        setHoliday(date, null);
+    });
+    document.getElementById('cal-holiday-name')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('cal-mark-holiday')?.click();
+    });
 }
 
 function createDayCell(date, isCurrentMonth) {
@@ -454,6 +543,13 @@ function createDayCell(date, isCurrentMonth) {
             uniBadge.title = `Uniform: ${uniform}`;
             infoDiv.appendChild(uniBadge);
         }
+    } else if (getHoliday(date) !== undefined) {
+        cell.classList.add('holiday');
+        const holidayBadge = document.createElement('span');
+        holidayBadge.className = 'calendar-mini-badge holiday-badge';
+        holidayBadge.innerText = 'Holiday';
+        holidayBadge.title = getHoliday(date) || 'Holiday';
+        infoDiv.appendChild(holidayBadge);
     }
     
     const formattedDate = formatDateString(date);
@@ -727,8 +823,23 @@ function renderHomework() {
 }
 
 function renderDashboard() {
-    const tmrwDay = getTomorrowDayOrder();
-    document.getElementById('dash-day-order-display').innerText = `Tomorrow is Day Order: ${tmrwDay}`;
+    // Plan for the next school day, skipping weekends and holidays
+    const nextSchoolDay = getNextSchoolDay();
+    const tmrwDay = getDayOrderForDate(nextSchoolDay);
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = nextSchoolDay.getTime() === tomorrow.getTime();
+    const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
+    const tomorrowLabel = document.getElementById('dash-tomorrow-label');
+    if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
+    let dayOrderText = `${nextLabel} is Day Order: ${tmrwDay}`;
+    if (!isTomorrow) {
+        const holidayName = getHoliday(tomorrow);
+        const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
+        dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, Day Order ${tmrwDay}`;
+    }
+    document.getElementById('dash-day-order-display').innerText = dayOrderText;
 
     // Uniform
     const unif = appState.uniforms[tmrwDay];
@@ -757,7 +868,7 @@ function renderDashboard() {
         packListEl.innerHTML = '<li class="empty-state">No subjects set for tomorrow.</li>';
     } else {
         tmrwSubjects.forEach(sub => {
-            packListEl.innerHTML += `<li>${sub}</li>`;
+            packListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
         });
     }
 
@@ -767,7 +878,7 @@ function renderDashboard() {
     let leftBehind = 0;
     allSubjects.forEach(sub => {
         if (!tmrwSubjects.has(sub)) {
-            leaveListEl.innerHTML += `<li>${sub}</li>`;
+            leaveListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
             leftBehind++;
         }
     });
@@ -794,7 +905,79 @@ function renderDashboard() {
     if (urgentHw === 0) {
         hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
     }
+
+    renderStudyPlan();
 }
+
+// --- Dashboard: today's home study blocks ---
+// Which Home Study Plan category applies today: weekday, halfday, weekend or holiday (uses weekend blocks)
+function getTodayStudyCategory() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!isSchoolDay(today)) return getHoliday(today) !== undefined ? 'holiday' : 'weekend';
+    return (appState.halfdayDates || {})[formatDateString(today)] ? 'halfday' : 'weekday';
+}
+
+function renderStudyPlan() {
+    const list = document.getElementById('dash-study-list');
+    const badge = document.getElementById('dash-study-daytype');
+    const halfdayBtn = document.getElementById('dash-halfday-toggle');
+    if (!list) return;
+
+    const category = getTodayStudyCategory();
+    const labels = { weekday: 'Weekday plan', halfday: 'Half-day plan', weekend: 'Weekend plan', holiday: 'Holiday: weekend plan' };
+    if (badge) badge.innerText = labels[category];
+    if (halfdayBtn) {
+        halfdayBtn.style.display = (category === 'weekday' || category === 'halfday') ? '' : 'none';
+        halfdayBtn.innerText = category === 'halfday' ? 'Back to full day' : 'Half-day today?';
+    }
+
+    const daycat = category === 'holiday' ? 'weekend' : category;
+    const blocks = (appState.homeSchedule || [])
+        .filter(item => item.daycat === daycat)
+        .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+
+    if (blocks.length === 0) {
+        list.innerHTML = `
+            <li class="empty-state">No study blocks for this kind of day yet.</li>
+            <li><button type="button" class="btn secondary-btn study-plan-link">Plan study time</button></li>
+        `;
+        list.querySelector('.study-plan-link').addEventListener('click', () => {
+            document.querySelector('li[data-tab="timetable"]')?.click();
+            showTimetableTab('home');
+        });
+        return;
+    }
+
+    const now = new Date();
+    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const actLabels = { study: 'Study', homework: 'Homework', revision: 'Revision', break: 'Break' };
+    list.innerHTML = '';
+    blocks.forEach(item => {
+        let status = '';
+        if (item.end && item.end <= nowTime) status = 'done';
+        else if (item.start && item.start <= nowTime && (!item.end || nowTime < item.end)) status = 'now';
+        const timeStr = item.start && item.end ? `${item.start} – ${item.end}` : (item.start || item.end || '');
+        const li = document.createElement('li');
+        li.className = `study-plan-item act-${escapeHTML(item.acttype)} ${status}`;
+        li.innerHTML = `
+            <span class="study-plan-time">${escapeHTML(timeStr)}</span>
+            <span class="study-plan-subject">${escapeHTML(item.subject || actLabels[item.acttype] || 'Study')}</span>
+            <span class="study-plan-tag">${status === 'now' ? 'Now' : escapeHTML(actLabels[item.acttype] || item.acttype)}</span>
+        `;
+        list.appendChild(li);
+    });
+}
+
+document.getElementById('dash-halfday-toggle')?.addEventListener('click', () => {
+    if (!appState.halfdayDates) appState.halfdayDates = {};
+    const key = formatDateString(new Date());
+    if (appState.halfdayDates[key]) delete appState.halfdayDates[key];
+    else appState.halfdayDates[key] = true;
+    saveState();
+});
+
+setInterval(renderStudyPlan, 60000); // keep the "Now" highlight current
 
 function renderProfile() {
     if (appState.user) {
@@ -877,11 +1060,11 @@ function renderHomeSchedule(filter = 'all') {
         div.innerHTML = `
             <div class="schedule-item-color-bar" style="background: ${color};"></div>
             <div class="schedule-item-body">
-                <div class="schedule-item-time">${timeStr}</div>
-                <div class="schedule-item-subject">${item.subject || 'General'}</div>
+                <div class="schedule-item-time">${escapeHTML(timeStr)}</div>
+                <div class="schedule-item-subject">${escapeHTML(item.subject || 'General')}</div>
                 <div class="schedule-item-badges">
-                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${acttypeLabels[item.acttype] || item.acttype}</span>
-                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${daycatLabels[item.daycat] || item.daycat}</span>
+                    <span class="schedule-badge" style="background: ${color}22; color: ${color};">${escapeHTML(acttypeLabels[item.acttype] || item.acttype)}</span>
+                    <span class="schedule-badge" style="background: rgba(100,116,139,0.1); color: var(--text-secondary);">${escapeHTML(daycatLabels[item.daycat] || item.daycat)}</span>
                 </div>
             </div>
             <button class="schedule-delete-btn" onclick="deleteScheduleItem('${item.id}')" title="Remove">
@@ -954,38 +1137,21 @@ window.deleteScheduleItem = function(id) {
     });
 })();
 
-// Timetable tab switch
-document.getElementById('tt-school-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
-    const homeBtn = document.getElementById('tt-home-btn');
-    if(homeBtn) {
-        homeBtn.classList.remove('active');
-        homeBtn.style.background = 'transparent';
-        homeBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'block';
-    document.getElementById('home-timetable-view').style.display = 'none';
-});
-
-document.getElementById('tt-home-btn')?.addEventListener('click', (e) => {
-    e.target.classList.add('active');
-    e.target.style.background = 'var(--primary-color)';
-    e.target.style.color = 'white';
-    
+// Timetable tab switch ('school' or 'home')
+function showTimetableTab(tab) {
+    const isHome = tab === 'home';
     const schoolBtn = document.getElementById('tt-school-btn');
-    if(schoolBtn) {
-        schoolBtn.classList.remove('active');
-        schoolBtn.style.background = 'transparent';
-        schoolBtn.style.color = 'var(--text-primary)';
-    }
-    
-    document.getElementById('school-timetable-view').style.display = 'none';
-    document.getElementById('home-timetable-view').style.display = 'block';
-});
+    const homeBtn = document.getElementById('tt-home-btn');
+    schoolBtn?.classList.toggle('active', !isHome);
+    homeBtn?.classList.toggle('active', isHome);
+    schoolBtn?.setAttribute('aria-selected', String(!isHome));
+    homeBtn?.setAttribute('aria-selected', String(isHome));
+    document.getElementById('school-timetable-view').style.display = isHome ? 'none' : 'block';
+    document.getElementById('home-timetable-view').style.display = isHome ? 'block' : 'none';
+}
+
+document.getElementById('tt-school-btn')?.addEventListener('click', () => showTimetableTab('school'));
+document.getElementById('tt-home-btn')?.addEventListener('click', () => showTimetableTab('home'));
 
 
 // Helper to calculate the next working day (excluding Saturday/Sunday)
@@ -1721,6 +1887,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', () => {
+    groqKeyCache = null;
     if (cloud) {
         stopCloudChat();
         cloud.auth.signOut();
@@ -1738,6 +1905,8 @@ function checkAuth() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         
+        protectLegacyGroqKey();
+
         // Setup greeting & sidebar
         const firstName = appState.user.name.split(' ')[0];
         document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
@@ -2063,9 +2232,8 @@ function renderEmailJSSettings() {
     const svcIdEl = document.getElementById('emailjs-service-id');
     const tmplIdEl = document.getElementById('emailjs-template-id');
     
-    // Update Groq Key input value from state
-    const groqKeyEl = document.getElementById('groq-api-key');
-    if (groqKeyEl) groqKeyEl.value = appState.groqKey || '';
+    // The saved Groq key is never put back into the page; only its status is shown
+    renderGroqKeyStatus();
     
     if (appState.emailjs) {
         if (pubKeyEl) pubKeyEl.value = appState.emailjs.publicKey || '';
@@ -2671,10 +2839,15 @@ setInterval(updateClock, 1000);
 updateClock(); // Initial call
 
 // --- AI Assistant Logic ---
+// Groq retires models from time to time (llama-3.1-8b-instant was shut down on 16 Aug 2026).
+// The first model is used normally; if Groq says it's gone, the app asks Groq which models
+// this key can use and switches to the first one from this list (or any other chat model).
 const AI_CONFIG = {
-    model: "llama-3.1-8b-instant",
-    baseUrl: "https://api.groq.com/openai/v1/chat/completions"
+    models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
+    baseUrl: "https://api.groq.com/openai/v1/chat/completions",
+    modelsUrl: "https://api.groq.com/openai/v1/models"
 };
+let activeGroqModel = AI_CONFIG.models[0];
 
 function addMessage(text, isBot = true) {
     const chatMessages = document.getElementById('ai-chat-messages');
@@ -2687,37 +2860,180 @@ function addMessage(text, isBot = true) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// --- Groq key protection ---
+// The key is encrypted (AES-GCM) with a browser-generated key that can never be exported,
+// kept in this browser's IndexedDB. Saved data only holds the encrypted form, the page
+// never displays the key again, and it is only ever sent to api.groq.com.
+const SECRET_DB_NAME = 'procrastinote-secrets';
+let groqKeyCache = null; // { email, key }: decrypted key for the logged-in user, in memory only
+
+function openSecretDb() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(SECRET_DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('keys');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function getDeviceKey() {
+    const db = await openSecretDb();
+    const read = () => new Promise((resolve, reject) => {
+        const req = db.transaction('keys').objectStore('keys').get('device');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    const existing = await read();
+    if (existing) return existing;
+    const created = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    // add() fails if another tab created one first; then use theirs
+    await new Promise(resolve => {
+        const tx = db.transaction('keys', 'readwrite');
+        tx.objectStore('keys').add(created, 'device');
+        tx.oncomplete = resolve;
+        tx.onerror = (e) => { e.preventDefault(); resolve(); };
+    });
+    return read();
+}
+
+const toBase64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const fromBase64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+
+async function encryptSecret(plain, email) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        new TextEncoder().encode(plain)
+    );
+    return { iv: toBase64(iv), data: toBase64(data) };
+}
+
+async function decryptSecret(box, email) {
+    const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64(box.iv), additionalData: new TextEncoder().encode(email) },
+        await getDeviceKey(),
+        fromBase64(box.data)
+    );
+    return new TextDecoder().decode(plain);
+}
+
+// Save (string) or remove (empty) the logged-in user's Groq key
+async function setGroqKey(plain) {
+    const email = appState.user.email.toLowerCase();
+    if (!plain) {
+        appState.groqKeyEnc = null;
+        appState.groqKeyHint = '';
+        groqKeyCache = null;
+    } else {
+        appState.groqKeyEnc = await encryptSecret(plain, email);
+        appState.groqKeyHint = plain.slice(-4);
+        groqKeyCache = { email, key: plain };
+    }
+    delete appState.groqKey; // never keep the readable copy
+    saveState();
+}
+
+async function getGroqKey() {
+    if (!appState.user) return '';
+    const email = appState.user.email.toLowerCase();
+    if (groqKeyCache?.email === email) return groqKeyCache.key;
+    if (!appState.groqKeyEnc) return '';
+    try {
+        const key = await decryptSecret(appState.groqKeyEnc, email);
+        groqKeyCache = { email, key };
+        return key;
+    } catch (e) {
+        // Browser data was cleared, so the lock is gone: the saved key can't be read anymore
+        return '';
+    }
+}
+
+// Older versions saved the key as readable text; encrypt it once
+async function protectLegacyGroqKey() {
+    if (!appState.user || !appState.groqKey) return;
+    try {
+        await setGroqKey(appState.groqKey);
+    } catch (e) {
+        console.error('Could not encrypt the saved Groq key:', e.message);
+    }
+}
+
+function renderGroqKeyStatus() {
+    const status = document.getElementById('groq-key-status');
+    const removeBtn = document.getElementById('btn-remove-ai-key');
+    if (!status) return;
+    const saved = !!(appState.groqKeyEnc || appState.groqKey);
+    status.innerText = saved
+        ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
+        : 'No key saved.';
+    if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
+}
+
+async function requestGroqChat(apiKey, model, sys, prompt) {
+    const response = await fetch(AI_CONFIG.baseUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                { role: "system", content: sys },
+                { role: "user", content: prompt }
+            ],
+            // gpt-oss models think before answering; keep it short so replies stay quick
+            ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: "low" } : {})
+        })
+    });
+    const data = await response.json();
+    console.log("[Groq API Response]", data);
+    return data;
+}
+
+function isModelUnavailableError(error) {
+    const text = `${error.code || ''} ${error.message || ''}`.toLowerCase();
+    return text.includes('model_not_found') || text.includes('model_decommissioned') ||
+        text.includes('does not exist') || text.includes('decommissioned') || text.includes('do not have access');
+}
+
+// Ask Groq which models this key can use; prefer our list, else any text chat model
+async function pickAvailableGroqModel(apiKey) {
+    try {
+        const response = await fetch(AI_CONFIG.modelsUrl, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        const data = await response.json();
+        const ids = (data.data || []).filter(m => m.active !== false).map(m => m.id);
+        const preferred = AI_CONFIG.models.find(id => ids.includes(id) && id !== activeGroqModel);
+        if (preferred) return preferred;
+        // Skip speech, safety-filter and other non-chat models
+        return ids.find(id => id !== activeGroqModel && !/whisper|guard|tts|playai|orpheus|prompt-guard|safeguard/i.test(id)) || null;
+    } catch (e) {
+        console.error("Could not get the Groq model list:", e);
+        return null;
+    }
+}
+
 async function callGroq(prompt, systemPrompt = null) {
-    const apiKey = appState.groqKey;
+    const apiKey = await getGroqKey();
     if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
 
-    const url = AI_CONFIG.baseUrl;
     const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
-    
+
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: AI_CONFIG.model,
-                messages: [
-                    {
-                        role: "system",
-                        content: sys
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ]
-            })
-        });
-        
-        const data = await response.json();
-        console.log("[Groq API Response]", data);
+        let data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+
+        // The model was retired or isn't available to this key: pick another one and retry once
+        if (data.error && isModelUnavailableError(data.error)) {
+            const replacement = await pickAvailableGroqModel(apiKey);
+            if (replacement && replacement !== activeGroqModel) {
+                console.warn(`[Groq] ${activeGroqModel} is unavailable, switching to ${replacement}`);
+                activeGroqModel = replacement;
+                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+            }
+        }
 
         if (data.error) {
             return `API Error: ${data.error.message || "Unknown error occurred."}`;
@@ -2841,11 +3157,89 @@ document.getElementById('ai-user-input')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') processAIInput();
 });
 
-document.getElementById('btn-save-ai-key')?.addEventListener('click', () => {
-    const key = document.getElementById('groq-api-key').value;
-    appState.groqKey = key;
-    saveState();
-    alert("AI Settings Saved!");
+// --- Password lock for the AI key settings ---
+// Someone using an already logged-in computer can't change or remove the key without the password.
+let aiKeyRelockTimer = null;
+let aiUnlockFailures = 0;
+let aiUnlockBlockedUntil = 0;
+
+async function verifyAccountPassword(pass) {
+    if (!appState.user) return false;
+    if (cloud) {
+        // Online accounts keep no password in the browser, so ask Supabase
+        const { error } = await cloud.auth.signInWithPassword({ email: appState.user.email, password: pass });
+        return !error;
+    }
+    return !!appState.user.pass && pass === appState.user.pass;
+}
+
+function lockAiKeySettings() {
+    clearTimeout(aiKeyRelockTimer);
+    document.getElementById('ai-key-lock')?.removeAttribute('hidden');
+    document.getElementById('ai-key-controls')?.setAttribute('hidden', '');
+    const keyInput = document.getElementById('groq-api-key');
+    if (keyInput) keyInput.value = '';
+    const passInput = document.getElementById('ai-unlock-password');
+    if (passInput) passInput.value = '';
+}
+
+document.getElementById('btn-unlock-ai-key')?.addEventListener('click', async () => {
+    const passInput = document.getElementById('ai-unlock-password');
+    if (Date.now() < aiUnlockBlockedUntil) {
+        alert(`Too many wrong tries. Wait ${Math.ceil((aiUnlockBlockedUntil - Date.now()) / 1000)} seconds.`);
+        return;
+    }
+    if (!(await verifyAccountPassword(passInput.value))) {
+        aiUnlockFailures++;
+        if (aiUnlockFailures >= 5) {
+            aiUnlockFailures = 0;
+            aiUnlockBlockedUntil = Date.now() + 30000;
+        }
+        passInput.classList.add('shake-error');
+        setTimeout(() => passInput.classList.remove('shake-error'), 750);
+        passInput.value = '';
+        return;
+    }
+    aiUnlockFailures = 0;
+    passInput.value = '';
+    document.getElementById('ai-key-lock').setAttribute('hidden', '');
+    document.getElementById('ai-key-controls').removeAttribute('hidden');
+    renderGroqKeyStatus();
+    aiKeyRelockTimer = setTimeout(lockAiKeySettings, 5 * 60 * 1000); // relock after 5 minutes
+});
+
+document.getElementById('ai-unlock-password')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-unlock-ai-key')?.click();
+});
+document.getElementById('btn-lock-ai-key')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('btn-go-security')?.addEventListener('click', lockAiKeySettings);
+document.getElementById('logout-btn')?.addEventListener('click', lockAiKeySettings);
+
+document.getElementById('btn-save-ai-key')?.addEventListener('click', async () => {
+    const input = document.getElementById('groq-api-key');
+    const key = input.value.trim();
+    if (!key) {
+        alert("Type your Groq key first. To delete the saved key, press Remove Key.");
+        return;
+    }
+    if (!/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
+        alert("That doesn't look like a Groq key. Groq keys start with gsk_.");
+        return;
+    }
+    try {
+        await setGroqKey(key);
+        input.value = '';
+        alert("Key saved and encrypted on this device.");
+    } catch (e) {
+        alert("Your browser couldn't store the key securely, so it wasn't saved. Try a normal (not private) window.");
+    }
+});
+
+document.getElementById('btn-remove-ai-key')?.addEventListener('click', async () => {
+    if (!confirm("Remove your saved Groq key from this device?")) return;
+    await setGroqKey('');
+    document.getElementById('groq-api-key').value = '';
+    alert("Key removed.");
 });
 
 // --- Picture-in-Picture Widget Logic ---
@@ -4008,7 +4402,7 @@ async function sendChatMessage() {
         let aiResponse = "";
         
         // If Groq key is available, let's call API
-        if (appState.groqKey && appState.groqKey.startsWith('gsk_')) {
+        if ((await getGroqKey()).startsWith('gsk_')) {
             aiResponse = await callGroq(prompt, buddy.systemPrompt);
         }
         
@@ -4036,6 +4430,14 @@ async function sendChatMessage() {
 
 // Bind Friends UI actions
 (function initFriendsActions() {
+    // Friends & Chat stays "Coming Soon" until supabase-config.js is filled in
+    if (cloud) {
+        const comingSoon = document.getElementById('friends-coming-soon');
+        if (comingSoon) comingSoon.style.display = 'none'; // its class sets display, so [hidden] wouldn't win
+        const layout = document.getElementById('friends-layout');
+        if (layout) layout.style.display = '';
+    }
+
     // Add Friend
     document.getElementById('btn-add-friend')?.addEventListener('click', async () => {
         const input = document.getElementById('friend-search-input');

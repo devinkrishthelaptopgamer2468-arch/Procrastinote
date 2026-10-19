@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Tab icon: the Procrastinote logo with thicker lines so it stays readable at 16px -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#19e3d4"/>
+      <stop offset="1" stop-color="#5b6ee8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M13 31V13H51V51H32" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M27 44V22H34a7 7 0 0 1 0 14H27" fill="none" stroke="url(#g)" stroke-width="5" stroke-linecap="square" stroke-linejoin="round"/>
+</svg>

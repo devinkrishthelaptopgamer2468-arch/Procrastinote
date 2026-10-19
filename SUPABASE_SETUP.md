@@ -115,20 +115,13 @@ The app moves your account online automatically and keeps all your planner data.
 
 ## 6. Push and redeploy on Vercel
 
-The code is on a branch called **`feature/supabase-chat`**.
+The code is on the branch **`feature/supabase-chat`**. The Friends page shows "Coming Soon" until
+`supabase-config.js` is filled in, then switches to the real chat by itself.
 
-1. Open **GitHub Desktop**. Make sure *Current branch* says `feature/supabase-chat`.
-2. In the list of changed files, tick these:
-   `index.html`, `school-app.js`, `supabase-config.js`, `supabase/setup.sql`, `SUPABASE_SETUP.md`.
-   **Untick** anything inside `.claude/`. That's a local testing file and doesn't belong online.
-3. Before you commit, click `supabase-config.js` and check it has **only** your project URL and
-   the `sb_publishable_` key. No `sb_secret_`, no database password.
-4. Write a summary like *"Online friends chat with Supabase"* and click **Commit to feature/supabase-chat**.
-5. Click **Publish branch** (or **Push origin**).
-6. Vercel automatically builds a **Preview** for the branch. Find its link in your Vercel
-   dashboard (or on the GitHub branch page) and test chat there with your two accounts.
-7. When it works, in GitHub Desktop click **Create Pull Request**, then on GitHub click
-   **Merge pull request**. Vercel redeploys your main site automatically in about a minute.
+1. Commit `supabase-config.js` on `feature/supabase-chat`. Before you commit, check it has **only**
+   your project URL and the `sb_publishable_` key. No `sb_secret_`, no database password.
+2. Push the branch. Vercel builds a **Preview** link for it. Test chat there with your two accounts.
+3. When it works, merge it into `main` with a pull request as usual.
 
 ## If something goes wrong
 
