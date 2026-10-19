@@ -1937,6 +1937,17 @@ setupCustomDropdown(
 // --- Auth Toggle Logic ---
 let currentAuthMode = 'signup'; // default
 
+// Sign-up / log-in problems are shown inside the form. kind 'info' is for good news (email sent).
+function showAuthMessage(text, kind = 'error') {
+    const el = document.getElementById('auth-message');
+    if (!el) return;
+    el.innerText = text || '';
+    el.hidden = !text;
+    el.classList.toggle('info', kind === 'info');
+}
+
+document.getElementById('login-form')?.addEventListener('input', () => showAuthMessage(''));
+
 document.getElementById('btn-login')?.addEventListener('click', () => {
     currentAuthMode = 'login';
     document.querySelector('.auth-slider').classList.add('login-mode');
@@ -1948,6 +1959,7 @@ document.getElementById('btn-login')?.addEventListener('click', () => {
     
     document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = 'none');
     document.getElementById('login-name').removeAttribute('required'); // Prevent form validation
+    showAuthMessage('');
 });
 
 document.getElementById('btn-signup')?.addEventListener('click', () => {
@@ -1962,6 +1974,7 @@ document.getElementById('btn-signup')?.addEventListener('click', () => {
     // Reset hiding to default flex/block state, assuming normal standard is block.
     document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = '');
     document.getElementById('login-name').setAttribute('required', 'true');
+    showAuthMessage('');
 });
 
 function shakePasswordInput(id) {
@@ -1992,22 +2005,22 @@ async function cloudSignup(name, cls, email, pass) {
     });
     if (error) {
         if (/rate limit/i.test(error.message)) {
-            alert('Too many sign-up emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.');
+            showAuthMessage('Too many sign-up emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.');
         } else {
-            alert(`Sign up failed: ${error.message}`);
+            showAuthMessage(`Sign up failed: ${error.message}`);
         }
         return false;
     }
     // Supabase answers "success" for an email that already has an account, but sends nothing
     // and returns a user with no identities. Say so instead of promising an email.
     if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        alert('This email already has an account. Log in with it instead.');
         document.getElementById('btn-login')?.click();
+        showAuthMessage('This email already has an account. Log in with it instead.');
         return false;
     }
     if (!data.session) {
-        alert(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`);
         document.getElementById('btn-login')?.click();
+        showAuthMessage(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`, 'info');
         return false;
     }
     loadUserFromCloud(data.user);
@@ -2023,11 +2036,12 @@ async function cloudLogin(email, pass) {
             return cloudSignup(local.profile.name, local.profile.class, email, pass);
         }
         if (/not confirmed/i.test(error.message)) {
-            alert('Please click the confirmation link in your email first, then log in.');
+            showAuthMessage('Please click the confirmation link in your email first, then log in.');
         } else if (/invalid login/i.test(error.message)) {
             shakePasswordInput('login-password');
+            showAuthMessage('Wrong email or password.');
         } else {
-            alert(`Log in failed: ${error.message}`);
+            showAuthMessage(`Log in failed: ${error.message}`);
         }
         return false;
     }
@@ -2044,7 +2058,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
     if (cloud) {
         if (currentAuthMode === 'signup' && !cls) {
-            alert("Please select a Class / Grade!");
+            showAuthMessage('Please select your Class / Grade.');
             return;
         }
         const submitBtn = document.getElementById('auth-submit-btn');
@@ -2055,7 +2069,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                 ? await cloudLogin(email, pass)
                 : await cloudSignup(name, cls, email, pass);
         } catch (err) {
-            alert(`Could not reach the server: ${err.message}`);
+            showAuthMessage(`Could not reach the server: ${err.message}`);
         } finally {
             submitBtn.disabled = false;
         }
@@ -2070,13 +2084,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     if (currentAuthMode === 'login') {
         const userEntry = allUsers[email];
         if (!userEntry) {
-            alert('No account found! Please sign up first.');
+            showAuthMessage('No account found with this email. Please sign up first.');
             return;
         }
         if (userEntry.profile.pass !== pass) {
             const passInput = document.getElementById('login-password');
             passInput.classList.add('shake-error');
             setTimeout(() => passInput.classList.remove('shake-error'), 750);
+            showAuthMessage('Wrong email or password.');
             return;
         }
         // Load user data
@@ -2087,11 +2102,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     } else {
         // Signup Mode
         if (!cls) {
-            alert("Please select a Class / Grade!");
+            showAuthMessage('Please select your Class / Grade.');
             return;
         }
         if (allUsers[email]) {
-            alert("Account already exists with this email!");
+            showAuthMessage('An account with this email already exists. Try logging in instead.');
             return;
         }
         // Create new user with default data

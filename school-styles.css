@@ -1480,6 +1480,23 @@ li.empty-state::before {
     font-weight: 500;
 }
 
+.auth-message {
+    margin: 0 0 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 12px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 0.86rem;
+    font-weight: 600;
+    line-height: 1.45;
+    text-align: center;
+}
+.auth-message.info {
+    background: var(--teal-soft);
+    color: var(--teal);
+}
+.auth-message[hidden] { display: none; }
+
 .login-btn {
     width: 100%;
     padding: 0.95rem 1.2rem;
