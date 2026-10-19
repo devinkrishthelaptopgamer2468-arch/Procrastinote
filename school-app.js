@@ -58,7 +58,7 @@ let defaultState = {
         totalDays: 6,
         currentDayOrder: 1, // Represents 'Today'
         lastUpdatedDate: new Date().toDateString(),
-        theme: 'light'
+        theme: 'system' // follow the device until the person picks light or dark
     },
     user: null, // Holds profile info
     notebooks: [], // e.g. [{id, title, content, images: []}]
@@ -186,52 +186,93 @@ document.addEventListener('click', (e) => {
 });
 
 // --- Navigation Logic ---
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const phoneNav = window.matchMedia('(max-width: 820px)');
+
 document.querySelectorAll('.nav-links li').forEach(link => {
     link.addEventListener('click', (e) => {
         const li = e.currentTarget;
         document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-        
+
         li.classList.add('active');
         const tabId = li.getAttribute('data-tab');
         document.getElementById(tabId).classList.add('active-view');
+        closePhoneNav();
+        window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
     });
 });
 
-
-// Sidebar Auto-collapse Logic
-let sidebarTimer;
-const sidebar = document.querySelector('.sidebar');
-
-function resetSidebarTimer() {
-    clearTimeout(sidebarTimer);
-    sidebarTimer = setTimeout(() => {
-        sidebar.classList.add('collapsed');
-    }, 1000);
+// When any view becomes visible (dock, back buttons, mini player...), its cards float in one after another
+function playViewEntrance(view) {
+    if (!view || reducedMotion.matches) return;
+    const items = view.querySelectorAll(':scope > .view-header, .card, .timetable-switch');
+    items.forEach((el, i) => el.style.setProperty('--i', Math.min(i, 10)));
+    view.classList.remove('entering');
+    void view.offsetWidth; // restart the animation
+    view.classList.add('entering');
+    clearTimeout(view._enterTimer);
+    view._enterTimer = setTimeout(() => view.classList.remove('entering'), 1500);
 }
 
-// On phones the sidebar stays a slim icon rail; opening it would cover most of the screen
-const smallScreen = window.matchMedia('(max-width: 768px)');
-
-if (sidebar) {
-    if (smallScreen.matches) sidebar.classList.add('collapsed');
-    smallScreen.addEventListener('change', (e) => {
-        if (e.matches) sidebar.classList.add('collapsed');
+const viewObserver = new MutationObserver(mutations => {
+    mutations.forEach(m => {
+        const view = m.target;
+        const wasActive = (m.oldValue || '').split(' ').includes('active-view');
+        if (view.classList.contains('active-view') && !wasActive) playViewEntrance(view);
     });
+});
+document.querySelectorAll('.view').forEach(view => {
+    viewObserver.observe(view, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+});
 
-    sidebar.addEventListener('mouseenter', () => {
-        if (smallScreen.matches) return;
-        clearTimeout(sidebarTimer);
-        sidebar.classList.remove('collapsed');
-    });
-
-    sidebar.addEventListener('mouseleave', () => {
-        resetSidebarTimer();
-    });
-
-    // Start timer on load
-    resetSidebarTimer();
+// Phone menu: the dock slides in from the left
+function closePhoneNav() {
+    document.body.classList.remove('nav-open');
+    document.getElementById('nav-toggle')?.setAttribute('aria-expanded', 'false');
 }
+
+document.getElementById('nav-toggle')?.addEventListener('click', () => {
+    const open = document.body.classList.toggle('nav-open');
+    document.getElementById('nav-toggle').setAttribute('aria-expanded', String(open));
+});
+document.getElementById('nav-scrim')?.addEventListener('click', closePhoneNav);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePhoneNav();
+});
+phoneNav.addEventListener('change', closePhoneNav);
+
+// Dock magnify: icons near the mouse grow, like a Mac dock
+(function setupDockMagnify() {
+    const dock = document.getElementById('app-dock');
+    if (!dock) return;
+    const items = Array.from(dock.querySelectorAll('.dock-item'));
+    let centers = [];
+
+    const reset = () => items.forEach(item => item.style.setProperty('--mag', '1'));
+    dock.addEventListener('mouseenter', () => {
+        // Measure while everything is at normal size, so growing icons don't shift the targets
+        centers = items.map(item => {
+            const r = item.getBoundingClientRect();
+            return r.left + r.width / 2;
+        });
+    });
+    dock.addEventListener('mousemove', (e) => {
+        if (phoneNav.matches || reducedMotion.matches || !centers.length) return;
+        items.forEach((item, i) => {
+            const distance = Math.abs(e.clientX - centers[i]);
+            const mag = 1 + 0.4 * Math.max(0, 1 - distance / 120);
+            item.style.setProperty('--mag', mag.toFixed(3));
+        });
+    });
+    dock.addEventListener('mouseleave', reset);
+    phoneNav.addEventListener('change', reset);
+})();
+
+// Top bar turns frosted once the page scrolls
+window.addEventListener('scroll', () => {
+    document.querySelector('.app-topbar')?.classList.toggle('scrolled', window.scrollY > 8);
+}, { passive: true });
 
 // --- Date & Day Order Math ---
 // currentDayOrder belongs to the last school day on or before lastUpdatedDate.
@@ -823,18 +864,24 @@ function renderHomework() {
 
     appState.homework.forEach((hw, index) => {
         list.innerHTML += `
-            <li>
+            <li style="animation-delay: ${Math.min(index, 8) * 40}ms">
                 <div class="hw-info">
-                    <strong>${escapeHTML(hw.task)} (${escapeHTML(hw.subject)})</strong>
-                    <span>Due: ${new Date(hw.date).toLocaleDateString()}</span>
+                    <strong>${escapeHTML(hw.task)}</strong>
+                    <span>${escapeHTML(hw.subject)} · Due ${new Date(hw.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
-                <button class="done-btn" onclick="completeHomework(${index})">Mark Done</button>
+                <button class="done-btn" onclick="completeHomework(${index}, this)">
+                    <span class="done-circle"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path class="done-check" d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+                    Done
+                </button>
             </li>
         `;
     });
 }
 
 function renderDashboard() {
+    const dateLine = document.getElementById('dash-date');
+    if (dateLine) dateLine.innerText = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+
     // Plan for the next school day, skipping weekends and holidays
     const nextSchoolDay = getNextSchoolDay();
     const tmrwDay = getDayOrderForDate(nextSchoolDay);
@@ -845,7 +892,7 @@ function renderDashboard() {
     const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
     const tomorrowLabel = document.getElementById('dash-tomorrow-label');
     if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
-    let dayOrderText = `${nextLabel} is Day Order: ${tmrwDay}`;
+    let dayOrderText = `Day Order ${tmrwDay}`;
     if (!isTomorrow) {
         const holidayName = getHoliday(tomorrow);
         const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
@@ -855,7 +902,7 @@ function renderDashboard() {
 
     // Uniform
     const unif = appState.uniforms[tmrwDay];
-    document.getElementById('dash-uniform').innerText = unif ? unif : "Not Set up - Check settings!";
+    document.getElementById('dash-uniform').innerText = unif ? unif : "Not set yet";
 
     // Subjects & Books
     // Get ALL unique subjects to know our master list
@@ -909,13 +956,14 @@ function renderDashboard() {
         const diffTime = new Date(hw.date) - now;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         if (diffDays <= 3) { // Shows due soon
-            hwList.innerHTML += `<li>${escapeHTML(hw.task)} - Due in ${diffDays} days</li>`;
+            const when = diffDays < 0 ? 'Overdue' : diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : `In ${diffDays} days`;
+            hwList.innerHTML += `<li class="${diffDays < 0 ? 'overdue' : ''}"><span class="due-task">${escapeHTML(hw.task)}</span><span class="due-when">${when}</span></li>`;
             urgentHw++;
         }
     });
 
     if (urgentHw === 0) {
-        hwList.innerHTML = '<li class="empty-state">No homework due soon!</li>';
+        hwList.innerHTML = '<li class="empty-state">Nothing due soon. Nice.</li>';
     }
 
     renderStudyPlan();
@@ -1209,10 +1257,27 @@ document.getElementById('homework-form').addEventListener('submit', (e) => {
     saveState();
 });
 
-window.completeHomework = function(index) {
-    appState.homework.splice(index, 1);
-    saveState();
-    triggerConfetti();
+// Finishing homework: the check draws itself, then the item slides away
+window.completeHomework = function(index, button) {
+    const li = button?.closest('li');
+    if (!li || reducedMotion.matches) {
+        appState.homework.splice(index, 1);
+        saveState();
+        return;
+    }
+    if (li.classList.contains('completing')) return; // already on its way out
+    const task = appState.homework[index];
+    li.classList.add('completing');
+    setTimeout(() => {
+        li.style.height = `${li.offsetHeight}px`;
+        void li.offsetHeight;
+        li.classList.add('leaving');
+    }, 420);
+    setTimeout(() => {
+        const current = appState.homework.indexOf(task);
+        if (current !== -1) appState.homework.splice(current, 1);
+        saveState();
+    }, 1050);
 }
 
 // --- Notebook Logic ---
@@ -1636,19 +1701,57 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
 });
 
 // --- Theme Toggle Logic ---
+// 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function resolvedTheme() {
+    const theme = appState.settings?.theme || 'system';
+    if (theme === 'system') return prefersDark.matches ? 'dark' : 'light';
+    return theme;
+}
+
 function applyTheme() {
-    const theme = appState.settings.theme || 'light';
+    const theme = resolvedTheme();
     document.documentElement.setAttribute('data-theme', theme);
-    
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#070A12' : '#EEF1F7');
+
     // Update switch visually
     const toggleSwitch = document.getElementById('theme-checkbox');
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
 }
 
+prefersDark.addEventListener('change', () => {
+    if ((appState.settings?.theme || 'system') === 'system') applyTheme();
+});
+
+// Switching theme reveals the new one in a circle growing from the toggle
+function switchThemeWithReveal(nextTheme, originEl) {
+    const change = () => {
+        appState.settings.theme = nextTheme;
+        applyTheme();
+        saveState();
+    };
+    if (!document.startViewTransition || reducedMotion.matches) {
+        document.documentElement.classList.add('theme-fade');
+        change();
+        setTimeout(() => document.documentElement.classList.remove('theme-fade'), 500);
+        return;
+    }
+    const rect = originEl?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    const transition = document.startViewTransition(change);
+    transition.ready.then(() => {
+        document.documentElement.animate(
+            { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+            { duration: 650, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' }
+        );
+    }).catch(() => {});
+}
+
 document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
-    appState.settings.theme = e.target.checked ? 'light' : 'dark';
-    applyTheme();
-    saveState();
+    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'));
 });
 
 // --- Auth / Login Logic ---
@@ -1913,21 +2016,28 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     checkAuth();
 });
 
+function greetingForNow() {
+    const hour = new Date().getHours();
+    if (hour < 5) return 'Up late';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+}
+
 function checkAuth() {
     if (appState.user && appState.user.name) {
         // User is logged in
         document.getElementById('landing-view').style.display = 'none';
-        document.getElementById('fullpage-intro').style.display = 'none';
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
-        
+
         protectLegacyGroqKey();
 
-        // Setup greeting & sidebar
+        // Greeting and the name in the phone menu
         const firstName = appState.user.name.split(' ')[0];
-        document.getElementById('greeting-header').innerHTML = `Welcome, <span class="highlight">${escapeHTML(firstName)}</span>!`;
-        document.getElementById('sidebar-user-class').innerText = `Class: ${appState.user.class}`;
-        
+        document.getElementById('greeting-header').innerHTML = `${greetingForNow()}, <span class="highlight">${escapeHTML(firstName)}</span>`;
+        document.getElementById('sidebar-user-class').innerText = `${appState.user.name}${appState.user.class ? ' · ' + appState.user.class : ''}`;
+
         // Update day order if date has changed
         if (updateDayOrderIfNeeded()) {
             saveState();
@@ -1935,125 +2045,54 @@ function checkAuth() {
             renderAllViews();
         }
         applyTheme(); // Ensure user preference is applied
+        playViewEntrance(document.querySelector('.view.active-view'));
     } else {
-        // User not logged in - Force Dark Mode
-        document.documentElement.setAttribute('data-theme', 'dark');
         document.getElementById('main-app').style.display = 'none';
-        
-        // Show Intro Typewriter FIRST
-        document.getElementById('fullpage-intro').style.display = 'flex';
-        document.getElementById('fullpage-intro').style.transform = 'translateY(0)';
-        document.getElementById('landing-view').style.display = 'flex';
-        document.getElementById('landing-view').style.transform = 'translateY(0)';
-        document.getElementById('login-overlay').style.display = 'none';
-
-        typewriterEffect();
-
-        document.getElementById('get-started-btn').onclick = () => {
-            // Slide up landing page to reveal login
-            document.getElementById('landing-view').style.transform = 'translateY(-100vh)';
-            setTimeout(() => {
-                document.getElementById('landing-view').style.display = 'none';
-                document.getElementById('login-overlay').style.display = 'flex';
-            }, 800);
-        };
+        closePhoneNav();
+        applyTheme(); // logged out: follow the device's light or dark setting
+        showWelcome();
     }
 }
 
-function startLandingSequence() {
-    const spans = document.querySelectorAll('.hero-words span');
-    if (!spans.length) return;
+// --- Welcome page and sign-in flow ---
+function showWelcome() {
+    const landing = document.getElementById('landing-view');
+    document.getElementById('login-overlay').style.display = 'none';
+    landing.classList.remove('leaving', 'is-ready');
+    landing.style.display = 'flex';
+    // Next frame, start the entrance animation (title words rise, cards float in).
+    // The timeout is a backup for background tabs, where animation frames are paused.
+    const start = () => landing.classList.add('is-ready');
+    requestAnimationFrame(() => requestAnimationFrame(start));
+    setTimeout(start, 150);
+}
 
-    // Reset states
-    spans.forEach(s => { s.style.opacity = '0'; s.style.transform = 'translateY(20px)'; });
-    document.getElementById('landing-hero-subtitle').innerHTML = '';
-    document.getElementById('get-started-btn').style.opacity = '0';
-    document.getElementById('get-started-btn').style.transform = 'translateY(20px)';
-
-    // 1. Words appear 1 after the other (Snappier)
-    spans.forEach((span, index) => {
-        setTimeout(() => {
-            span.style.opacity = "1";
-            span.style.transform = "translateY(0)";
-        }, index * 250); 
-    });
-
-    // 2. Start typewriter right after the last word appears
+function openAuth(mode) {
+    const landing = document.getElementById('landing-view');
+    const overlay = document.getElementById('login-overlay');
+    landing.classList.add('leaving');
     setTimeout(() => {
-        typeHeroSubtitle();
-    }, (spans.length * 250) + 100);
+        landing.style.display = 'none';
+        overlay.style.display = 'flex';
+        document.getElementById(mode === 'login' ? 'btn-login' : 'btn-signup')?.click();
+        document.getElementById(mode === 'login' ? 'login-email' : 'login-name')?.focus({ preventScroll: true });
+    }, reducedMotion.matches ? 0 : 380);
 }
 
-function typeHeroSubtitle() {
-    const text = "Your very own Educational Planner";
-    const el = document.getElementById('landing-hero-subtitle');
-    const btn = document.getElementById('get-started-btn');
-    if (!el) return;
+document.getElementById('get-started-btn')?.addEventListener('click', () => openAuth('signup'));
+document.getElementById('welcome-login-btn')?.addEventListener('click', () => openAuth('login'));
+document.getElementById('auth-back-btn')?.addEventListener('click', showWelcome);
 
-    el.innerHTML = "";
-    let i = 0;
-    const speed = 25; // Faster typing
-
-    function type() {
-        if (i < text.length) {
-            el.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        } else {
-            // Fade in the button right after typing finishes
-            btn.style.opacity = "1";
-            btn.style.transform = "translateY(0)";
-        }
-    }
-    type();
-}
-
-let hasTyped = false;
-function typewriterEffect() {
-    if (hasTyped) return;
-    hasTyped = true;
-    
-    const text = "Welcome to Procrastinote. The smartest way to organize your school life.";
-    const introEl = document.getElementById('fullpage-intro');
-    const landingEl = document.getElementById('landing-view');
-    const typeEl = document.getElementById('fullpage-typewriter');
-    
-    introEl.style.display = 'flex';
-    typeEl.innerHTML = "";
-    
-    let i = 0;
-    const speed = 15; // Much faster typing
-    
-    function type() {
-        if (i < text.length) {
-            typeEl.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(type, speed);
-        } else {
-            // Finished typing, wait then SLIDE UP Intro to reveal Landing Page
-            setTimeout(() => {
-                introEl.style.transform = 'translateY(-100vh)'; 
-                
-                // Logic to setup music presets
-                document.querySelectorAll('.preset-btn').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        // Update player logic here
-                    });
-                });
-
-                setTimeout(() => {
-                    introEl.style.display = 'none';
-                    // Start the landing sequence (words, hero typing)
-                    startLandingSequence();
-                }, 800); 
-            }, 600); 
-        }
-    }
-    
-    setTimeout(type, 200);
-}
+// Gentle parallax on the floating preview cards
+document.getElementById('landing-view')?.addEventListener('mousemove', (e) => {
+    if (reducedMotion.matches) return;
+    const visual = document.querySelector('.welcome-visual');
+    if (!visual) return;
+    const x = (e.clientX / window.innerWidth - 0.5) * 2;
+    const y = (e.clientY / window.innerHeight - 0.5) * 2;
+    visual.style.setProperty('--px', x.toFixed(3));
+    visual.style.setProperty('--py', y.toFixed(3));
+});
 
 // --- Robot Pupil Tracker ---
 let mouseX = 0, mouseY = 0;
@@ -2077,7 +2116,7 @@ function animatePupils() {
         const deltaX = mouseX - robotX;
         const deltaY = mouseY - robotY;
         const angle = Math.atan2(deltaY, deltaX);
-        const maxDist = 3.5;
+        const maxDist = robot.offsetWidth * 0.055; // stay inside the eye
         
         const targetX = Math.cos(angle) * maxDist;
         const targetY = Math.sin(angle) * maxDist;
@@ -2094,42 +2133,9 @@ function animatePupils() {
 }
 requestAnimationFrame(animatePupils);
 
-// --- Confetti Logic ---
-let confettiTriggered = false;
-
-function triggerConfetti() {
-    if (confettiTriggered) return;
-    confettiTriggered = true;
-    
-    const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.width = '100vw';
-    container.style.height = '100vh';
-    container.style.pointerEvents = 'none';
-    container.style.zIndex = '9999';
-    container.style.overflow = 'hidden';
-    document.body.appendChild(container);
-    
-    const colors = ['#f87171', '#4ade80', '#facc15', '#3b82f6', '#a855f7'];
-    
-    for (let i = 0; i < 70; i++) {
-        const conf = document.createElement('div');
-        conf.className = 'confetti-piece';
-        conf.style.left = Math.random() * 100 + 'vw';
-        conf.style.animationDelay = (Math.random() * 0.3) + 's';
-        conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        conf.style.transform = `rotate(${Math.random() * 360}deg)`;
-        container.appendChild(conf);
-    }
-    
-    setTimeout(() => {
-        if(container.parentNode) container.remove();
-        // Resetting confetti triggered logic slightly so it happens again if user interacts and empties
-        setTimeout(() => { confettiTriggered = false; }, 3000);
-    }, 1500); 
-}
+// --- Celebrations ---
+// Confetti was removed in the redesign; finishing things now has its own quiet animations
+function triggerConfetti() {}
 
 // --- Password Update Flow Logic ---
 function switchPwStep(stepId) {
@@ -3424,7 +3430,7 @@ async function openExternalPip() {
         extPipWindow.document.body.classList.add('external-pip-body');
 
         // Apply theme attributes
-        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        const theme = document.documentElement.getAttribute('data-theme') || 'light';
         extPipWindow.document.documentElement.setAttribute('data-theme', theme);
 
         // Copy stylesheets to PiP window
@@ -3516,9 +3522,8 @@ function drawAutoPipCanvas() {
     const w = autoPipCanvas.width;
     const h = autoPipCanvas.height;
 
-    // Get current theme from state or document attribute
-    const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
-    const isDark = theme === 'dark';
+    // Get the theme actually showing (it may be following the device)
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     // Solid themed background colors
     const bgCol = isDark ? '#0b0f19' : '#f8fafc';
@@ -3788,7 +3793,7 @@ if (typeof applyTheme === 'function') {
     const originalApplyTheme = applyTheme;
     applyTheme = function() {
         originalApplyTheme();
-        const theme = (typeof appState !== 'undefined' && appState.settings && appState.settings.theme) || 'light';
+        const theme = document.documentElement.getAttribute('data-theme') || 'light';
         if (extPipWindow) {
             extPipWindow.document.documentElement.setAttribute('data-theme', theme);
         }
@@ -4391,7 +4396,7 @@ function renderFriends() {
                 </div>
                 <div class="friend-item-info">
                     <div class="friend-item-name">${escapeHTML(friendProfile.name)}</div>
-                    <div class="friend-item-subtext">${friendProfile.class ? `Class ${escapeHTML(friendProfile.class)} &bull; ` : ''}${isOnline ? 'Online' : 'Offline'}</div>
+                    <div class="friend-item-subtext">${friendProfile.class ? `${escapeHTML(friendProfile.class)} &bull; ` : ''}${isOnline ? 'Online' : 'Offline'}</div>
                 </div>
             `;
             li.addEventListener('click', () => {
