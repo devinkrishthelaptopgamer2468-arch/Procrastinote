@@ -1997,7 +1997,9 @@ function loadUserFromCloud(user) {
     }; // no password stored locally anymore
 }
 
-async function cloudSignup(name, cls, email, pass) {
+// moving = true when an old offline account is being moved online during log in.
+// Then the messages talk about logging in, not signing up.
+async function cloudSignup(name, cls, email, pass, moving = false) {
     const { data, error } = await cloud.auth.signUp({
         email,
         password: pass,
@@ -2007,19 +2009,29 @@ async function cloudSignup(name, cls, email, pass) {
         if (/rate limit/i.test(error.message)) {
             showAuthMessage('Too many sign-up emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.');
         } else {
-            showAuthMessage(`Sign up failed: ${error.message}`);
+            showAuthMessage(`${moving ? 'Log in' : 'Sign up'} failed: ${error.message}`);
         }
         return false;
     }
     // Supabase answers "success" for an email that already has an account, but sends nothing
     // and returns a user with no identities. Say so instead of promising an email.
     if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        if (moving) {
+            // The online account exists and the password typed is not its password
+            shakePasswordInput('login-password');
+            showAuthMessage('Wrong email or password.');
+            return false;
+        }
         document.getElementById('btn-login')?.click();
         showAuthMessage('This email already has an account. Log in with it instead.');
         return false;
     }
     if (!data.session) {
         document.getElementById('btn-login')?.click();
+        if (moving) {
+            showAuthMessage(`Your account is moving online so it works on every device. We sent a confirmation link to ${email}. Click it, then log in again.`, 'info');
+            return false;
+        }
         showAuthMessage(`Almost done! We sent a confirmation link to ${email}. Click it, then come back and log in.`, 'info');
         return false;
     }
@@ -2033,7 +2045,7 @@ async function cloudLogin(email, pass) {
         // One-time move: an old local-only account becomes an online account with the same password
         const local = allUsers[email];
         if (/invalid login/i.test(error.message) && local?.profile.pass && local.profile.pass === pass) {
-            return cloudSignup(local.profile.name, local.profile.class, email, pass);
+            return cloudSignup(local.profile.name, local.profile.class, email, pass, true);
         }
         if (/not confirmed/i.test(error.message)) {
             showAuthMessage('Please click the confirmation link in your email first, then log in.');
