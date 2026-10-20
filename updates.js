@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'messages-and-updates',
+        date: '2026-10-20',
+        title: 'Messages and Updates',
+        text: 'Notifications are now two buttons: Messages for your classes, friends and shared notes, and Updates for what\'s new on Procrastinote.'
+    },
+    {
         id: 'class-pings',
         date: '2026-10-20',
         title: 'Ping people in class chats',

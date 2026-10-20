@@ -2079,7 +2079,15 @@ li.empty-state::before {
 
 .notif-wrap {
     position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     margin-left: auto;
+}
+
+.notif-btn[aria-expanded="true"] {
+    border-color: var(--accent-ring);
+    color: var(--accent);
 }
 
 .notif-btn {

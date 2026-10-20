@@ -4893,25 +4893,36 @@ function formatUpdateDate(dateString) {
 }
 
 // `seenOverride` keeps unread highlights visible while the panel is open
+// Two buttons on the dashboard: Messages (classes, friends, shared notes) and Updates (What's new)
+const NOTIF_PANELS = {
+    messages: { button: 'btn-messages', panel: 'msg-panel', badge: 'msg-badge', label: 'Messages' },
+    updates: { button: 'btn-updates', panel: 'updates-panel', badge: 'updates-badge', label: 'Updates' }
+};
+let notifSeenWhileOpen = null; // what was seen before the open panel, so its new items stay highlighted
+
+function setNotifBadge(kind, count) {
+    const { badge, button, label } = NOTIF_PANELS[kind];
+    const el = document.getElementById(badge);
+    if (!el) return;
+    el.hidden = count === 0;
+    el.innerText = count > 9 ? '9+' : String(count);
+    document.getElementById(button)?.setAttribute('aria-label', count ? `${label}, ${count} new` : label);
+}
+
 function renderNotifications(seenOverride) {
-    const badge = document.getElementById('notif-badge');
     const messagesEl = document.getElementById('notif-messages');
     const updatesEl = document.getElementById('notif-updates');
-    if (!badge || !messagesEl || !updatesEl) return;
+    if (!messagesEl || !updatesEl) return;
 
-    const seen = seenOverride || getNotifSeen();
+    const seen = seenOverride || notifSeenWhileOpen || getNotifSeen();
     const updates = appUpdates();
     const classItems = window.Classes ? Classes.notificationItems() : [];
 
     const badgeSeen = getNotifSeen();
-    const badgeCount = friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
+    setNotifBadge('messages', friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
         sharedNotes.filter(n => n.timestamp > badgeSeen.sharedSeenAt).length +
-        classItems.filter(n => n.ts > badgeSeen.classSeenAt).length +
-        updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length;
-    badge.hidden = badgeCount === 0;
-    badge.innerText = badgeCount > 9 ? '9+' : String(badgeCount);
-    document.getElementById('btn-notifications')?.setAttribute('aria-label',
-        badgeCount ? `Notifications, ${badgeCount} new` : 'Notifications');
+        classItems.filter(n => n.ts > badgeSeen.classSeenAt).length);
+    setNotifBadge('updates', updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length);
 
     const classTitle = document.getElementById('notif-classes-title');
     const classList = document.getElementById('notif-classes');
@@ -4968,26 +4979,37 @@ function renderNotifications(seenOverride) {
     });
 }
 
-function openNotifications() {
-    const panel = document.getElementById('notif-panel');
+// kind: 'messages' or 'updates'. What that panel shows now counts as seen; its new items stay
+// highlighted until it closes.
+function openNotifications(kind = 'messages') {
+    closeNotifications();
     const before = getNotifSeen();
-    // Everything shown now counts as seen; highlights stay until the panel closes
-    setNotifSeen({
-        messagesSeenAt: Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp)),
-        sharedSeenAt: Math.max(before.sharedSeenAt, ...sharedNotes.map(n => n.timestamp)),
-        classSeenAt: Math.max(before.classSeenAt, ...(window.Classes ? Classes.notificationItems().map(n => n.ts) : [])),
-        updatesSeen: appUpdates().map(u => u.id)
-    });
-    renderNotifications(before);
-    panel.hidden = false;
-    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'true');
+    const after = { ...before };
+    if (kind === 'messages') {
+        after.messagesSeenAt = Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp));
+        after.sharedSeenAt = Math.max(before.sharedSeenAt, ...sharedNotes.map(n => n.timestamp));
+        after.classSeenAt = Math.max(before.classSeenAt, ...(window.Classes ? Classes.notificationItems().map(n => n.ts) : []));
+    } else {
+        after.updatesSeen = appUpdates().map(u => u.id);
+    }
+    setNotifSeen(after);
+    notifSeenWhileOpen = before;
+    renderNotifications();
+    document.getElementById(NOTIF_PANELS[kind].panel).hidden = false;
+    document.getElementById(NOTIF_PANELS[kind].button).setAttribute('aria-expanded', 'true');
 }
 
 function closeNotifications() {
-    const panel = document.getElementById('notif-panel');
-    if (!panel || panel.hidden) return;
-    panel.hidden = true;
-    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'false');
+    let wasOpen = false;
+    Object.values(NOTIF_PANELS).forEach(({ panel, button }) => {
+        const el = document.getElementById(panel);
+        if (!el || el.hidden) return;
+        el.hidden = true;
+        document.getElementById(button)?.setAttribute('aria-expanded', 'false');
+        wasOpen = true;
+    });
+    if (!wasOpen) return;
+    notifSeenWhileOpen = null;
     renderNotifications();
 }
 
@@ -5000,12 +5022,14 @@ function openChatFromNotification(email) {
     renderChatWindow();
 }
 
-document.getElementById('btn-notifications')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (document.getElementById('notif-panel').hidden) openNotifications();
-    else closeNotifications();
+Object.entries(NOTIF_PANELS).forEach(([kind, { button, panel }]) => {
+    document.getElementById(button)?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (document.getElementById(panel).hidden) openNotifications(kind);
+        else closeNotifications();
+    });
 });
-document.getElementById('btn-notif-close')?.addEventListener('click', closeNotifications);
+document.querySelectorAll('[data-notif-close]').forEach(btn => btn.addEventListener('click', closeNotifications));
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.notif-wrap')) closeNotifications();
 });
