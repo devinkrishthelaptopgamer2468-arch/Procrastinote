@@ -199,6 +199,14 @@ and `SITE_OWNER_EMAIL` near the top of `classes.js`.
 
 The free plan has 1 GB of storage for the whole site, shared with photos sent in chat.
 
+**Pings:** in class chats, `@Name` pings someone (up to 20 people per message) and
+`@Procrasti-Bot` gets a reply from the AI helper. The reply is written with the AI key of the
+person who pinged the bot (only their message is sent to the AI), or is one of the bot's
+built-in tips if they haven't added a key.
+
+**Updating:** whenever `add-classes.sql` changes, run the whole file again in the SQL Editor.
+It keeps all existing classes, messages and files.
+
 **Test it** with two browsers, like step 5: create a class with the site-owner account, then
 join it with the code in the other browser. Send a message in General, post
 homework (it lands in the other account's Homework list once they tick **Follow class homework**),

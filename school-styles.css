@@ -5480,6 +5480,112 @@ body.external-pip-body .pip-header {
     color: var(--danger);
 }
 
+/* Pings: @Name and @Procrasti-Bot */
+.cls-chat-form {
+    position: relative;
+}
+
+.cls-ping-list {
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(100% + 6px);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 340px;
+    padding: 0.35rem;
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-lg);
+    animation: popIn 0.2s var(--ease-out);
+}
+
+.cls-ping-list[hidden] {
+    display: none;
+}
+
+.cls-ping-option {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 10px;
+    text-align: left;
+}
+
+.cls-ping-option.active,
+.cls-ping-option:hover {
+    background: var(--accent-soft);
+}
+
+.cls-ping-option strong {
+    display: block;
+    font-size: 0.88rem;
+}
+
+.cls-ping-option small {
+    display: block;
+    font-size: 0.74rem;
+    color: var(--text-2);
+}
+
+.cls-ping {
+    padding: 0 0.2rem;
+    border-radius: 5px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.chat-msg-bubble-wrapper.outgoing .cls-ping {
+    background: rgba(255, 255, 255, 0.22);
+    color: #FFFFFF;
+}
+
+.cls-ping.cls-ping-me {
+    background: var(--amber-soft);
+    color: var(--amber-text);
+}
+
+/* A message that pings you stands out */
+.cls-pinged .chat-msg-bubble {
+    border-color: var(--amber) !important;
+    box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+.cls-bot-avatar {
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+}
+
+.cls-msg-name small {
+    font-weight: 500;
+    color: var(--text-3);
+}
+
+.cls-bot-msg .chat-msg-bubble {
+    background: var(--violet-soft) !important;
+}
+
+.cls-bot-typing {
+    display: flex;
+    gap: 5px;
+    padding: 0.85rem 1rem;
+}
+
+.cls-bot-typing .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-3);
+    animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.cls-bot-typing .dot:nth-child(1) { animation-delay: -0.32s; }
+.cls-bot-typing .dot:nth-child(2) { animation-delay: -0.16s; }
+
 .cls-chat-out {
     padding: 1.25rem;
     border: 1px dashed var(--hairline-strong);

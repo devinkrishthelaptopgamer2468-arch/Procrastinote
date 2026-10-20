@@ -16,6 +16,7 @@
 --   with the activity's code can join, from any class. Small = up to 5 people (1 point),
 --   Big = up to 20 people (2 points); each person can hold 6 points of activity groups.
 -- * Anyone can report a message to the site owner.
+-- * In chats, @Name pings someone and @Procrasti-Bot gets a reply from the AI helper.
 --
 -- Most changes go through the functions below (security definer), which check the rules,
 -- instead of letting the app write to the tables directly.
@@ -139,6 +140,15 @@ create table if not exists public.group_messages (
 );
 
 create index if not exists group_messages_chat_idx on public.group_messages (chat_id, created_at);
+
+-- Pings: the people a message @mentions (they get a notification).
+-- bot: a Procrasti-Bot reply, written by the device of the person who pinged the bot
+-- (sender_id is still that person, so nobody can post as someone else).
+alter table public.group_messages add column if not exists mentions uuid[] not null default '{}';
+alter table public.group_messages add column if not exists bot boolean not null default false;
+alter table public.group_messages drop constraint if exists group_messages_mentions_limit;
+alter table public.group_messages add constraint group_messages_mentions_limit check (cardinality(mentions) <= 20);
+create index if not exists group_messages_mentions_idx on public.group_messages using gin (mentions);
 
 create table if not exists public.class_homework (
     id bigint generated always as identity primary key,
