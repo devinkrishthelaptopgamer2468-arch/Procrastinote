@@ -984,6 +984,12 @@
                         </div>
 
                         <div id="chat-input-wrapper" class="chat-input-wrapper" style="display: none;">
+                            <!-- Send a photo or document to a friend (shared_files table + storage) -->
+                            <input type="file" id="chat-file-input" hidden
+                                accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.txt,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
+                            <button id="chat-attach-btn" class="btn secondary-btn chat-attach-btn" title="Send a photo or document" aria-label="Send a photo or document" hidden>
+                                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+                            </button>
                             <input type="text" id="chat-message-input" placeholder="Type a message..." autocomplete="off">
                             <button id="chat-send-btn" class="btn primary-btn icon-btn-large" title="Send message" aria-label="Send message">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14M21 3l-6.5 18-4-8-8-4z"/></svg>

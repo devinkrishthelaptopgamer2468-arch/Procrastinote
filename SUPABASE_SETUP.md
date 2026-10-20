@@ -143,6 +143,19 @@ Sharing notes needs one more table. You only do this once:
 
 Until this is done, pressing **Send** on a note says "Sharing isn't switched on yet".
 
+## 8. Turn on sending photos and documents in chat
+
+Also once only:
+
+1. In Supabase, open **SQL Editor** → **New query**.
+2. Open `supabase/add-file-sharing.sql`, copy **all** of it, paste it in, and press **Run**.
+   If Supabase warns about "destructive operations", that's only the lines that recreate this
+   feature's own rules. Press **Run** anyway; no data is deleted.
+3. Check **Storage**: there is now a private bucket called `shared-files`. **Table Editor** has a
+   new `shared_files` table.
+
+Files can be up to 10 MB each. The free plan has 1 GB of storage in total.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

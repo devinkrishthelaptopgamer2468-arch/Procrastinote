@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'share-files',
+        date: '2026-10-20',
+        title: 'Send photos and documents',
+        text: 'In a chat with a friend, press the paperclip to send a photo, PDF, Word, PowerPoint or Excel file (up to 10 MB).'
+    },
+    {
         id: 'share-notes',
         date: '2026-10-20',
         title: 'Share notes with friends',

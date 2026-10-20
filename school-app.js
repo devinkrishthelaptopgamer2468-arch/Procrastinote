@@ -4442,6 +4442,152 @@ function addCloudMessage(row, render) {
     if (render && activeChatId && getRoomId(activeChatId) === row.room_id) renderChatWindow();
 }
 
+// --- Photos and documents in chat ---
+// Files go to the private "shared-files" storage bucket at <sender id>/<receiver id>/<file>,
+// with a shared_files row so they show up in the chat (see supabase/add-file-sharing.sql).
+const CHAT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+const CHAT_FILE_TYPES = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+    pdf: 'application/pdf', txt: 'text/plain',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
+const signedFileUrls = new Map(); // path -> { url, expires }
+
+const fileExtension = name => (name.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+
+function formatFileSize(bytes) {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// How a sent file shows in Notifications ("Sent a file: notes.pdf")
+const fileNotificationRow = row => ({
+    id: `file-${row.id}`, sender_email: row.sender_email, text: `Sent a file: ${row.file_name}`, created_at: row.created_at
+});
+
+function addCloudFile(row, render) {
+    if (!cloudRooms[row.room_id]) cloudRooms[row.room_id] = [];
+    const list = cloudRooms[row.room_id];
+    const id = `file-${row.id}`;
+    if (list.some(m => m.id === id)) return;
+    list.push({
+        id,
+        sender: row.sender_email,
+        timestamp: Date.parse(row.created_at),
+        file: { path: row.path, name: row.file_name, type: row.mime_type, size: row.size_bytes }
+    });
+    list.sort((a, b) => a.timestamp - b.timestamp);
+    const myEmail = appState.user.email.toLowerCase();
+    addFriendIfNew(row.sender_email === myEmail ? row.recipient_email : row.sender_email);
+    if (render && activeChatId && getRoomId(activeChatId) === row.room_id) renderChatWindow();
+}
+
+// Links to private files work for an hour; reuse them until shortly before that
+async function getFileUrl(path, downloadName) {
+    const key = downloadName ? `${path}#download` : path;
+    const cached = signedFileUrls.get(key);
+    if (cached && cached.expires > Date.now()) return cached.url;
+    const { data, error } = await cloud.storage.from('shared-files')
+        .createSignedUrl(path, 3600, downloadName ? { download: downloadName } : undefined);
+    if (error) throw error;
+    signedFileUrls.set(key, { url: data.signedUrl, expires: Date.now() + 50 * 60 * 1000 });
+    return data.signedUrl;
+}
+
+function buildChatFile(file) {
+    const box = document.createElement('div');
+    box.className = 'chat-file';
+    if (file.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.className = 'chat-file-image';
+        img.alt = file.name;
+        getFileUrl(file.path).then(url => { img.src = url; }).catch(() => { img.alt = `${file.name} (couldn't load)`; });
+        box.appendChild(img);
+    } else {
+        const doc = document.createElement('div');
+        doc.className = 'chat-file-doc';
+        doc.innerHTML = `<span class="chat-file-icon">${escapeHTML((fileExtension(file.name) || 'file').toUpperCase().slice(0, 4))}</span>` +
+            `<span class="chat-file-name">${escapeHTML(file.name)}<small>${escapeHTML(formatFileSize(file.size))}</small></span>`;
+        box.appendChild(doc);
+    }
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.className = 'chat-file-download';
+    download.innerText = 'Download';
+    download.addEventListener('click', async () => {
+        download.disabled = true;
+        try {
+            const link = document.createElement('a');
+            link.href = await getFileUrl(file.path, file.name);
+            link.rel = 'noopener';
+            link.click();
+        } catch (e) {
+            alert(`Couldn't download ${file.name}: ${e.message}`);
+        }
+        download.disabled = false;
+    });
+    box.appendChild(download);
+    return box;
+}
+
+async function sendChatFile(file) {
+    if (!file || !activeChatId || !isOnlineAccount()) return;
+    const friendEmail = activeChatId.toLowerCase();
+    const type = CHAT_FILE_TYPES[fileExtension(file.name)];
+    if (!type) {
+        alert('You can send photos (PNG, JPG, GIF, WebP), PDF, Word, PowerPoint, Excel and text files.');
+        return;
+    }
+    if (file.size === 0 || file.size > CHAT_FILE_MAX_BYTES) {
+        alert(`${file.name} is ${file.size ? formatFileSize(file.size) : 'empty'}. Files can be up to 10 MB.`);
+        return;
+    }
+    const friendId = friendProfiles[friendEmail]?.id;
+    if (!friendId) {
+        alert(`${getFriendProfile(friendEmail).name} needs an online Procrastinote account before you can send them files.`);
+        return;
+    }
+
+    const button = document.getElementById('chat-attach-btn');
+    button.disabled = true;
+    alert(`Sending ${file.name}...`);
+    // Storage paths only allow simple characters; the real name is kept in shared_files
+    const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || `file.${fileExtension(file.name)}`;
+    const path = `${appState.user.cloudId}/${friendId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+    try {
+        const upload = await cloud.storage.from('shared-files').upload(path, file, { contentType: type, upsert: false });
+        if (upload.error) throw upload.error;
+        const { data, error } = await cloud.from('shared_files').insert({
+            sender_email: appState.user.email.toLowerCase(),
+            recipient_id: friendId,
+            recipient_email: friendEmail,
+            path,
+            file_name: file.name.slice(0, 200),
+            mime_type: type,
+            size_bytes: file.size
+        }).select().single();
+        if (error) {
+            await cloud.storage.from('shared-files').remove([path]); // don't leave an unlisted file behind
+            throw error;
+        }
+        addCloudFile(data, true);
+    } catch (e) {
+        alert(/bucket|shared_files|does not exist|PGRST205|42P01/i.test(`${e.code || ''} ${e.message || ''}`)
+            ? 'Sending files isn\'t switched on yet: run supabase/add-file-sharing.sql in Supabase first.'
+            : `${file.name} wasn't sent: ${e.message}`);
+    }
+    button.disabled = false;
+}
+
+document.getElementById('chat-attach-btn')?.addEventListener('click', () => document.getElementById('chat-file-input')?.click());
+document.getElementById('chat-file-input')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    sendChatFile(file);
+});
+
 async function loadCloudRoom(roomId) {
     loadedRooms.add(roomId);
     const { data, error } = await cloud.from('messages')
@@ -4456,6 +4602,13 @@ async function loadCloudRoom(roomId) {
     }
     if (!cloudRooms[roomId]) cloudRooms[roomId] = [];
     data.forEach(row => addCloudMessage(row, false));
+    // Photos and documents sent in this chat (table missing until add-file-sharing.sql is run)
+    const files = await cloud.from('shared_files')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+        .limit(200);
+    if (!files.error) files.data.forEach(row => addCloudFile(row, false));
     if (activeChatId && getRoomId(activeChatId) === roomId) renderChatWindow();
 }
 
@@ -4517,7 +4670,16 @@ function startCloudChat() {
             payload => removeSharedNote(payload.old?.id))
         .subscribe();
 
-    cloudChannels = [messagesChannel, presenceChannel, sharedNotesChannel];
+    // Photos and documents sent in chat appear instantly
+    const filesChannel = cloud.channel('my-shared-files')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shared_files' },
+            payload => {
+                addCloudFile(payload.new, true);
+                addFriendNotification(fileNotificationRow(payload.new));
+            })
+        .subscribe();
+
+    cloudChannels = [messagesChannel, presenceChannel, sharedNotesChannel, filesChannel];
     loadCloudFriends();
     loadFriendNotifications();
     loadSharedNotes();
@@ -4574,9 +4736,17 @@ async function loadFriendNotifications() {
         console.error('Could not load notifications:', error.message);
         return;
     }
-    friendNotifications = data.map(row => ({
-        id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at)
-    }));
+    // Files friends sent you count as messages too
+    const files = await cloud.from('shared_files')
+        .select('*')
+        .eq('recipient_email', myEmail)
+        .order('created_at', { ascending: false })
+        .limit(NOTIF_MESSAGE_LIMIT);
+    const rows = data.concat(files.error ? [] : files.data.map(fileNotificationRow));
+    friendNotifications = rows
+        .map(row => ({ id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) }))
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, NOTIF_MESSAGE_LIMIT);
     renderNotifications();
 }
 
@@ -5301,7 +5471,9 @@ function renderChatWindow() {
     }
     if (inputWrapper) inputWrapper.style.display = 'flex';
     if (typingIndicator) typingIndicator.style.display = 'none';
-    
+    const attachBtn = document.getElementById('chat-attach-btn');
+    if (attachBtn) attachBtn.hidden = !!buddy || !isOnlineAccount(); // files go to friends, online only
+
     // Load messages
     container.innerHTML = '';
     const roomId = getRoomId(activeChatId);
@@ -5360,10 +5532,11 @@ function renderChatWindow() {
         msgWrapper.innerHTML = `
             <div class="friend-avatar" style="width: 32px; height: 32px; font-size: 0.8rem; background: ${senderBg};">${escapeHTML(senderInitials)}</div>
             <div class="chat-msg-bubble">
-                <div>${escapeHTML(msg.text)}</div>
+                <div>${msg.file ? '' : escapeHTML(msg.text)}</div>
                 <span class="chat-msg-time">${dateStr}</span>
             </div>
         `;
+        if (msg.file) msgWrapper.querySelector('.chat-msg-bubble > div').appendChild(buildChatFile(msg.file));
         container.appendChild(msgWrapper);
     });
     
