@@ -3,7 +3,7 @@ const USERS_KEY = 'school_planner_users';
 const SESSION_KEY = 'school_planner_current_session';
 const SUBJECT_LIST = [
     "Mathematics", "Physics", "Biology", "Chemistry", "English", 
-    "Tamil", "Social Science", "Sixth Subject", "PT", "VBSE", 
+    "Tamil", "Hindi", "Sanskrit", "French", "Social Science", "Sixth Subject", "PT", "VBSE",
     "LSA", "VBSE/LSA", "Library", "MADD", "ATL"
 ];
 
