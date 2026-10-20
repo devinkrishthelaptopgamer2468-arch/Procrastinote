@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'classes-sliding',
+        date: '2026-10-20',
+        title: 'Smoother Classes page',
+        text: 'Switching between Chats, Homework, Timetable and the other tabs, or between classes, now slides smoothly.'
+    },
+    {
         id: 'classes-team-only',
         date: '2026-10-20',
         title: 'Classes are set up by the team',

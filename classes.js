@@ -514,9 +514,20 @@
                 </button>`;
         });
         if (html !== listEl._html) {
+            const from = listEl._sliderRect;
             listEl._html = html;
-            listEl.innerHTML = html;
+            listEl.innerHTML = `<span class="cls-slider cls-list-slider" aria-hidden="true"></span>${html}`;
+            listEl._sliderRect = placeSlider(listEl.firstElementChild, listEl.querySelector('.cls-item.active'), from);
         }
+    }
+
+    // After a resize, or when the page was hidden while it redrew, put the highlights back in place
+    function realignSliders() {
+        const listEl = document.getElementById('classes-list');
+        if (listEl?.firstElementChild) listEl._sliderRect = placeSlider(listEl.firstElementChild, listEl.querySelector('.cls-item.active'), null);
+        const detail = document.getElementById('classes-detail');
+        const tabsEl = detail?.querySelector('.cls-tabs');
+        if (tabsEl) detail._tabRect = placeSlider(tabsEl.querySelector('.cls-slider'), tabsEl.querySelector('.cls-tab.active'), null);
     }
 
     // Typed text, cursor and chat scroll survive a redraw
@@ -560,8 +571,12 @@
         const html = detailHtml();
         // Redraw only when something changed, so typing and scrolling aren't disturbed
         if (html !== detail._html) {
+            const before = detail._view || { key: '' };
+            const now = viewOf();
             detail._html = html;
-            keepInputs(detail, () => { detail.innerHTML = html; });
+            keepInputs(detail, () => { detail.innerHTML = `<div class="cls-view">${html}</div>`; });
+            detail._view = now;
+            animateDetail(detail, before, now);
         }
         const chatId = currentChatId();
         if (chatId && canUseChat(state.chats.find(c => c.id === chatId) || {}) && !state.loadedChats.has(chatId)) loadMessages(chatId);
@@ -591,9 +606,74 @@
     }
 
     function tabsHtml(key, tabs, active) {
-        return `<div class="cls-tabs" role="tablist">${tabs.map(([id, label]) =>
+        return `<div class="cls-tabs" role="tablist"><span class="cls-slider" aria-hidden="true"></span>${tabs.map(([id, label]) =>
             `<button type="button" role="tab" aria-selected="${id === active}" class="cls-tab ${id === active ? 'active' : ''}" data-act="tab" data-key="${key}" data-tab="${id}">${label}</button>`
         ).join('')}</div>`;
+    }
+
+    // ---------- Motion: the highlight slides to the picked tab or class, and the new content
+    // slides in from the side it's on (tabs sideways, classes up or down) ----------
+    const prefersStill = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Moves a highlight (.cls-slider) over `target`. `from` is where it was before the redraw.
+    function placeSlider(slider, target, from) {
+        if (!slider) return;
+        if (!target) {
+            slider.style.opacity = '0';
+            return;
+        }
+        const to = { x: target.offsetLeft, y: target.offsetTop, w: target.offsetWidth, h: target.offsetHeight };
+        const apply = r => {
+            slider.style.width = `${r.w}px`;
+            slider.style.height = `${r.h}px`;
+            slider.style.transform = `translate(${r.x}px, ${r.y}px)`;
+        };
+        slider.style.opacity = '1';
+        if (from && !prefersStill()) {
+            slider.style.transition = 'none';
+            apply(from);
+            void slider.offsetWidth; // start from the old spot, then glide
+            slider.style.transition = '';
+        }
+        apply(to);
+        return to;
+    }
+
+    function slideIn(el, direction) {
+        if (!el || !direction || prefersStill()) return;
+        el.classList.remove('cls-in-left', 'cls-in-right', 'cls-in-up', 'cls-in-down');
+        void el.offsetWidth;
+        el.classList.add(`cls-in-${direction}`);
+        el.addEventListener('animationend', () => el.classList.remove(`cls-in-${direction}`), { once: true });
+    }
+
+    // Order of things in the left list, to know whether the new class is above or below
+    function listOrder(sel) {
+        if (!sel) return -1;
+        if (sel.kind === 'inbox') return -1;
+        const items = [...state.classes.map(c => keyOf('class', c.id)), ...state.activities.map(a => keyOf('activity', a.id))];
+        return items.indexOf(keyOf(sel.kind, sel.id));
+    }
+
+    function viewOf() {
+        const sel = state.selected;
+        if (!sel) return { key: '', tab: '', order: -2 };
+        if (sel.kind === 'inbox') return { key: 'inbox', tab: '', order: -1 };
+        const key = keyOf(sel.kind, sel.id);
+        return { key, tab: state.tabs[key] || (sel.kind === 'class' ? 'chats' : 'chat'), order: listOrder(sel) };
+    }
+
+    function animateDetail(detail, before, now) {
+        const tabsEl = detail.querySelector('.cls-tabs');
+        const activeTab = tabsEl?.querySelector('.cls-tab.active');
+        const sameGroup = before.key === now.key;
+        detail._tabRect = placeSlider(tabsEl?.querySelector('.cls-slider'), activeTab, sameGroup ? detail._tabRect : null);
+        if (sameGroup && before.tab && before.tab !== now.tab && tabsEl) {
+            const order = [...tabsEl.querySelectorAll('.cls-tab')].map(t => t.dataset.tab);
+            slideIn(detail.querySelector('.cls-pane'), order.indexOf(now.tab) > order.indexOf(before.tab) ? 'right' : 'left');
+        } else if (!sameGroup && before.key) {
+            slideIn(detail.querySelector('.cls-view'), now.order >= before.order ? 'down' : 'up');
+        }
     }
 
     function classHtml(cls) {
@@ -623,13 +703,14 @@
         const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
         const tab = state.tabs[key] || 'chats';
         html += tabsHtml(key, tabs, tab);
-        if (tab === 'chats') html += classChatsHtml(cls);
-        else if (tab === 'homework') html += homeworkHtml(cls);
-        else if (tab === 'timetable') html += timetableHtml(cls);
-        else if (tab === 'files') html += filesHtml('class', cls, admin);
-        else if (tab === 'people') html += peopleHtml('class', cls);
-        else if (tab === 'activities') html += classActivitiesHtml(cls);
-        return html;
+        let pane = '';
+        if (tab === 'chats') pane = classChatsHtml(cls);
+        else if (tab === 'homework') pane = homeworkHtml(cls);
+        else if (tab === 'timetable') pane = timetableHtml(cls);
+        else if (tab === 'files') pane = filesHtml('class', cls, admin);
+        else if (tab === 'people') pane = peopleHtml('class', cls);
+        else if (tab === 'activities') pane = classActivitiesHtml(cls);
+        return `${html}<div class="cls-pane">${pane}</div>`;
     }
 
     function activityHtml(activity) {
@@ -658,15 +739,16 @@
 
         const tab = state.tabs[key] || 'chat';
         html += tabsHtml(key, [['chat', 'Chat'], ['files', 'Files'], ['people', 'People']], tab);
+        let pane;
         if (tab === 'chat') {
             const chat = chatsFor('activity', activity.id)[0];
-            html += chat ? chatPaneHtml(chat, manager) : '<p class="cls-hint">This group\'s chat is loading...</p>';
+            pane = chat ? chatPaneHtml(chat, manager) : '<p class="cls-hint">This group\'s chat is loading...</p>';
         } else if (tab === 'files') {
-            html += filesHtml('activity', activity, manager);
+            pane = filesHtml('activity', activity, manager);
         } else {
-            html += peopleHtml('activity', activity);
+            pane = peopleHtml('activity', activity);
         }
-        return html;
+        return `${html}<div class="cls-pane">${pane}</div>`;
     }
 
     function currentChatId() {
@@ -1845,6 +1927,8 @@
             if (el) {
                 el.innerHTML = '';
                 el._html = '';
+                el._view = null;
+                el._tabRect = el._sliderRect = null;
             }
         });
         render();
@@ -1870,6 +1954,9 @@
         if (state.started) loadAll();
         else render();
     });
+    const layoutEl = document.getElementById('classes-layout');
+    if (layoutEl && window.ResizeObserver) new ResizeObserver(realignSliders).observe(layoutEl);
+
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && state.started && Date.now() - state.loadedAt > 20000) loadAll();
     });
