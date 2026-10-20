@@ -1818,6 +1818,157 @@ li.empty-state::before {
     font-size: 0.95rem;
 }
 
+/* ---------- Notifications ---------- */
+/* Keep the open panel above the dashboard cards (they animate in their own layers) */
+.dash-hero {
+    position: relative;
+    z-index: 20;
+}
+
+.notif-wrap {
+    position: relative;
+    margin-left: auto;
+}
+
+.notif-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    background: var(--surface);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.notif-btn:hover {
+    border-color: var(--accent-ring);
+    color: var(--accent);
+}
+
+.notif-badge {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+}
+
+.notif-badge[hidden],
+.notif-panel[hidden] {
+    display: none;
+}
+
+.notif-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(360px, calc(100vw - 32px));
+    max-height: min(480px, 70vh);
+    overflow-y: auto;
+    padding: 1rem;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-lg);
+    z-index: 80;
+}
+
+.notif-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.notif-panel-head h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.notif-section-title {
+    margin: 0.75rem 0 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+}
+
+.notif-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.notif-item {
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--inset);
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--text-2);
+}
+
+.notif-item.unread {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.notif-item strong {
+    color: var(--text);
+}
+
+.notif-item-time {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    color: var(--text-3);
+}
+
+button.notif-item {
+    width: 100%;
+    border: none;
+    font: inherit;
+    font-size: 0.86rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+button.notif-item:hover {
+    background: var(--inset-hover);
+}
+
+.notif-empty {
+    padding: 0.4rem 0.2rem;
+    font-size: 0.84rem;
+    color: var(--text-3);
+}
+
+@media (max-width: 640px) {
+    .notif-wrap {
+        margin-left: 0;
+    }
+
+    .notif-panel {
+        right: auto;
+        left: 0;
+    }
+}
+
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

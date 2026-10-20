@@ -738,6 +738,9 @@ function renderAllViews() {
     if (typeof renderFriends === 'function') {
         renderFriends();
     }
+    if (typeof renderNotifications === 'function') {
+        renderNotifications();
+    }
     if (typeof renderHomeSchedule === 'function') {
         const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
         renderHomeSchedule(activeFilter);
@@ -4306,6 +4309,7 @@ let loadedRooms = new Set();  // rooms whose history has been fetched
 let friendProfiles = {};      // email -> { id, name, class } from the profiles table
 let onlineUserIds = new Set();
 let cloudChannels = [];
+let friendNotifications = []; // newest first: [{ id, sender, text, timestamp }] (see "Notifications")
 
 // Friends are shown by name, never by email
 function getFriendProfile(email) {
@@ -4337,6 +4341,7 @@ async function fetchFriendProfiles(emails) {
     data.forEach(p => { friendProfiles[p.email] = { id: p.id, name: p.name, class: p.class }; });
     renderFriends();
     renderChatHeaderStatus();
+    renderNotifications(); // friends' names in message notifications
 }
 
 function addCloudMessage(row, render) {
@@ -4398,7 +4403,10 @@ function startCloudChat() {
     // Database security rules make sure we only receive messages from our own rooms
     const messagesChannel = cloud.channel('my-messages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
-            payload => addCloudMessage(payload.new, true))
+            payload => {
+                addCloudMessage(payload.new, true);
+                addFriendNotification(payload.new);
+            })
         .subscribe();
 
     // Presence shares only your account ID while the app is open, not your email
@@ -4417,6 +4425,7 @@ function startCloudChat() {
 
     cloudChannels = [messagesChannel, presenceChannel];
     loadCloudFriends();
+    loadFriendNotifications();
 }
 
 function stopCloudChat() {
@@ -4426,7 +4435,179 @@ function stopCloudChat() {
     loadedRooms = new Set();
     friendProfiles = {};
     onlineUserIds = new Set();
+    friendNotifications = [];
+    renderNotifications();
 }
+
+// --- Notifications: new messages from friends + "What's new" (updates.js) ---
+// What each person has already seen is remembered on this device:
+// { messagesSeenAt: time of the newest message seen, updatesSeen: [update ids] }
+const NOTIF_MESSAGE_LIMIT = 20;
+
+function notifStorageKey() {
+    return `procrastinote_notifications_${(appState.user?.email || '').toLowerCase()}`;
+}
+
+function getNotifSeen() {
+    try {
+        const seen = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
+        return { messagesSeenAt: seen.messagesSeenAt || 0, updatesSeen: seen.updatesSeen || [] };
+    } catch (e) {
+        return { messagesSeenAt: 0, updatesSeen: [] };
+    }
+}
+
+function setNotifSeen(seen) {
+    try {
+        localStorage.setItem(notifStorageKey(), JSON.stringify(seen));
+    } catch (e) { /* storage full or blocked: badges just reappear next time */ }
+}
+
+const appUpdates = () => (Array.isArray(window.PROCRASTINOTE_UPDATES) ? window.PROCRASTINOTE_UPDATES : []);
+
+async function loadFriendNotifications() {
+    if (!cloud || !appState.user?.cloudId) return;
+    const myEmail = appState.user.email.toLowerCase();
+    const { data, error } = await cloud.from('messages')
+        .select('id, sender_email, text, created_at')
+        .neq('sender_email', myEmail)
+        .order('created_at', { ascending: false })
+        .limit(NOTIF_MESSAGE_LIMIT);
+    if (error) {
+        console.error('Could not load notifications:', error.message);
+        return;
+    }
+    friendNotifications = data.map(row => ({
+        id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at)
+    }));
+    renderNotifications();
+}
+
+function addFriendNotification(row) {
+    const myEmail = appState.user?.email?.toLowerCase();
+    if (!myEmail || row.sender_email === myEmail) return;
+    if (friendNotifications.some(n => n.id === row.id)) return;
+    const note = { id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) };
+    friendNotifications.unshift(note);
+    friendNotifications = friendNotifications.slice(0, NOTIF_MESSAGE_LIMIT);
+
+    // Already reading that chat: it doesn't need a notification badge
+    const readingIt = document.getElementById('friends')?.classList.contains('active-view') &&
+        activeChatId?.toLowerCase() === note.sender;
+    if (readingIt) {
+        const seen = getNotifSeen();
+        setNotifSeen({ ...seen, messagesSeenAt: Math.max(seen.messagesSeenAt, note.timestamp) });
+    }
+    renderNotifications();
+}
+
+function timeAgo(timestamp) {
+    const minutes = Math.round((Date.now() - timestamp) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return new Date(timestamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function formatUpdateDate(dateString) {
+    const [y, m, d] = dateString.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// `seenOverride` keeps unread highlights visible while the panel is open
+function renderNotifications(seenOverride) {
+    const badge = document.getElementById('notif-badge');
+    const messagesEl = document.getElementById('notif-messages');
+    const updatesEl = document.getElementById('notif-updates');
+    if (!badge || !messagesEl || !updatesEl) return;
+
+    const seen = seenOverride || getNotifSeen();
+    const updates = appUpdates();
+
+    const badgeSeen = getNotifSeen();
+    const badgeCount = friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
+        updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length;
+    badge.hidden = badgeCount === 0;
+    badge.innerText = badgeCount > 9 ? '9+' : String(badgeCount);
+    document.getElementById('btn-notifications')?.setAttribute('aria-label',
+        badgeCount ? `Notifications, ${badgeCount} new` : 'Notifications');
+
+    messagesEl.innerHTML = '';
+    if (!cloud || !appState.user?.cloudId) {
+        messagesEl.innerHTML = '<li class="notif-empty">Log in to an online account to get messages from friends.</li>';
+    } else if (friendNotifications.length === 0) {
+        messagesEl.innerHTML = '<li class="notif-empty">No messages from friends yet.</li>';
+    } else {
+        friendNotifications.forEach(note => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'notif-item' + (note.timestamp > seen.messagesSeenAt ? ' unread' : '');
+            const preview = note.text.length > 90 ? note.text.slice(0, 90) + '...' : note.text;
+            btn.innerHTML = `<strong>${escapeHTML(getFriendProfile(note.sender).name)}</strong>: ${escapeHTML(preview)}` +
+                `<span class="notif-item-time">${escapeHTML(timeAgo(note.timestamp))}</span>`;
+            btn.addEventListener('click', () => openChatFromNotification(note.sender));
+            li.appendChild(btn);
+            messagesEl.appendChild(li);
+        });
+    }
+
+    updatesEl.innerHTML = '';
+    if (updates.length === 0) {
+        updatesEl.innerHTML = '<li class="notif-empty">No updates yet.</li>';
+    }
+    updates.forEach(update => {
+        const li = document.createElement('li');
+        li.className = 'notif-item' + (seen.updatesSeen.includes(update.id) ? '' : ' unread');
+        li.innerHTML = `<strong>${escapeHTML(update.title)}</strong><br>${escapeHTML(update.text)}` +
+            `<span class="notif-item-time">${escapeHTML(formatUpdateDate(update.date))}</span>`;
+        updatesEl.appendChild(li);
+    });
+}
+
+function openNotifications() {
+    const panel = document.getElementById('notif-panel');
+    const before = getNotifSeen();
+    // Everything shown now counts as seen; highlights stay until the panel closes
+    setNotifSeen({
+        messagesSeenAt: Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp)),
+        updatesSeen: appUpdates().map(u => u.id)
+    });
+    renderNotifications(before);
+    panel.hidden = false;
+    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'true');
+}
+
+function closeNotifications() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel || panel.hidden) return;
+    panel.hidden = true;
+    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'false');
+    renderNotifications();
+}
+
+function openChatFromNotification(email) {
+    closeNotifications();
+    document.querySelector('.dock-item[data-tab="friends"]')?.click();
+    document.querySelector('.friends-cat-tab[data-category="humans"]')?.click();
+    activeChatId = email;
+    renderFriends();
+    renderChatWindow();
+}
+
+document.getElementById('btn-notifications')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (document.getElementById('notif-panel').hidden) openNotifications();
+    else closeNotifications();
+});
+document.getElementById('btn-notif-close')?.addEventListener('click', closeNotifications);
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.notif-wrap')) closeNotifications();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeNotifications();
+});
 
 // On page load: make sure the saved login is still a valid online session
 async function restoreCloudSession() {
