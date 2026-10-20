@@ -1905,15 +1905,19 @@ async function renderPdfPage(pdf, pageNumber) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    // 'print' draws without waiting for animation frames, so reading keeps going
+    // when the student switches to another tab or app
+    await page.render({ canvasContext: ctx, viewport, intent: 'print' }).promise;
     page.cleanup();
     return canvas;
 }
 
-// PDFs typed on a computer already contain their words. For Tamil this is exact where OCR
-// misreads some letters (கி as தி), so a page with enough Tamil text is copied, not scanned.
-// Pages with little or no Tamil text (scans, English, old non-Unicode Tamil fonts) use OCR.
+// PDFs typed on a computer contain their words. When that saved text is right it beats OCR,
+// which misreads some Tamil letters (கி as தி). But Microsoft Word and other apps often save
+// Tamil with wrong or missing letters (தேவையான as ததவவயான) while the page still LOOKS right.
+// So every page is also read with OCR, and the saved text is used only when the two agree.
 const PDF_MIN_TAMIL_CHARS = 20;
+const PDF_MIN_AGREEMENT = 0.7; // measured: correct saved text 80-100%, Word's broken text 58%
 
 async function getPdfPageTamilText(pdf, pageNumber) {
     const page = await pdf.getPage(pageNumber);
@@ -1921,6 +1925,19 @@ async function getPdfPageTamilText(pdf, pageNumber) {
     const text = content.items.map(item => (item.str || '') + (item.hasEOL ? '\n' : '')).join('');
     const tamilChars = (text.match(/[஀-௿]/g) || []).length;
     return tamilChars >= PDF_MIN_TAMIL_CHARS ? fixTamilDisplayOrder(text).trim() : null;
+}
+
+const tamilWords = text => text.split(/[\s.,;:!?()"'\-]+/).filter(word => /[஀-௿]{2}/.test(word));
+
+function choosePdfPageText(savedText, ocrText) {
+    if (!savedText) return ocrText;
+    const ocrWords = tamilWords(ocrText);
+    if (ocrWords.length === 0) return savedText;
+    const saved = tamilWords(savedText);
+    const savedSet = new Set(saved);
+    const agreement = ocrWords.filter(word => savedSet.has(word)).length / ocrWords.length;
+    const pictureHasMore = ocrWords.length > saved.length * 1.3; // e.g. words inside a diagram
+    return agreement >= PDF_MIN_AGREEMENT && !pictureHasMore ? savedText : ocrText;
 }
 
 // PDFs often store Tamil in display order: the sign ெ ே ை comes BEFORE its letter,
@@ -1936,10 +1953,12 @@ function fixTamilDisplayOrder(text) {
     });
 }
 
-// OCR leaves invisible joiner characters after Tamil letters and reads specks as junk lines
+// OCR leaves invisible joiner characters after Tamil letters, reads specks as junk lines,
+// and writes ௌ as the look-alike ெ + ள (பௌர்ணமி as பெளர்ணமி)
 function cleanOcrText(text) {
     return text
         .replace(/[​-‍]/g, '')
+        .replace(/([க-ஹ])ெள(?![ா-்ௗ])/g, '$1ௌ')
         .split('\n')
         .filter(line => !line.trim() || /[஀-௿A-Za-z]{2}|\d{2}/.test(line))
         .join('\n')
@@ -1978,19 +1997,14 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
     const pagesText = [];
     let worker = null;
     try {
+        els.progress.innerText = 'Getting the text reader ready...';
+        worker = await Tesseract.createWorker('eng+tam');
         for (let p = range.from; p <= range.to && !pdfOcrCancelled; p++) {
             els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
-            let text = await getPdfPageTamilText(doc.pdf, p);
-            if (text === null) {
-                if (!worker) {
-                    els.progress.innerText = 'Getting the text reader ready...';
-                    worker = await Tesseract.createWorker('eng+tam');
-                    els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
-                }
-                const canvas = await renderPdfPage(doc.pdf, p);
-                text = cleanOcrText((await worker.recognize(canvas)).data.text);
-            }
-            pagesText.push(`[Page ${p}]\n${text}`);
+            const savedText = await getPdfPageTamilText(doc.pdf, p);
+            const canvas = await renderPdfPage(doc.pdf, p);
+            const ocrText = cleanOcrText((await worker.recognize(canvas)).data.text);
+            pagesText.push(`[Page ${p}]\n${choosePdfPageText(savedText, ocrText)}`);
         }
     } catch (err) {
         alert(`Error while reading the PDF: ${err.message}`);
