@@ -1497,6 +1497,40 @@ li.empty-state::before {
 }
 .auth-message[hidden] { display: none; }
 
+/* "Choose a new password" opens over whatever page the reset link loaded */
+#reset-password-overlay {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+/* "Forgot password?" under the password box (Log In only) */
+.forgot-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: -0.4rem 0 0.75rem;
+}
+
+.forgot-link {
+    padding: 0.2rem 0;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.forgot-link:hover {
+    text-decoration: underline;
+}
+
+.forgot-link:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .login-btn {
     width: 100%;
     padding: 0.95rem 1.2rem;
@@ -3938,6 +3972,92 @@ li.completing .done-check {
 .chat-input-wrapper .icon-btn-large {
     width: 44px;
     height: 44px;
+}
+
+/* ---------- Photos and documents in chat ---------- */
+.chat-attach-btn {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+}
+
+.chat-attach-btn[hidden] {
+    display: none;
+}
+
+.chat-file {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    max-width: 260px;
+}
+
+.chat-file-image {
+    display: block;
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 12px;
+    background: var(--inset);
+    min-height: 80px;
+}
+
+.chat-file-doc {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.chat-file-icon {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.chat-msg-bubble-wrapper.incoming .chat-file-icon {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.chat-file-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.chat-file-name small {
+    display: block;
+    font-weight: 400;
+    opacity: 0.75;
+}
+
+.chat-file-download {
+    align-self: flex-start;
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-file-download:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 .chat-typing-indicator {

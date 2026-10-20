@@ -66,6 +66,9 @@ That created:
 > Heads-up: Supabase's free built-in email only sends a few emails per hour. If a
 > confirmation email doesn't arrive while testing, wait an hour and try again (check spam too).
 
+"Forgot password?" emails use the same **Site URL** and **Redirect URLs**: the link in the email
+opens your site, which then asks for a new password. Nothing else needs turning on.
+
 ## 4. Put your project's address and public key in the app
 
 1. Sidebar: **Project Settings** (gear icon) → **API Keys**.
@@ -143,18 +146,20 @@ Sharing notes needs one more table. You only do this once:
 
 Until this is done, pressing **Send** on a note says "Sharing isn't switched on yet".
 
-## If something goes wrong
+## 8. Turn on sending photos and documents in chat
 
-- **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
-  confirmed their email) yet.
-- **Nothing happens online / chat still local-only**: `supabase-config.js` is empty, or the
-  page is an old cached version. Hard-refresh with **Ctrl+Shift+R**.
-- **"Message not sent: ... row-level security"**: you're not logged in properly. Log out and back in.
-- **Error mentioning `get_profiles` or `messages` "does not exist"**: step 2 wasn't run. Run
-  `setup.sql` again (running it twice is fine).
-- Open the browser console (**F12 → Console**) to see more detailed errors.
+Also once only:
 
-## Turn on Classes
+1. In Supabase, open **SQL Editor** → **New query**.
+2. Open `supabase/add-file-sharing.sql`, copy **all** of it, paste it in, and press **Run**.
+   If Supabase warns about "destructive operations", that's only the lines that recreate this
+   feature's own rules. Press **Run** anyway; no data is deleted.
+3. Check **Storage**: there is now a private bucket called `shared-files`. **Table Editor** has a
+   new `shared_files` table.
+
+Files can be up to 10 MB each. The free plan has 1 GB of storage in total.
+
+## 9. Turn on Classes
 
 The **Classes** page (class chats, class timetable and homework, files, activity groups) needs its
 own tables, security rules and a private file bucket. You only do this once:
@@ -192,3 +197,14 @@ The free plan has 1 GB of storage for the whole site, shared with photos sent in
 site-owner account, then join it with the code in the other. Send a message in General, post
 homework (it lands in the other account's Homework list once they tick **Follow class homework**),
 and share a timetable.
+
+## If something goes wrong
+
+- **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
+  confirmed their email) yet.
+- **Nothing happens online / chat still local-only**: `supabase-config.js` is empty, or the
+  page is an old cached version. Hard-refresh with **Ctrl+Shift+R**.
+- **"Message not sent: ... row-level security"**: you're not logged in properly. Log out and back in.
+- **Error mentioning `get_profiles` or `messages` "does not exist"**: step 2 wasn't run. Run
+  `setup.sql` again (running it twice is fine).
+- Open the browser console (**F12 → Console**) to see more detailed errors.

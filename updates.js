@@ -10,6 +10,18 @@ window.PROCRASTINOTE_UPDATES = [
         text: 'Join your class with its code to import the class timetable, get class homework in your list, chat and share files. Start activity groups with friends from other classes too.'
     },
     {
+        id: 'forgot-password',
+        date: '2026-10-20',
+        title: 'Forgot your password?',
+        text: 'On the Log In page, type your email and press "Forgot password?" to get a link for choosing a new one.'
+    },
+    {
+        id: 'share-files',
+        date: '2026-10-20',
+        title: 'Send photos and documents',
+        text: 'In a chat with a friend, press the paperclip to send a photo, PDF, Word, PowerPoint or Excel file (up to 10 MB).'
+    },
+    {
         id: 'share-notes',
         date: '2026-10-20',
         title: 'Share notes with friends',
