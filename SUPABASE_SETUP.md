@@ -66,6 +66,9 @@ That created:
 > Heads-up: Supabase's free built-in email only sends a few emails per hour. If a
 > confirmation email doesn't arrive while testing, wait an hour and try again (check spam too).
 
+"Forgot password?" emails use the same **Site URL** and **Redirect URLs**: the link in the email
+opens your site, which then asks for a new password. Nothing else needs turning on.
+
 ## 4. Put your project's address and public key in the app
 
 1. Sidebar: **Project Settings** (gear icon) → **API Keys**.
@@ -142,6 +145,19 @@ Sharing notes needs one more table. You only do this once:
 3. Check **Table Editor**: there is now a `shared_notes` table.
 
 Until this is done, pressing **Send** on a note says "Sharing isn't switched on yet".
+
+## 8. Turn on sending photos and documents in chat
+
+Also once only:
+
+1. In Supabase, open **SQL Editor** → **New query**.
+2. Open `supabase/add-file-sharing.sql`, copy **all** of it, paste it in, and press **Run**.
+   If Supabase warns about "destructive operations", that's only the lines that recreate this
+   feature's own rules. Press **Run** anyway; no data is deleted.
+3. Check **Storage**: there is now a private bucket called `shared-files`. **Table Editor** has a
+   new `shared_files` table.
+
+Files can be up to 10 MB each. The free plan has 1 GB of storage in total.
 
 ## If something goes wrong
 
