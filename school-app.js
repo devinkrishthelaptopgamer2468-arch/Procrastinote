@@ -71,7 +71,8 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates'];
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates',
+    'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
 let plannerDirty = false;     // local changes not saved online yet
 let plannerSyncTimer = null;
@@ -98,6 +99,10 @@ let defaultState = {
     friendsList: [], // Holds list of added friend emails
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
     halfdayDates: {}, // e.g. { "2026-10-19": true }: use the half-day study plan that day
+    // Classes (classes.js)
+    classFollow: {}, // { classId: true }: class homework is added to your homework automatically
+    classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
+    classHomeworkAdded: {}, // { classHomeworkId: classId }: already added once, so finished homework doesn't return
     groqKeyEnc: null, // encrypted Groq key (see "Groq key protection")
     groqKeyHint: '', // last 4 characters, to recognise which key is saved
     emailjs: {
@@ -137,6 +142,9 @@ function saveState() {
                 friendsList: appState.friendsList || [],
                 holidays: appState.holidays || {},
                 halfdayDates: appState.halfdayDates || {},
+                classFollow: appState.classFollow || {},
+                classTimetableImported: appState.classTimetableImported || {},
+                classHomeworkAdded: appState.classHomeworkAdded || {},
                 groqKeyEnc: appState.groqKeyEnc || null,
                 groqKeyHint: appState.groqKeyHint || '',
                 groqKey: appState.groqKey || undefined, // old readable key, kept only until it's encrypted
@@ -1559,18 +1567,22 @@ document.getElementById('notebook-image-url')?.addEventListener('keyup', (e) => 
     }
 });
 
-window.showConfirm = function(message, onConfirm) {
+// options: { title, confirmLabel, danger } (default: a red "Delete" button)
+window.showConfirm = function(message, onConfirm, options = {}) {
     const overlay = document.getElementById('custom-confirm-overlay');
     const msgEl = document.getElementById('custom-confirm-msg');
     const btnYes = document.getElementById('custom-confirm-yes');
     const btnNo = document.getElementById('custom-confirm-no');
-    
+
     if (!overlay) {
         if (confirm(message)) onConfirm();
         return;
     }
-    
+
     msgEl.innerText = message;
+    document.getElementById('custom-confirm-title').innerText = options.title || 'Confirm action';
+    btnYes.innerText = options.confirmLabel || 'Delete';
+    btnYes.className = `btn ${options.danger === false ? 'primary-btn' : 'danger-solid-btn'}`;
     overlay.style.display = 'flex';
     
     const cleanup = () => {
@@ -4774,6 +4786,8 @@ function startCloudChat() {
     loadCloudFriends();
     loadFriendNotifications();
     loadSharedNotes();
+
+    window.Classes?.start(); // class chats, homework and approvals (classes.js)
 }
 
 function stopCloudChat() {
@@ -4785,13 +4799,15 @@ function stopCloudChat() {
     onlineUserIds = new Set();
     friendNotifications = [];
     sharedNotes = [];
+    window.Classes?.stop();
     renderNotifications();
     renderSharedNotes();
 }
 
 // --- Notifications: new messages from friends + "What's new" (updates.js) ---
 // What each person has already seen is remembered on this device:
-// { messagesSeenAt / sharedSeenAt: time of the newest message / shared note seen, updatesSeen: [update ids] }
+// { messagesSeenAt / sharedSeenAt / classSeenAt: time of the newest friend message / shared note /
+//   class event seen, updatesSeen: [update ids] }
 const NOTIF_MESSAGE_LIMIT = 20;
 
 function notifStorageKey() {
@@ -4801,9 +4817,12 @@ function notifStorageKey() {
 function getNotifSeen() {
     try {
         const seen = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
-        return { messagesSeenAt: seen.messagesSeenAt || 0, sharedSeenAt: seen.sharedSeenAt || 0, updatesSeen: seen.updatesSeen || [] };
+        return {
+            messagesSeenAt: seen.messagesSeenAt || 0, sharedSeenAt: seen.sharedSeenAt || 0,
+            classSeenAt: seen.classSeenAt || 0, updatesSeen: seen.updatesSeen || []
+        };
     } catch (e) {
-        return { messagesSeenAt: 0, sharedSeenAt: 0, updatesSeen: [] };
+        return { messagesSeenAt: 0, sharedSeenAt: 0, classSeenAt: 0, updatesSeen: [] };
     }
 }
 
@@ -4882,15 +4901,21 @@ function renderNotifications(seenOverride) {
 
     const seen = seenOverride || getNotifSeen();
     const updates = appUpdates();
+    const classItems = window.Classes ? Classes.notificationItems() : [];
 
     const badgeSeen = getNotifSeen();
     const badgeCount = friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
         sharedNotes.filter(n => n.timestamp > badgeSeen.sharedSeenAt).length +
+        classItems.filter(n => n.ts > badgeSeen.classSeenAt).length +
         updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length;
     badge.hidden = badgeCount === 0;
     badge.innerText = badgeCount > 9 ? '9+' : String(badgeCount);
     document.getElementById('btn-notifications')?.setAttribute('aria-label',
         badgeCount ? `Notifications, ${badgeCount} new` : 'Notifications');
+
+    const classTitle = document.getElementById('notif-classes-title');
+    const classList = document.getElementById('notif-classes');
+    if (window.Classes && classTitle && classList) Classes.renderNotificationList(classList, classTitle, seen.classSeenAt);
 
     messagesEl.innerHTML = '';
     if (!cloud || !appState.user?.cloudId) {
@@ -4950,6 +4975,7 @@ function openNotifications() {
     setNotifSeen({
         messagesSeenAt: Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp)),
         sharedSeenAt: Math.max(before.sharedSeenAt, ...sharedNotes.map(n => n.timestamp)),
+        classSeenAt: Math.max(before.classSeenAt, ...(window.Classes ? Classes.notificationItems().map(n => n.ts) : [])),
         updatesSeen: appUpdates().map(u => u.id)
     });
     renderNotifications(before);

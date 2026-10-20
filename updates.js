@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'classes',
+        date: '2026-10-20',
+        title: 'Classes',
+        text: 'Join your class with its code to import the class timetable, get class homework in your list, chat and share files. Start activity groups with friends from other classes too.'
+    },
+    {
         id: 'forgot-password',
         date: '2026-10-20',
         title: 'Forgot your password?',

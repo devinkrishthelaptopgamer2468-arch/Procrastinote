@@ -159,6 +159,45 @@ Also once only:
 
 Files can be up to 10 MB each. The free plan has 1 GB of storage in total.
 
+## 9. Turn on Classes
+
+The **Classes** page (class chats, class timetable and homework, files, activity groups) needs its
+own tables, security rules and a private file bucket. You only do this once:
+
+1. In Supabase, open **SQL Editor** → **New query**.
+2. Open `supabase/add-classes.sql` from this project, copy **all** of it, paste it in, and press
+   **Run**. If Supabase warns about "destructive operations", that's only the lines that recreate
+   Classes' own rules. Press **Run** anyway; no data is deleted. You should see
+   "Success. No rows returned".
+3. Check **Table Editor**: there are now tables such as `classes`, `class_members` and
+   `group_messages`. **Storage** has a private bucket called `class-files`.
+
+Until this is done, the Classes page says "Classes aren't switched on yet".
+
+**You approve things.** The account `devinthegamer2468@gmail.com` is the site owner. On the
+Classes page it sees **Approvals**: new classes, co-admins and hand-overs wait there for you, and
+reported messages show up there with a **Delete message** button. You can also delete any class
+or activity group from there. To make a different account the site owner, change the email in
+**both** `is_site_owner()` near the top of `supabase/add-classes.sql` (then run the file again)
+and `SITE_OWNER_EMAIL` near the top of `classes.js`.
+
+**Limits** (all checked by the database, in `add-classes.sql`):
+
+| What | Limit |
+|---|---|
+| Classes waiting for approval | 2 per person |
+| Wrong join codes | 10 per hour per account |
+| Invite-only chats | 15 per class, 1 per person (the General chat doesn't count) |
+| Activity groups | Small = up to 5 people (1 point), Big = up to 20 (2 points); 6 points per person |
+| Files | 10 MB each, 100 MB per class or activity group |
+
+The free plan has 1 GB of storage for the whole site, shared with photos sent in chat.
+
+**Test it** with two browsers, like step 5: create a class in one, approve it with the
+site-owner account, then join it with the code in the other. Send a message in General, post
+homework (it lands in the other account's Homework list once they tick **Follow class homework**),
+and share a timetable.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

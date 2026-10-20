@@ -230,6 +230,10 @@
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14.3a6.5 6.5 0 0 1 3.5 5.7"/></svg></span>
                     <span class="nav-label">Friends</span>
                 </li>
+                <li class="dock-item" data-tab="classes">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9.5 12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.6c1.6 1.3 3.5 1.9 5.5 1.9s3.9-.6 5.5-1.9v-4.6M21.5 9.5v5"/></svg></span>
+                    <span class="nav-label">Classes</span>
+                </li>
                 <li class="dock-item" data-tab="settings">
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>
                     <span class="nav-label">Settings</span>
@@ -279,6 +283,8 @@
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                                     </button>
                                 </div>
+                                <p class="notif-section-title" id="notif-classes-title" hidden>Classes</p>
+                                <ul id="notif-classes" class="notif-list" hidden></ul>
                                 <p class="notif-section-title">Messages from friends</p>
                                 <ul id="notif-messages" class="notif-list"></ul>
                                 <p class="notif-section-title" id="notif-shared-title" hidden>Notes shared with you</p>
@@ -1026,6 +1032,39 @@
                 </div>
             </section>
 
+            <!-- Classes: class chats, timetable, homework, files and activity groups (classes.js) -->
+            <section id="classes" class="view">
+                <header class="view-header">
+                    <p class="eyebrow">Together</p>
+                    <h2>Classes</h2>
+                    <p class="subtitle">Heartfulness International School, Kolapakkam</p>
+                </header>
+
+                <!-- Shown until you're logged in online and Classes is switched on -->
+                <div id="classes-offline" class="card chat-empty-state coming-soon-card">
+                    <span class="tile-icon tint-indigo tile-icon-lg"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9.5 12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.6c1.6 1.3 3.5 1.9 5.5 1.9s3.9-.6 5.5-1.9v-4.6M21.5 9.5v5"/></svg></span>
+                    <h3>Classes</h3>
+                    <p id="classes-offline-text">Classes are on their way. Check back soon.</p>
+                </div>
+
+                <div id="classes-layout" class="classes-layout" hidden>
+                    <aside class="card classes-sidebar">
+                        <form id="classes-join-form" class="classes-join">
+                            <label for="classes-join-code">Join a class or activity</label>
+                            <div class="classes-join-row">
+                                <input type="text" id="classes-join-code" placeholder="Code, e.g. K7QM2X" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false">
+                                <button type="submit" class="btn primary-btn btn-sm">Join</button>
+                            </div>
+                        </form>
+                        <button type="button" class="btn secondary-btn btn-sm btn-block" data-act="create-class">+ Create a class</button>
+                        <div id="classes-list" class="classes-list"></div>
+                    </aside>
+                    <div id="classes-detail" class="card classes-detail"></div>
+                </div>
+                <input type="file" id="classes-file-input" hidden
+                    accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.txt,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
+            </section>
+
         </main>
     </div>
 
@@ -1172,10 +1211,24 @@
         </div>
     </div>
 
+    <!-- Classes: create a class, new chat, start an activity... (filled in by classes.js) -->
+    <dialog id="classes-dialog" class="classes-dialog">
+        <form id="classes-dialog-form" class="classes-dialog-form">
+            <h3 id="classes-dialog-title"></h3>
+            <div id="classes-dialog-body" class="classes-dialog-body"></div>
+            <p id="classes-dialog-error" class="classes-dialog-error" role="alert" hidden></p>
+            <div class="confirm-actions">
+                <button type="button" id="classes-dialog-cancel" class="btn secondary-btn">Cancel</button>
+                <button type="submit" id="classes-dialog-submit" class="btn primary-btn">Save</button>
+            </div>
+        </form>
+    </dialog>
+
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
     <script src="updates.js"></script>
+    <script src="classes.js"></script>
     <script src="school-app.js"></script>
 </body>
 </html>
