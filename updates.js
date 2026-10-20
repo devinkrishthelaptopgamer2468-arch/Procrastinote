@@ -10,6 +10,12 @@ window.PROCRASTINOTE_UPDATES = [
         text: 'Only the Procrastinote team creates classes now. Ask your class admin for your class code and join it on the Classes page.'
     },
     {
+        id: 'subjects-hindi-sanskrit-french',
+        date: '2026-10-20',
+        title: 'More subjects',
+        text: 'Hindi, Sanskrit and French can now be picked in your timetable, homework and class timetables.'
+    },
+    {
         id: 'old-browser-message',
         date: '2026-10-20',
         title: 'No more blank page on old browsers',
