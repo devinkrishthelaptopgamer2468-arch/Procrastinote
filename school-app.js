@@ -5841,4 +5841,5 @@ updateRobotExpression();
 applyTheme();
 checkAuth();
 restoreCloudSession();
+window.__procrastinoteStarted = true; // tells the browser check in index.html that startup worked
 

@@ -19,6 +19,58 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="school-styles.css">
+    <!-- Old browsers (for example old versions of Mi Browser) can't run Procrastinote's code or the
+         Supabase library, which used to leave an empty page. This check is written in old-style
+         JavaScript on purpose so every browser can run it, and shows what to do instead. -->
+    <script>
+        (function () {
+            var firstError = '';
+            window.addEventListener('error', function (e) {
+                if (!firstError) firstError = (e.message || 'Unknown error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
+            });
+            window.addEventListener('load', function () {
+                setTimeout(function () {
+                    if (window.__procrastinoteStarted) return; // school-app.js finished starting up
+                    showBrowserProblem(!window.__modernJsWorks, firstError);
+                }, 1500);
+            });
+
+            function showBrowserProblem(tooOld, error) {
+                var chrome = navigator.userAgent.match(/Chrome\/(\d+)/);
+                var browser = (/MiuiBrowser\/[\d.]+/.exec(navigator.userAgent) || [''])[0].replace('MiuiBrowser', 'Mi Browser');
+                var details = (browser ? browser + ', ' : '') + (chrome ? 'engine Chrome ' + chrome[1] : navigator.userAgent) + (error ? ' | ' + error : '');
+                var isAndroid = /Android/i.test(navigator.userAgent);
+                var page = location.host + location.pathname;
+                var box = document.createElement('div');
+                box.setAttribute('role', 'alert');
+                box.style.cssText = 'position:fixed;inset:0;top:0;left:0;right:0;bottom:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#EEF1F7;font-family:Arial,sans-serif;color:#0F1728;';
+                box.innerHTML =
+                    '<div style="max-width:380px;width:100%;background:#fff;border-radius:20px;padding:28px 22px;text-align:center;box-shadow:0 12px 32px rgba(31,41,82,0.18);">' +
+                    '<img src="logo-icon.png" alt="" style="width:56px;height:56px;margin-bottom:10px;">' +
+                    '<h1 style="font-size:20px;margin:0 0 10px;">' + (tooOld ? 'This browser is too old for Procrastinote' : 'Procrastinote couldn\'t start') + '</h1>' +
+                    '<p style="font-size:15px;line-height:1.5;color:#556072;margin:0 0 18px;">' +
+                    (tooOld ? 'Please open Procrastinote in <b>Google Chrome</b>, or update this browser in the app store.'
+                            : 'Something went wrong in this browser. Try opening Procrastinote in <b>Google Chrome</b>, or reload the page.') + '</p>' +
+                    (isAndroid ? '<a id="open-in-chrome" href="intent://' + page + '#Intent;scheme=https;package=com.android.chrome;end" style="display:block;padding:13px;border-radius:12px;background:#5B6CF0;color:#fff;font-weight:bold;text-decoration:none;margin-bottom:10px;">Open in Chrome</a>' : '') +
+                    '<button id="copy-site-link" type="button" style="width:100%;padding:12px;border-radius:12px;border:1px solid #d6dee8;background:#fff;color:#0F1728;font-size:15px;margin-bottom:10px;">Copy link</button>' +
+                    '<button id="reload-site" type="button" style="width:100%;padding:12px;border-radius:12px;border:none;background:none;color:#5B6CF0;font-size:15px;">Reload</button>' +
+                    '<p style="font-size:11px;color:#8B94A6;margin:14px 0 0;word-break:break-word;">' + details.replace(/</g, '&lt;') + '</p>' +
+                    '</div>';
+                document.body.appendChild(box);
+                document.getElementById('reload-site').onclick = function () { location.reload(); };
+                document.getElementById('copy-site-link').onclick = function () {
+                    var input = document.createElement('input');
+                    input.value = 'https://' + page;
+                    document.body.appendChild(input);
+                    input.select();
+                    try { document.execCommand('copy'); this.innerHTML = 'Link copied'; } catch (e) { this.innerHTML = input.value; }
+                    document.body.removeChild(input);
+                };
+            }
+        })();
+    </script>
+    <!-- Only browsers that understand modern JavaScript can run this line; the check above uses it -->
+    <script>window.__modernJsWorks = (function () { var a = {}; a.b ??= 1; return a?.b ?? 0; })() === 1;</script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
