@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'old-browser-message',
+        date: '2026-10-20',
+        title: 'No more blank page on old browsers',
+        text: 'If your phone\'s browser is too old for Procrastinote, you now see what to do and an "Open in Chrome" button instead of an empty page.'
+    },
+    {
         id: 'classes',
         date: '2026-10-20',
         title: 'Classes',
