@@ -60,6 +60,8 @@
         selected: null,        // { kind: 'class' | 'activity' | 'inbox', id }
         tabs: {},              // group key -> open tab
         activeChat: {},        // group key -> open chat id
+        ping: null,            // @ suggestions while typing: { options, index, start, end }
+        botTyping: null,       // chat id where Procrasti-Bot is writing a reply
         uploading: false
     });
     const state = freshState();
@@ -202,13 +204,18 @@
         }
     }
 
+    // Newest messages from others, plus older ones that pinged you (so a ping isn't pushed out)
     async function loadRecentMessages() {
-        const { data, error } = await cloud.from('group_messages')
-            .select('id, chat_id, sender_id, text, created_at')
-            .neq('sender_id', myId())
-            .order('created_at', { ascending: false })
-            .limit(20);
-        if (!error) state.recentMessages = data || [];
+        const columns = 'id, chat_id, sender_id, text, mentions, bot, created_at';
+        const [recent, pings] = await Promise.all([
+            cloud.from('group_messages').select(columns).neq('sender_id', myId())
+                .order('created_at', { ascending: false }).limit(20),
+            cloud.from('group_messages').select(columns).contains('mentions', [myId()])
+                .order('created_at', { ascending: false }).limit(10)
+        ]);
+        if (recent.error) return;
+        const rows = recent.data.concat(pings.error ? [] : pings.data.filter(p => !recent.data.some(r => r.id === p.id)));
+        state.recentMessages = rows.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
     }
 
     async function loadInbox() {
@@ -784,6 +791,132 @@
         return html;
     }
 
+    // ---------- Pings: @Name notifies someone, @Procrasti-Bot asks the AI helper ----------
+    const BOT_NAME = 'Procrasti-Bot';
+    const BOT_PING = /@procrasti[- ]?bot\b/i;
+    const regexSafe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Everyone who can read this chat (the people you can ping in it)
+    function chatPeople(chat) {
+        if (!chat) return [];
+        if (chat.activity_id) return memberList('activity', chat.activity_id);
+        const all = memberList('class', chat.class_id);
+        if (chat.kind !== 'private') return all;
+        const ids = state.chatMembers[chat.id] || [];
+        return all.filter(m => ids.includes(m.user_id));
+    }
+
+    function mentionsIn(chat, text) {
+        const lower = text.toLowerCase();
+        return chatPeople(chat)
+            .filter(m => m.user_id !== myId() && m.name && lower.includes(`@${m.name.toLowerCase()}`))
+            .map(m => m.user_id)
+            .slice(0, 20);
+    }
+
+    // Message text with each @ping highlighted (yours stands out more)
+    function messageTextHtml(m) {
+        const pings = (m.mentions || []).map(id => ({ name: personName(id), me: id === myId() }))
+            .filter(p => p.name && p.name !== 'Someone who left');
+        pings.push({ name: BOT_NAME, me: false });
+        pings.sort((a, b) => b.name.length - a.name.length); // "Asha Kumar" before "Asha"
+        const text = escapeHTML(m.text);
+        const pattern = new RegExp(`@(${pings.map(p => regexSafe(escapeHTML(p.name))).join('|')})`, 'gi');
+        return text.replace(pattern, (match, name) => {
+            const me = pings.some(p => p.me && escapeHTML(p.name).toLowerCase() === name.toLowerCase());
+            return `<span class="cls-ping${me ? ' cls-ping-me' : ''}">${match}</span>`;
+        });
+    }
+
+    function pingListHtml() {
+        const ping = state.ping;
+        if (!ping?.options.length) return '';
+        return ping.options.map((o, i) => `
+            <button type="button" role="option" aria-selected="${i === ping.index}" class="cls-ping-option${i === ping.index ? ' active' : ''}" data-act="ping-pick" data-index="${i}">
+                <span class="friend-avatar cls-msg-avatar${o.bot ? ' cls-bot-avatar' : ''}">${o.bot ? 'PB' : escapeHTML(initials(o.name))}</span>
+                <span><strong>${escapeHTML(o.name)}</strong><small>${escapeHTML(o.sub)}</small></span>
+            </button>`).join('');
+    }
+
+    // Typing "@" (and the start of a name) shows who you can ping
+    function updatePingList(input) {
+        const list = document.getElementById('cls-ping-list');
+        if (!list) return;
+        const caret = input.selectionStart ?? input.value.length;
+        const match = /(^|\s)@([^@\n]{0,30})$/.exec(input.value.slice(0, caret));
+        const chat = state.chats.find(c => c.id === input.form?.dataset.chat);
+        let options = [];
+        if (match && chat) {
+            const query = match[2].toLowerCase();
+            const fits = name => name.toLowerCase().startsWith(query) || name.toLowerCase().split(/\s+/).some(w => w.startsWith(query));
+            options = [{ id: 'bot', name: BOT_NAME, sub: 'AI helper: ask it anything', bot: true }]
+                .concat(chatPeople(chat).filter(m => m.user_id !== myId() && m.name)
+                    .map(m => ({ id: m.user_id, name: m.name, sub: m.email })))
+                .filter(o => fits(o.name))
+                .slice(0, 6);
+        }
+        state.ping = options.length ? { options, index: 0, start: caret - match[2].length - 1, end: caret } : null;
+        list.innerHTML = pingListHtml();
+        list.hidden = !state.ping;
+    }
+
+    function pickPing(index) {
+        const input = document.getElementById('cls-chat-input');
+        const ping = state.ping;
+        if (!input || !ping?.options[index]) return;
+        const insert = `@${ping.options[index].name} `;
+        input.value = input.value.slice(0, ping.start) + insert + input.value.slice(ping.end);
+        const caret = ping.start + insert.length;
+        input.focus();
+        input.setSelectionRange(caret, caret);
+        closePingList();
+    }
+
+    function closePingList() {
+        state.ping = null;
+        const list = document.getElementById('cls-ping-list');
+        if (list) {
+            list.hidden = true;
+            list.innerHTML = '';
+        }
+    }
+
+    // Procrasti-Bot answers in the chat. The reply is written on the device of the person who
+    // pinged it, with their AI key (only their message is sent to the AI, not the rest of the chat).
+    // Without a key it answers with one of its built-in study tips.
+    async function askBot(chatId, text) {
+        const buddy = typeof AI_BUDDIES !== 'undefined' ? AI_BUDDIES.find(b => b.id === 'procrasti-bot') : null;
+        const question = text.replace(BOT_PING, '').trim() || 'Hi!';
+        state.botTyping = chatId;
+        renderMessages(chatId);
+        let reply = '';
+        try {
+            if (typeof getGroqKey === 'function' && (await getGroqKey()).startsWith('gsk_')) {
+                reply = await callGroq(
+                    `${(appState.user?.name || 'A student').split(' ')[0]} asked in their class group chat: "${question}"`,
+                    `${buddy?.systemPrompt || 'You are Procrasti-Bot, a friendly study helper.'} You are answering in a class group chat at ${SCHOOL_NAME}, so classmates read your reply too. You may help with study questions. Keep it to 1-3 short sentences, kind and suitable for school.`
+                );
+            }
+        } catch (e) {
+            reply = '';
+        }
+        if (!reply || /API Error|brain right now|API key|empty response/i.test(reply)) {
+            const tips = buddy?.offlineResponses || ['You\'ve got this! Start with one small step right now.'];
+            reply = tips[Math.floor(Math.random() * tips.length)];
+        }
+        const { data, error } = await cloud.from('group_messages')
+            .insert({ chat_id: chatId, sender_id: myId(), text: reply.trim().slice(0, 2000), bot: true })
+            .select()
+            .single();
+        state.botTyping = null;
+        if (error) {
+            renderMessages(chatId);
+            alert(`Procrasti-Bot couldn't answer: ${friendlyError(error)}`);
+            return;
+        }
+        addMessage(data);
+    }
+
     function chatPaneHtml(chat, moderator) {
         if (!canUseChat(chat)) {
             return `
@@ -811,7 +944,8 @@
                 ${head}
                 <div class="cls-messages chat-messages-container" id="cls-messages" data-moderator="${moderator ? 1 : 0}">${messagesHtml(chat.id, moderator)}</div>
                 <form class="chat-input-wrapper cls-chat-form" data-form="send" data-chat="${chat.id}">
-                    <input type="text" id="cls-chat-input" data-keep maxlength="2000" placeholder="Message ${escapeHTML(chat.kind === 'activity' ? 'the group' : chat.name)}" autocomplete="off" aria-label="Message">
+                    <div id="cls-ping-list" class="cls-ping-list" role="listbox" aria-label="People to ping" ${state.ping ? '' : 'hidden'}>${pingListHtml()}</div>
+                    <input type="text" id="cls-chat-input" data-keep maxlength="2000" placeholder="Message ${escapeHTML(chat.kind === 'activity' ? 'the group' : chat.name)} · @ to ping" autocomplete="off" aria-label="Message">
                     <button type="submit" class="btn primary-btn icon-btn-large" aria-label="Send message">${ICONS.send}</button>
                 </form>
             </div>`;
@@ -822,27 +956,36 @@
             return '<div class="chat-empty-state"><p>Loading messages...</p></div>';
         }
         const list = state.messages[chatId];
-        if (!list.length) return '<div class="chat-empty-state"><p>No messages yet. Say hello! 👋</p></div>';
+        const typing = state.botTyping === chatId ? `
+            <div class="chat-msg-bubble-wrapper incoming cls-msg">
+                <div class="friend-avatar cls-msg-avatar cls-bot-avatar">PB</div>
+                <div class="cls-msg-body"><span class="cls-msg-name">${BOT_NAME}</span>
+                    <div class="chat-msg-bubble cls-bot-typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+            </div>` : '';
+        if (!list.length && !typing) return '<div class="chat-empty-state"><p>No messages yet. Say hello! 👋</p></div>';
         return list.map(m => {
-            const mine = m.sender_id === myId();
-            const name = personName(m.sender_id);
+            const sentByMe = m.sender_id === myId();
+            const mine = sentByMe && !m.bot; // bot replies always show on the left
+            const name = m.bot ? BOT_NAME : personName(m.sender_id);
+            const pingsMe = !sentByMe && (m.mentions || []).includes(myId());
             const actions = [
-                mine || moderator ? `<button type="button" data-act="msg-delete" data-msg="${m.id}">Delete</button>` : '',
-                mine ? '' : `<button type="button" data-act="msg-report" data-msg="${m.id}">Report</button>`
+                sentByMe || moderator ? `<button type="button" data-act="msg-delete" data-msg="${m.id}">Delete</button>` : '',
+                sentByMe ? '' : `<button type="button" data-act="msg-report" data-msg="${m.id}">Report</button>`
             ].join('');
+            const label = m.bot ? `${BOT_NAME} <small>· asked by ${escapeHTML(sentByMe ? 'you' : personName(m.sender_id))}</small>` : escapeHTML(name);
             return `
-                <div class="chat-msg-bubble-wrapper ${mine ? 'outgoing' : 'incoming'} cls-msg">
-                    <div class="friend-avatar cls-msg-avatar">${escapeHTML(initials(name))}</div>
+                <div class="chat-msg-bubble-wrapper ${mine ? 'outgoing' : 'incoming'} cls-msg${pingsMe ? ' cls-pinged' : ''}${m.bot ? ' cls-bot-msg' : ''}">
+                    <div class="friend-avatar cls-msg-avatar${m.bot ? ' cls-bot-avatar' : ''}">${m.bot ? 'PB' : escapeHTML(initials(name))}</div>
                     <div class="cls-msg-body">
-                        ${mine ? '' : `<span class="cls-msg-name">${escapeHTML(name)}</span>`}
+                        ${mine ? '' : `<span class="cls-msg-name">${label}</span>`}
                         <div class="chat-msg-bubble">
-                            <div>${escapeHTML(m.text)}</div>
+                            <div>${messageTextHtml(m)}</div>
                             <span class="chat-msg-time">${escapeHTML(messageTime(Date.parse(m.created_at)))}</span>
                         </div>
                         <div class="cls-msg-actions">${actions}</div>
                     </div>
                 </div>`;
-        }).join('');
+        }).join('') + typing;
     }
 
     // Update only the message list, so typing isn't interrupted
@@ -1290,8 +1433,10 @@
             return;
         }
         input.value = '';
+        closePingList();
+        const chat = state.chats.find(c => c.id === form.dataset.chat);
         const { data, error } = await cloud.from('group_messages')
-            .insert({ chat_id: form.dataset.chat, sender_id: myId(), text })
+            .insert({ chat_id: form.dataset.chat, sender_id: myId(), text, mentions: mentionsIn(chat, text) })
             .select()
             .single();
         if (error) {
@@ -1302,6 +1447,7 @@
         addMessage(data);
         const box = document.getElementById('cls-messages');
         if (box) box.scrollTop = box.scrollHeight;
+        if (BOT_PING.test(text)) askBot(data.chat_id, text);
     }
 
     function reportMessage(id) {
@@ -1679,6 +1825,9 @@
             case 'msg-report':
                 reportMessage(el.dataset.msg);
                 break;
+            case 'ping-pick':
+                pickPing(Number(el.dataset.index));
+                break;
             case 'hw-edit':
                 homeworkDialog((state.homework[group.id] || []).find(h => String(h.id) === el.dataset.hw));
                 break;
@@ -1787,6 +1936,23 @@
         if (el?.dataset.change === 'follow') setFollow(el.dataset.id, el.checked);
     }
 
+    // While the @ list is open: arrows move, Enter or Tab picks, Esc closes
+    function onPingKeys(e) {
+        if (e.target.id !== 'cls-chat-input' || !state.ping) return;
+        const count = state.ping.options.length;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            state.ping.index = (state.ping.index + (e.key === 'ArrowDown' ? 1 : count - 1)) % count;
+            document.getElementById('cls-ping-list').innerHTML = pingListHtml();
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            pickPing(state.ping.index);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closePingList();
+        }
+    }
+
     // ---------- Notifications (shown in the dashboard bell by school-app.js) ----------
     function openFromNotification(kind, id, tab, chatId) {
         if (typeof closeNotifications === 'function') closeNotifications();
@@ -1806,9 +1972,13 @@
             if (!chat) return;
             const g = chatGroup(chat);
             const preview = m.text.length > 90 ? `${m.text.slice(0, 90)}...` : m.text;
+            const who = m.bot ? BOT_NAME : personName(m.sender_id);
+            const pinged = (m.mentions || []).includes(me);
             items.push({
                 ts: Date.parse(m.created_at),
-                html: `<strong>${escapeHTML(personName(m.sender_id))}</strong> in ${escapeHTML(chatPlace(chat))}: ${escapeHTML(preview)}`,
+                html: pinged
+                    ? `📣 <strong>${escapeHTML(who)}</strong> mentioned you in ${escapeHTML(chatPlace(chat))}: ${escapeHTML(preview)}`
+                    : `<strong>${escapeHTML(who)}</strong> in ${escapeHTML(chatPlace(chat))}: ${escapeHTML(preview)}`,
                 open: () => openFromNotification(g.kind, g.id, g.kind === 'class' ? 'chats' : 'chat', chat.id)
             });
         });
@@ -1945,6 +2115,17 @@
     document.getElementById('classes')?.addEventListener('click', onClick);
     document.getElementById('classes')?.addEventListener('submit', onSubmit);
     document.getElementById('classes')?.addEventListener('change', onChange);
+    document.getElementById('classes')?.addEventListener('input', e => {
+        if (e.target.id === 'cls-chat-input') updatePingList(e.target);
+    });
+    document.getElementById('classes')?.addEventListener('keydown', onPingKeys);
+    // Picking from the list mustn't take focus away from the message box
+    document.getElementById('classes')?.addEventListener('mousedown', e => {
+        if (e.target.closest('.cls-ping-option')) e.preventDefault();
+    });
+    document.addEventListener('pointerdown', e => {
+        if (state.ping && !e.target.closest('.cls-chat-form')) closePingList();
+    });
     document.getElementById('classes-join-form')?.addEventListener('submit', e => {
         e.preventDefault();
         joinWithCode(document.getElementById('classes-join-code'));

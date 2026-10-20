@@ -321,17 +321,22 @@
                     <div class="dash-planning">
                         <span class="planning-chip">Planning for <strong id="dash-tomorrow-label">Tomorrow</strong></span>
                         <span class="subtitle" id="dash-day-order-display">Day Order: --</span>
-                        <!-- Notifications: new messages from friends + "What's new" (updates.js) -->
+                        <!-- Two buttons: Messages (classes, friends, shared notes...) and Updates ("What's new", updates.js) -->
                         <div class="notif-wrap">
-                            <button id="btn-notifications" class="notif-btn" aria-haspopup="true" aria-expanded="false">
-                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                                <span>Notifications</span>
-                                <span id="notif-badge" class="notif-badge" hidden></span>
+                            <button id="btn-messages" class="notif-btn" aria-haspopup="true" aria-expanded="false" aria-controls="msg-panel">
+                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                                <span>Messages</span>
+                                <span id="msg-badge" class="notif-badge" hidden></span>
                             </button>
-                            <div id="notif-panel" class="notif-panel" role="dialog" aria-label="Notifications" hidden>
+                            <button id="btn-updates" class="notif-btn" aria-haspopup="true" aria-expanded="false" aria-controls="updates-panel">
+                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+                                <span>Updates</span>
+                                <span id="updates-badge" class="notif-badge" hidden></span>
+                            </button>
+                            <div id="msg-panel" class="notif-panel" role="dialog" aria-label="Messages" hidden>
                                 <div class="notif-panel-head">
-                                    <h3>Notifications</h3>
-                                    <button id="btn-notif-close" class="icon-btn icon-btn-small" aria-label="Close notifications">
+                                    <h3>Messages</h3>
+                                    <button class="icon-btn icon-btn-small" data-notif-close aria-label="Close messages">
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                                     </button>
                                 </div>
@@ -341,7 +346,14 @@
                                 <ul id="notif-messages" class="notif-list"></ul>
                                 <p class="notif-section-title" id="notif-shared-title" hidden>Notes shared with you</p>
                                 <ul id="notif-shared" class="notif-list" hidden></ul>
-                                <p class="notif-section-title">What's new on Procrastinote</p>
+                            </div>
+                            <div id="updates-panel" class="notif-panel" role="dialog" aria-label="Updates" hidden>
+                                <div class="notif-panel-head">
+                                    <h3>What's new on Procrastinote</h3>
+                                    <button class="icon-btn icon-btn-small" data-notif-close aria-label="Close updates">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
                                 <ul id="notif-updates" class="notif-list"></ul>
                             </div>
                         </div>
