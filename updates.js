@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'themed-pickers',
+        date: '2026-10-20',
+        title: 'New date and time pickers',
+        text: 'Picking a due date or a study block time now opens a calendar and clock that match Procrastinote, in light and dark mode.'
+    },
+    {
         id: 'classes-sliding',
         date: '2026-10-20',
         title: 'Smoother Classes page',

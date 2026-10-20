@@ -1333,6 +1333,7 @@
                 <label for="cls-edit-date">Due</label>
                 <input type="date" id="cls-edit-date" name="date" value="${escapeHTML(hw.due_date)}" required>`,
             onSubmit: async form => {
+                if (!form.elements.date.value) throw new Error('Pick a due date.');
                 await call(cloud.from('class_homework').update({
                     task: form.elements.task.value.trim(), subject: form.elements.subject.value, due_date: form.elements.date.value
                 }).eq('id', hw.id));
@@ -1346,7 +1347,14 @@
         const task = form.querySelector('#cls-hw-task').value.trim();
         const subject = form.querySelector('#cls-hw-subject').value;
         const date = form.querySelector('#cls-hw-date').value;
-        if (!task || !subject || !date) return;
+        if (!task || !subject) return;
+        if (!date) { // date boxes are read-only (pickers.js), so the browser doesn't check "required"
+            const box = form.querySelector('#cls-hw-date');
+            box.classList.add('shake-error');
+            setTimeout(() => box.classList.remove('shake-error'), 600);
+            alert('Pick a due date.');
+            return;
+        }
         const button = form.querySelector('button');
         button.disabled = true;
         const { error } = await cloud.from('class_homework')
