@@ -464,6 +464,7 @@
         else if (state.missingSetup) message = 'Classes aren\'t switched on yet. Check back soon.';
         offline.hidden = !message;
         layout.hidden = !!message;
+        document.getElementById('classes-create-btn').hidden = !isSiteOwner();
         document.getElementById('classes-offline-text').innerText = message;
         if (message) return;
         renderList();
@@ -488,7 +489,7 @@
 
         html += '<p class="cls-list-title">Your classes</p>';
         if (!state.classes.length) {
-            html += '<p class="cls-list-empty">Ask your class admin for the class code and join above, or create your class.</p>';
+            html += '<p class="cls-list-empty">Ask your class admin for your class code and join above.</p>';
         }
         state.classes.forEach(c => {
             const status = c.status === 'pending' ? 'Waiting for approval' : c.status === 'rejected' ? 'Not approved' :
@@ -513,9 +514,20 @@
                 </button>`;
         });
         if (html !== listEl._html) {
+            const from = listEl._sliderRect;
             listEl._html = html;
-            listEl.innerHTML = html;
+            listEl.innerHTML = `<span class="cls-slider cls-list-slider" aria-hidden="true"></span>${html}`;
+            listEl._sliderRect = placeSlider(listEl.firstElementChild, listEl.querySelector('.cls-item.active'), from);
         }
+    }
+
+    // After a resize, or when the page was hidden while it redrew, put the highlights back in place
+    function realignSliders() {
+        const listEl = document.getElementById('classes-list');
+        if (listEl?.firstElementChild) listEl._sliderRect = placeSlider(listEl.firstElementChild, listEl.querySelector('.cls-item.active'), null);
+        const detail = document.getElementById('classes-detail');
+        const tabsEl = detail?.querySelector('.cls-tabs');
+        if (tabsEl) detail._tabRect = placeSlider(tabsEl.querySelector('.cls-slider'), tabsEl.querySelector('.cls-tab.active'), null);
     }
 
     // Typed text, cursor and chat scroll survive a redraw
@@ -549,7 +561,7 @@
         return `
             <div class="chat-empty-state cls-empty">
                 <span class="tile-icon tint-indigo tile-icon-lg"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 5l9 4.5-9 4.5z"/><path d="M7 11.5v4.5c1.5 1.3 3.2 2 5 2s3.5-.7 5-2v-4.5M21 9.5V15"/></svg></span>
-                <p>${state.classes.length ? 'Pick a class or activity group.' : 'Join your class with its code, or create it if nobody has yet.'}</p>
+                <p>${state.classes.length ? 'Pick a class or activity group.' : 'Join your class with the code your class admin gives you.'}</p>
             </div>`;
     }
 
@@ -559,8 +571,12 @@
         const html = detailHtml();
         // Redraw only when something changed, so typing and scrolling aren't disturbed
         if (html !== detail._html) {
+            const before = detail._view || { key: '' };
+            const now = viewOf();
             detail._html = html;
-            keepInputs(detail, () => { detail.innerHTML = html; });
+            keepInputs(detail, () => { detail.innerHTML = `<div class="cls-view">${html}</div>`; });
+            detail._view = now;
+            animateDetail(detail, before, now);
         }
         const chatId = currentChatId();
         if (chatId && canUseChat(state.chats.find(c => c.id === chatId) || {}) && !state.loadedChats.has(chatId)) loadMessages(chatId);
@@ -590,9 +606,74 @@
     }
 
     function tabsHtml(key, tabs, active) {
-        return `<div class="cls-tabs" role="tablist">${tabs.map(([id, label]) =>
+        return `<div class="cls-tabs" role="tablist"><span class="cls-slider" aria-hidden="true"></span>${tabs.map(([id, label]) =>
             `<button type="button" role="tab" aria-selected="${id === active}" class="cls-tab ${id === active ? 'active' : ''}" data-act="tab" data-key="${key}" data-tab="${id}">${label}</button>`
         ).join('')}</div>`;
+    }
+
+    // ---------- Motion: the highlight slides to the picked tab or class, and the new content
+    // slides in from the side it's on (tabs sideways, classes up or down) ----------
+    const prefersStill = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Moves a highlight (.cls-slider) over `target`. `from` is where it was before the redraw.
+    function placeSlider(slider, target, from) {
+        if (!slider) return;
+        if (!target) {
+            slider.style.opacity = '0';
+            return;
+        }
+        const to = { x: target.offsetLeft, y: target.offsetTop, w: target.offsetWidth, h: target.offsetHeight };
+        const apply = r => {
+            slider.style.width = `${r.w}px`;
+            slider.style.height = `${r.h}px`;
+            slider.style.transform = `translate(${r.x}px, ${r.y}px)`;
+        };
+        slider.style.opacity = '1';
+        if (from && !prefersStill()) {
+            slider.style.transition = 'none';
+            apply(from);
+            void slider.offsetWidth; // start from the old spot, then glide
+            slider.style.transition = '';
+        }
+        apply(to);
+        return to;
+    }
+
+    function slideIn(el, direction) {
+        if (!el || !direction || prefersStill()) return;
+        el.classList.remove('cls-in-left', 'cls-in-right', 'cls-in-up', 'cls-in-down');
+        void el.offsetWidth;
+        el.classList.add(`cls-in-${direction}`);
+        el.addEventListener('animationend', () => el.classList.remove(`cls-in-${direction}`), { once: true });
+    }
+
+    // Order of things in the left list, to know whether the new class is above or below
+    function listOrder(sel) {
+        if (!sel) return -1;
+        if (sel.kind === 'inbox') return -1;
+        const items = [...state.classes.map(c => keyOf('class', c.id)), ...state.activities.map(a => keyOf('activity', a.id))];
+        return items.indexOf(keyOf(sel.kind, sel.id));
+    }
+
+    function viewOf() {
+        const sel = state.selected;
+        if (!sel) return { key: '', tab: '', order: -2 };
+        if (sel.kind === 'inbox') return { key: 'inbox', tab: '', order: -1 };
+        const key = keyOf(sel.kind, sel.id);
+        return { key, tab: state.tabs[key] || (sel.kind === 'class' ? 'chats' : 'chat'), order: listOrder(sel) };
+    }
+
+    function animateDetail(detail, before, now) {
+        const tabsEl = detail.querySelector('.cls-tabs');
+        const activeTab = tabsEl?.querySelector('.cls-tab.active');
+        const sameGroup = before.key === now.key;
+        detail._tabRect = placeSlider(tabsEl?.querySelector('.cls-slider'), activeTab, sameGroup ? detail._tabRect : null);
+        if (sameGroup && before.tab && before.tab !== now.tab && tabsEl) {
+            const order = [...tabsEl.querySelectorAll('.cls-tab')].map(t => t.dataset.tab);
+            slideIn(detail.querySelector('.cls-pane'), order.indexOf(now.tab) > order.indexOf(before.tab) ? 'right' : 'left');
+        } else if (!sameGroup && before.key) {
+            slideIn(detail.querySelector('.cls-view'), now.order >= before.order ? 'down' : 'up');
+        }
     }
 
     function classHtml(cls) {
@@ -622,13 +703,14 @@
         const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
         const tab = state.tabs[key] || 'chats';
         html += tabsHtml(key, tabs, tab);
-        if (tab === 'chats') html += classChatsHtml(cls);
-        else if (tab === 'homework') html += homeworkHtml(cls);
-        else if (tab === 'timetable') html += timetableHtml(cls);
-        else if (tab === 'files') html += filesHtml('class', cls, admin);
-        else if (tab === 'people') html += peopleHtml('class', cls);
-        else if (tab === 'activities') html += classActivitiesHtml(cls);
-        return html;
+        let pane = '';
+        if (tab === 'chats') pane = classChatsHtml(cls);
+        else if (tab === 'homework') pane = homeworkHtml(cls);
+        else if (tab === 'timetable') pane = timetableHtml(cls);
+        else if (tab === 'files') pane = filesHtml('class', cls, admin);
+        else if (tab === 'people') pane = peopleHtml('class', cls);
+        else if (tab === 'activities') pane = classActivitiesHtml(cls);
+        return `${html}<div class="cls-pane">${pane}</div>`;
     }
 
     function activityHtml(activity) {
@@ -657,15 +739,16 @@
 
         const tab = state.tabs[key] || 'chat';
         html += tabsHtml(key, [['chat', 'Chat'], ['files', 'Files'], ['people', 'People']], tab);
+        let pane;
         if (tab === 'chat') {
             const chat = chatsFor('activity', activity.id)[0];
-            html += chat ? chatPaneHtml(chat, manager) : '<p class="cls-hint">This group\'s chat is loading...</p>';
+            pane = chat ? chatPaneHtml(chat, manager) : '<p class="cls-hint">This group\'s chat is loading...</p>';
         } else if (tab === 'files') {
-            html += filesHtml('activity', activity, manager);
+            pane = filesHtml('activity', activity, manager);
         } else {
-            html += peopleHtml('activity', activity);
+            pane = peopleHtml('activity', activity);
         }
-        return html;
+        return `${html}<div class="cls-pane">${pane}</div>`;
     }
 
     function currentChatId() {
@@ -901,13 +984,15 @@
         const myRole = kind === 'class' ? group.myRole : (group.owner_id === me ? 'owner' : 'member');
         const homeAdmin = kind === 'activity' && isAdminRole(findClass(group.class_id)?.myRole);
         const requests = kind === 'class' ? (state.requests[group.id] || []) : [];
+        // The site owner can do what a class owner does, in any class they're in
+        const boss = myRole === 'owner' || (kind === 'class' && isSiteOwner());
         let html = '';
         if (requests.length) {
             html += '<p class="cls-section-title">Waiting for approval</p><ul class="cls-people">';
             requests.forEach(r => {
                 const who = escapeHTML(personName(r.target_id));
                 html += `<li class="cls-person"><span class="cls-person-info">${r.kind === 'make_admin' ? `Make <strong>${who}</strong> a co-admin` : `Hand the class over to <strong>${who}</strong>`}</span>
-                    ${myRole === 'owner' ? `<button type="button" class="btn ghost-btn btn-sm" data-act="request-cancel" data-req="${r.id}">Cancel</button>` : ''}</li>`;
+                    ${boss ? `<button type="button" class="btn ghost-btn btn-sm" data-act="request-cancel" data-req="${r.id}">Cancel</button>` : ''}</li>`;
             });
             html += '</ul>';
         }
@@ -917,14 +1002,14 @@
             const roleLabel = m.role === 'owner' ? (kind === 'class' ? 'Owner' : 'Started it') : m.role === 'admin' ? 'Co-admin' : '';
             const buttons = [];
             if (!isMe && kind === 'class') {
-                if (myRole === 'owner' && m.role === 'member' && !requests.some(r => r.kind === 'make_admin' && r.target_id === m.user_id)) {
+                if (boss && m.role === 'member' && (isSiteOwner() || !requests.some(r => r.kind === 'make_admin' && r.target_id === m.user_id))) {
                     buttons.push(`<button type="button" class="btn ghost-btn btn-sm" data-act="member-admin" data-user="${m.user_id}">Make co-admin</button>`);
                 }
-                if (myRole === 'owner' && m.role === 'admin') buttons.push(`<button type="button" class="btn ghost-btn btn-sm" data-act="member-demote" data-user="${m.user_id}">Remove co-admin</button>`);
-                if (myRole === 'owner' && !requests.some(r => r.kind === 'transfer_owner')) {
+                if (boss && m.role === 'admin') buttons.push(`<button type="button" class="btn ghost-btn btn-sm" data-act="member-demote" data-user="${m.user_id}">Remove co-admin</button>`);
+                if (boss && m.role !== 'owner' && (isSiteOwner() || !requests.some(r => r.kind === 'transfer_owner'))) {
                     buttons.push(`<button type="button" class="btn ghost-btn btn-sm" data-act="member-transfer" data-user="${m.user_id}">Hand over</button>`);
                 }
-                if (m.role !== 'owner' && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'))) {
+                if (m.role !== 'owner' && (boss || (myRole === 'admin' && m.role === 'member'))) {
                     buttons.push(`<button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="member-remove" data-user="${m.user_id}">Remove</button>`);
                 }
             }
@@ -949,7 +1034,9 @@
             html += `<button type="button" class="btn secondary-btn btn-sm" data-act="leave" data-kind="${kind}">Leave ${kind === 'class' ? 'class' : 'group'}</button>`;
         }
         if (myRole === 'owner' && kind === 'class') {
-            html += '<p class="cls-hint">To leave, hand the class over to someone first. Making co-admins and handing over are checked by the Procrastinote team.</p>';
+            html += isSiteOwner()
+                ? '<p class="cls-hint">Hand the class over to its admin with Hand over; it happens straight away. After that you\'re a co-admin and can leave.</p>'
+                : '<p class="cls-hint">To leave, hand the class over to someone first. Making co-admins and handing over are checked by the Procrastinote team.</p>';
         }
         return html + '</div>';
     }
@@ -1109,19 +1196,21 @@
         document.getElementById('classes-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    // Only the site owner creates classes (the database refuses everyone else)
     function createClass() {
+        if (!isSiteOwner()) return;
         openDialog({
             title: 'Create a class',
             submitLabel: 'Create',
             body: `
-                <p class="cls-hint">For ${escapeHTML(SCHOOL_NAME)}. You'll be the class admin. The Procrastinote team checks each new class before classmates can join, so use the real class name.</p>
+                <p class="cls-hint">For ${escapeHTML(SCHOOL_NAME)}. It's ready straight away. Share its code with the class admin, then hand the class to them from People.</p>
                 <label for="cls-new-class-name">Class name</label>
                 <input type="text" id="cls-new-class-name" name="name" maxlength="60" placeholder="e.g. Grade 8 B" required>`,
             onSubmit: async form => {
                 const id = await call(cloud.rpc('create_class', { p_name: form.elements.name.value }));
                 await loadAll();
                 select('class', id);
-                alert('Class created. It\'s waiting for approval; you\'ll get a notification when it\'s ready.');
+                alert('Class created. Its code is ready to share.');
             }
         });
     }
@@ -1609,16 +1698,23 @@
                 showConfirm(`Delete ${file.file_name} for everyone?`, () => deleteFile(file));
                 break;
             }
-            case 'member-admin':
-                showConfirm(`Ask to make ${personName(el.dataset.user)} a co-admin? Co-admins can post homework, share the timetable, delete messages and files, and remove members. The Procrastinote team approves it first.`,
-                    () => runRpc('request_class_role', { p_class: group.id, p_user: el.dataset.user, p_kind: 'make_admin' }, 'Asked. You\'ll see the change once it\'s approved.'),
-                    { title: 'Make co-admin', confirmLabel: 'Ask', danger: false });
+            case 'member-admin': {
+                // The site owner's own changes happen straight away; class owners ask first
+                const now = isSiteOwner();
+                showConfirm(`${now ? 'Make' : 'Ask to make'} ${personName(el.dataset.user)} a co-admin? Co-admins can post homework, share the timetable, delete messages and files, and remove members.${now ? '' : ' The Procrastinote team approves it first.'}`,
+                    () => runRpc('request_class_role', { p_class: group.id, p_user: el.dataset.user, p_kind: 'make_admin' },
+                        now ? `${personName(el.dataset.user)} is now a co-admin.` : 'Asked. You\'ll see the change once it\'s approved.'),
+                    { title: 'Make co-admin', confirmLabel: now ? 'Make co-admin' : 'Ask', danger: false });
                 break;
-            case 'member-transfer':
-                showConfirm(`Hand ${group.name} over to ${personName(el.dataset.user)}? They become the owner and you become a co-admin. The Procrastinote team approves it first.`,
-                    () => runRpc('request_class_role', { p_class: group.id, p_user: el.dataset.user, p_kind: 'transfer_owner' }, 'Asked. You\'ll see the change once it\'s approved.'),
-                    { title: 'Hand over class', confirmLabel: 'Ask', danger: false });
+            }
+            case 'member-transfer': {
+                const now = isSiteOwner();
+                showConfirm(`Hand ${group.name} over to ${personName(el.dataset.user)}? They become the owner and the current owner becomes a co-admin.${now ? '' : ' The Procrastinote team approves it first.'}`,
+                    () => runRpc('request_class_role', { p_class: group.id, p_user: el.dataset.user, p_kind: 'transfer_owner' },
+                        now ? `${personName(el.dataset.user)} now owns ${group.name}.` : 'Asked. You\'ll see the change once it\'s approved.'),
+                    { title: 'Hand over class', confirmLabel: now ? 'Hand over' : 'Ask', danger: false });
                 break;
+            }
             case 'member-demote':
                 showConfirm(`Make ${personName(el.dataset.user)} a normal member again?`,
                     () => runRpc('demote_class_admin', { p_class: group.id, p_user: el.dataset.user }),
@@ -1831,6 +1927,8 @@
             if (el) {
                 el.innerHTML = '';
                 el._html = '';
+                el._view = null;
+                el._tabRect = el._sliderRect = null;
             }
         });
         render();
@@ -1856,6 +1954,9 @@
         if (state.started) loadAll();
         else render();
     });
+    const layoutEl = document.getElementById('classes-layout');
+    if (layoutEl && window.ResizeObserver) new ResizeObserver(realignSliders).observe(layoutEl);
+
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && state.started && Date.now() - state.loadedAt > 20000) loadAll();
     });

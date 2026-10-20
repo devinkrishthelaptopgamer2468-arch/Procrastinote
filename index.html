@@ -1108,7 +1108,8 @@
                                 <button type="submit" class="btn primary-btn btn-sm">Join</button>
                             </div>
                         </form>
-                        <button type="button" class="btn secondary-btn btn-sm btn-block" data-act="create-class">+ Create a class</button>
+                        <!-- Only the site owner creates classes (classes.js shows this button just for them) -->
+                        <button type="button" id="classes-create-btn" class="btn secondary-btn btn-sm btn-block" data-act="create-class" hidden>+ Create a class</button>
                         <div id="classes-list" class="classes-list"></div>
                     </aside>
                     <div id="classes-detail" class="card classes-detail"></div>

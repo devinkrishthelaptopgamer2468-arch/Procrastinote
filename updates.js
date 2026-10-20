@@ -4,6 +4,24 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'classes-sliding',
+        date: '2026-10-20',
+        title: 'Smoother Classes page',
+        text: 'Switching between Chats, Homework, Timetable and the other tabs, or between classes, now slides smoothly.'
+    },
+    {
+        id: 'classes-team-only',
+        date: '2026-10-20',
+        title: 'Classes are set up by the team',
+        text: 'Only the Procrastinote team creates classes now. Ask your class admin for your class code and join it on the Classes page.'
+    },
+    {
+        id: 'subjects-hindi-sanskrit-french',
+        date: '2026-10-20',
+        title: 'More subjects',
+        text: 'Hindi, Sanskrit and French can now be picked in your timetable, homework and class timetables.'
+    },
+    {
         id: 'old-browser-message',
         date: '2026-10-20',
         title: 'No more blank page on old browsers',
