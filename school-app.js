@@ -1778,7 +1778,7 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
         for (let i = 0; i < activeNb.images.length; i++) {
             const imgUrl = activeNb.images[i];
             const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng+tam');
-            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${text}\n`;
+            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${cleanOcrText(text)}\n`;
         }
         
         activeNb.content += `\n\n[OCR Extraction]\n${extractedText}\n`;
@@ -1910,6 +1910,43 @@ async function renderPdfPage(pdf, pageNumber) {
     return canvas;
 }
 
+// PDFs typed on a computer already contain their words. For Tamil this is exact where OCR
+// misreads some letters (கி as தி), so a page with enough Tamil text is copied, not scanned.
+// Pages with little or no Tamil text (scans, English, old non-Unicode Tamil fonts) use OCR.
+const PDF_MIN_TAMIL_CHARS = 20;
+
+async function getPdfPageTamilText(pdf, pageNumber) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = content.items.map(item => (item.str || '') + (item.hasEOL ? '\n' : '')).join('');
+    const tamilChars = (text.match(/[஀-௿]/g) || []).length;
+    return tamilChars >= PDF_MIN_TAMIL_CHARS ? fixTamilDisplayOrder(text).trim() : null;
+}
+
+// PDFs often store Tamil in display order: the sign ெ ே ை comes BEFORE its letter,
+// and ொ ோ ௌ are split around it (ெ + க + ா). Put them back in reading order.
+function fixTamilDisplayOrder(text) {
+    // A sign at the start of a word is impossible in reading order, so it shows display order
+    if (!/(^|[^஀-௿])[ெ-ை]/m.test(text)) return text;
+    return text.replace(/([ெ-ை])([க-ஹ](?:்ஷ)?)([ாௗ]?)/g, (match, sign, letter, after) => {
+        if (sign === 'ெ' && after === 'ா') return letter + 'ொ'; // ொ
+        if (sign === 'ே' && after === 'ா') return letter + 'ோ'; // ோ
+        if (sign === 'ெ' && after === 'ௗ') return letter + 'ௌ'; // ௌ
+        return letter + sign + after;
+    });
+}
+
+// OCR leaves invisible joiner characters after Tamil letters and reads specks as junk lines
+function cleanOcrText(text) {
+    return text
+        .replace(/[​-‍]/g, '')
+        .split('\n')
+        .filter(line => !line.trim() || /[஀-௿A-Za-z]{2}|\d{2}/.test(line))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 ['pdf-ocr-from', 'pdf-ocr-to'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => { if (pdfOcrDoc) readPdfOcrRange(); });
 });
@@ -1941,13 +1978,19 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
     const pagesText = [];
     let worker = null;
     try {
-        els.progress.innerText = 'Getting the text reader ready...';
-        worker = await Tesseract.createWorker('eng+tam');
         for (let p = range.from; p <= range.to && !pdfOcrCancelled; p++) {
             els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
-            const canvas = await renderPdfPage(doc.pdf, p);
-            const { data: { text } } = await worker.recognize(canvas);
-            pagesText.push(`[Page ${p}]\n${text.trim()}`);
+            let text = await getPdfPageTamilText(doc.pdf, p);
+            if (text === null) {
+                if (!worker) {
+                    els.progress.innerText = 'Getting the text reader ready...';
+                    worker = await Tesseract.createWorker('eng+tam');
+                    els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
+                }
+                const canvas = await renderPdfPage(doc.pdf, p);
+                text = cleanOcrText((await worker.recognize(canvas)).data.text);
+            }
+            pagesText.push(`[Page ${p}]\n${text}`);
         }
     } catch (err) {
         alert(`Error while reading the PDF: ${err.message}`);

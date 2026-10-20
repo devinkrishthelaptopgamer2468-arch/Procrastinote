@@ -13,7 +13,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'pdf-ocr',
         date: '2026-10-20',
         title: 'Read text from PDFs',
-        text: 'In a note, upload a PDF, pick which pages to read, and the text is added to your note (Tamil and English).'
+        text: 'In a note, upload a PDF, pick which pages to read, and the text is added to your note. Works with Tamil and English, typed or scanned.'
     },
     {
         id: 'online-accounts',
