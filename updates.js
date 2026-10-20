@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'tamil-pdf-letters',
+        date: '2026-10-20',
+        title: 'Tamil PDFs read correctly',
+        text: 'PDFs made in Microsoft Word no longer lose or mix up Tamil letters, and reading keeps going if you switch to another app.'
+    },
+    {
         id: 'notifications',
         date: '2026-10-20',
         title: 'Notifications',
