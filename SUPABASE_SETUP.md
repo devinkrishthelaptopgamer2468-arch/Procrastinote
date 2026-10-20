@@ -66,6 +66,9 @@ That created:
 > Heads-up: Supabase's free built-in email only sends a few emails per hour. If a
 > confirmation email doesn't arrive while testing, wait an hour and try again (check spam too).
 
+"Forgot password?" emails use the same **Site URL** and **Redirect URLs**: the link in the email
+opens your site, which then asks for a new password. Nothing else needs turning on.
+
 ## 4. Put your project's address and public key in the app
 
 1. Sidebar: **Project Settings** (gear icon) → **API Keys**.

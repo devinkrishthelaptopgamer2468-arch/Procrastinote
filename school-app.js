@@ -2200,6 +2200,8 @@ document.getElementById('btn-login')?.addEventListener('click', () => {
     document.getElementById('auth-submit-btn').innerText = 'Log In';
     
     document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = 'none');
+    // Password resets need online accounts (offline passwords only live in this browser)
+    document.querySelectorAll('.auth-show-on-login').forEach(el => el.style.display = cloud ? '' : 'none');
     document.getElementById('login-name').removeAttribute('required'); // Prevent form validation
     showAuthMessage('');
 });
@@ -2215,8 +2217,97 @@ document.getElementById('btn-signup')?.addEventListener('click', () => {
     
     // Reset hiding to default flex/block state, assuming normal standard is block.
     document.querySelectorAll('.auth-hide-on-login').forEach(el => el.style.display = '');
+    document.querySelectorAll('.auth-show-on-login').forEach(el => el.style.display = 'none');
     document.getElementById('login-name').setAttribute('required', 'true');
     showAuthMessage('');
+});
+
+// --- Forgot password ---
+// Supabase emails a link back to this site. Opening it signs the person in for a moment
+// (event PASSWORD_RECOVERY) so they can choose a new password.
+document.getElementById('btn-forgot-password')?.addEventListener('click', async (e) => {
+    const button = e.currentTarget;
+    const emailInput = document.getElementById('login-email');
+    const email = emailInput.value.trim().toLowerCase();
+    if (!cloud) return;
+    if (!email || !email.includes('@')) {
+        showAuthMessage('Type your email above, then press "Forgot password?" again.');
+        emailInput.focus();
+        return;
+    }
+    button.disabled = true;
+    try {
+        const { error } = await cloud.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        if (error) {
+            showAuthMessage(/rate limit|too many/i.test(error.message)
+                ? 'Too many emails right now. The free plan only sends a few per hour. Check your inbox (and spam) for an earlier link, or try again in an hour.'
+                : `Couldn't send the reset email: ${error.message}`);
+        } else {
+            // Same answer whether or not the email has an account, so nobody can find out who has one
+            showAuthMessage(`If ${email} has a Procrastinote account, a link to choose a new password is on its way. Check your inbox (and spam).`, 'info');
+        }
+    } catch (err) {
+        showAuthMessage(`Could not reach the server: ${err.message}`);
+    }
+    button.disabled = false;
+});
+
+function showResetMessage(text, kind = 'error') {
+    const el = document.getElementById('reset-message');
+    if (!el) return;
+    el.innerText = text || '';
+    el.hidden = !text;
+    el.classList.toggle('info', kind === 'info');
+}
+
+function openResetPasswordScreen() {
+    const overlay = document.getElementById('reset-password-overlay');
+    if (!overlay) return;
+    showResetMessage('');
+    overlay.style.display = 'flex';
+    document.getElementById('reset-password')?.focus();
+}
+
+cloud?.auth.onAuthStateChange(event => {
+    if (event === 'PASSWORD_RECOVERY') openResetPasswordScreen();
+});
+
+document.getElementById('reset-password-form')?.addEventListener('input', () => showResetMessage(''));
+
+document.getElementById('reset-password-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pass = document.getElementById('reset-password').value;
+    const again = document.getElementById('reset-password-confirm').value;
+    if (pass.length < 6) return showResetMessage('Use at least 6 characters.');
+    if (pass !== again) return showResetMessage('The two passwords are different. Type them again.');
+
+    const button = document.getElementById('reset-password-btn');
+    button.disabled = true;
+    const { data, error } = await cloud.auth.updateUser({ password: pass });
+    button.disabled = false;
+    if (error) {
+        showResetMessage(/same|different from the old/i.test(error.message)
+            ? 'That is your old password. Choose a different one.'
+            : `Couldn't save the new password: ${error.message}. If the link is old, ask for a new one.`);
+        return;
+    }
+    document.getElementById('reset-password-form').reset();
+    document.getElementById('reset-password-overlay').style.display = 'none';
+
+    // Already logged in as this account on this device: just carry on
+    if (appState.user?.cloudId && appState.user.cloudId === data.user?.id) {
+        alert('Your password was changed.');
+        return;
+    }
+    // Otherwise log in with the new password, so the planner loads the normal way
+    await cloud.auth.signOut();
+    checkAuth();
+    openAuth('login');
+    setTimeout(() => {
+        document.getElementById('login-email').value = data.user?.email || '';
+        document.getElementById('login-password')?.focus();
+        showAuthMessage('Your password was changed. Log in with your new password.', 'info');
+    }, 500);
 });
 
 function shakePasswordInput(id) {

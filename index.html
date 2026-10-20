@@ -143,8 +143,35 @@
                         <label for="show-password-cb">Show password</label>
                     </div>
                 </div>
+                <!-- Log In only, online accounts only: emails a link to choose a new password -->
+                <div class="forgot-row auth-show-on-login" style="display: none;">
+                    <button type="button" id="btn-forgot-password" class="forgot-link">Forgot password?</button>
+                </div>
                 <p id="auth-message" class="auth-message" role="alert" hidden></p>
                 <button type="submit" class="btn primary-btn login-btn" id="auth-submit-btn">Sign Up</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Opened by the link in a "reset your password" email -->
+    <div id="reset-password-overlay" class="login-overlay" style="display: none;">
+        <div class="login-box">
+            <div class="login-logo">
+                <img src="logo-icon.png" alt="">
+                <span>Procrastinote</span>
+            </div>
+            <h2>Choose a new password</h2>
+            <form id="reset-password-form">
+                <div class="form-group">
+                    <label for="reset-password">New password</label>
+                    <input type="password" id="reset-password" placeholder="At least 6 characters" autocomplete="new-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="reset-password-confirm">Type it again</label>
+                    <input type="password" id="reset-password-confirm" placeholder="••••••••" autocomplete="new-password" required>
+                </div>
+                <p id="reset-message" class="auth-message" role="alert" hidden></p>
+                <button type="submit" class="btn primary-btn login-btn" id="reset-password-btn">Save new password</button>
             </form>
         </div>
     </div>

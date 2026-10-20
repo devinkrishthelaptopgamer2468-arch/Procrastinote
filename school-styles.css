@@ -1497,6 +1497,40 @@ li.empty-state::before {
 }
 .auth-message[hidden] { display: none; }
 
+/* "Choose a new password" opens over whatever page the reset link loaded */
+#reset-password-overlay {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+/* "Forgot password?" under the password box (Log In only) */
+.forgot-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: -0.4rem 0 0.75rem;
+}
+
+.forgot-link {
+    padding: 0.2rem 0;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.forgot-link:hover {
+    text-decoration: underline;
+}
+
+.forgot-link:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .login-btn {
     width: 100%;
     padding: 0.95rem 1.2rem;
