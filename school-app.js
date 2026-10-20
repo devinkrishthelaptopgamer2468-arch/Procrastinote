@@ -1468,6 +1468,7 @@ function renderNotebooks() {
         emptyState.style.display = 'block';
         activeView.style.display = 'none';
     }
+    if (typeof renderSharedNotes === 'function') renderSharedNotes();
 }
 
 document.getElementById('btn-new-notebook')?.addEventListener('click', () => {
@@ -4394,6 +4395,7 @@ let friendProfiles = {};      // email -> { id, name, class } from the profiles 
 let onlineUserIds = new Set();
 let cloudChannels = [];
 let friendNotifications = []; // newest first: [{ id, sender, text, timestamp }] (see "Notifications")
+let sharedNotes = [];         // notes friends sent you, newest first (see "Sharing notes")
 
 // Friends are shown by name, never by email
 function getFriendProfile(email) {
@@ -4507,9 +4509,18 @@ function startCloudChat() {
             if (status === 'SUBSCRIBED') presenceChannel.track({ online_at: new Date().toISOString() });
         });
 
-    cloudChannels = [messagesChannel, presenceChannel];
+    // Notes shared with you appear (and disappear when dismissed on another device) instantly
+    const sharedNotesChannel = cloud.channel('my-shared-notes')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shared_notes' },
+            payload => addSharedNote(payload.new))
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shared_notes' },
+            payload => removeSharedNote(payload.old?.id))
+        .subscribe();
+
+    cloudChannels = [messagesChannel, presenceChannel, sharedNotesChannel];
     loadCloudFriends();
     loadFriendNotifications();
+    loadSharedNotes();
 }
 
 function stopCloudChat() {
@@ -4520,12 +4531,14 @@ function stopCloudChat() {
     friendProfiles = {};
     onlineUserIds = new Set();
     friendNotifications = [];
+    sharedNotes = [];
     renderNotifications();
+    renderSharedNotes();
 }
 
 // --- Notifications: new messages from friends + "What's new" (updates.js) ---
 // What each person has already seen is remembered on this device:
-// { messagesSeenAt: time of the newest message seen, updatesSeen: [update ids] }
+// { messagesSeenAt / sharedSeenAt: time of the newest message / shared note seen, updatesSeen: [update ids] }
 const NOTIF_MESSAGE_LIMIT = 20;
 
 function notifStorageKey() {
@@ -4535,9 +4548,9 @@ function notifStorageKey() {
 function getNotifSeen() {
     try {
         const seen = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
-        return { messagesSeenAt: seen.messagesSeenAt || 0, updatesSeen: seen.updatesSeen || [] };
+        return { messagesSeenAt: seen.messagesSeenAt || 0, sharedSeenAt: seen.sharedSeenAt || 0, updatesSeen: seen.updatesSeen || [] };
     } catch (e) {
-        return { messagesSeenAt: 0, updatesSeen: [] };
+        return { messagesSeenAt: 0, sharedSeenAt: 0, updatesSeen: [] };
     }
 }
 
@@ -4611,6 +4624,7 @@ function renderNotifications(seenOverride) {
 
     const badgeSeen = getNotifSeen();
     const badgeCount = friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
+        sharedNotes.filter(n => n.timestamp > badgeSeen.sharedSeenAt).length +
         updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length;
     badge.hidden = badgeCount === 0;
     badge.innerText = badgeCount > 9 ? '9+' : String(badgeCount);
@@ -4637,6 +4651,24 @@ function renderNotifications(seenOverride) {
         });
     }
 
+    const sharedTitle = document.getElementById('notif-shared-title');
+    const sharedEl = document.getElementById('notif-shared');
+    if (sharedTitle && sharedEl) {
+        sharedTitle.hidden = sharedEl.hidden = sharedNotes.length === 0;
+        sharedEl.innerHTML = '';
+        sharedNotes.forEach(note => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'notif-item' + (note.timestamp > seen.sharedSeenAt ? ' unread' : '');
+            btn.innerHTML = `<strong>${escapeHTML(getFriendProfile(note.sender).name)}</strong> shared a note: ${escapeHTML(note.title || 'Untitled note')}` +
+                `<span class="notif-item-time">${escapeHTML(timeAgo(note.timestamp))}</span>`;
+            btn.addEventListener('click', openSharedNotes);
+            li.appendChild(btn);
+            sharedEl.appendChild(li);
+        });
+    }
+
     updatesEl.innerHTML = '';
     if (updates.length === 0) {
         updatesEl.innerHTML = '<li class="notif-empty">No updates yet.</li>';
@@ -4656,6 +4688,7 @@ function openNotifications() {
     // Everything shown now counts as seen; highlights stay until the panel closes
     setNotifSeen({
         messagesSeenAt: Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp)),
+        sharedSeenAt: Math.max(before.sharedSeenAt, ...sharedNotes.map(n => n.timestamp)),
         updatesSeen: appUpdates().map(u => u.id)
     });
     renderNotifications(before);
@@ -4691,6 +4724,211 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeNotifications();
+});
+
+// --- Sharing notes with friends ---
+// Sharing sends a COPY of a note through Supabase (table shared_notes, see supabase/setup.sql).
+// The friend sees it under "Shared with me" in Notebook and can save it to their notes or dismiss it.
+// Pictures uploaded from the device stay behind (too big for the free plan); picture links are sent.
+const SHARE_MAX_CHARS = 100000;
+
+const isOnlineAccount = () => !!(cloud && appState.user?.cloudId);
+
+const sharedNoteFromRow = row => ({
+    id: row.id,
+    sender: row.sender_email,
+    title: row.title,
+    content: row.content,
+    images: Array.isArray(row.images) ? row.images.filter(src => /^https?:\/\//i.test(src)) : [],
+    timestamp: Date.parse(row.created_at)
+});
+
+// The table exists only after add-note-sharing.sql was run in Supabase
+const isMissingTableError = error => /shared_notes|does not exist|PGRST205|42P01/i.test(`${error?.code || ''} ${error?.message || ''}`);
+
+async function loadSharedNotes() {
+    if (!isOnlineAccount()) return;
+    const myEmail = appState.user.email.toLowerCase();
+    const { data, error } = await cloud.from('shared_notes')
+        .select('*')
+        .eq('recipient_email', myEmail)
+        .order('created_at', { ascending: false })
+        .limit(50);
+    if (error) {
+        console.error('Could not load shared notes:', error.message);
+        return;
+    }
+    sharedNotes = data.map(sharedNoteFromRow);
+    renderSharedNotes();
+    renderNotifications();
+}
+
+function addSharedNote(row) {
+    if (!row || row.recipient_email !== appState.user?.email?.toLowerCase()) return;
+    if (sharedNotes.some(n => n.id === row.id)) return;
+    sharedNotes.unshift(sharedNoteFromRow(row));
+    renderSharedNotes();
+    renderNotifications();
+}
+
+function removeSharedNote(id) {
+    if (id === undefined || !sharedNotes.some(n => n.id === id)) return;
+    sharedNotes = sharedNotes.filter(n => n.id !== id);
+    renderSharedNotes();
+    renderNotifications();
+}
+
+async function deleteSharedNote(id) {
+    const { error } = await cloud.from('shared_notes').delete().eq('id', id);
+    if (error) {
+        alert(`Couldn't remove that shared note: ${error.message}`);
+        return false;
+    }
+    removeSharedNote(id);
+    return true;
+}
+
+function saveSharedNoteToMyNotes(id) {
+    const shared = sharedNotes.find(n => n.id === id);
+    if (!shared) return;
+    const from = getFriendProfile(shared.sender).name;
+    const newId = 'nb_' + Date.now();
+    if (!appState.notebooks) appState.notebooks = [];
+    appState.notebooks.unshift({
+        id: newId,
+        title: `${shared.title || 'Untitled note'} (from ${from})`,
+        content: shared.content || '',
+        images: shared.images
+    });
+    appState.activeNotebookId = newId;
+    saveState();
+    deleteSharedNote(id); // it's in your notes now, so it leaves "Shared with me"
+    alert(`Saved "${shared.title || 'Untitled note'}" to your notes.`);
+}
+
+function renderSharedNotes() {
+    const section = document.getElementById('shared-notes-section');
+    const list = document.getElementById('shared-notes-list');
+    if (!section || !list) return;
+    section.hidden = !isOnlineAccount() || sharedNotes.length === 0;
+    list.innerHTML = '';
+    sharedNotes.forEach(note => {
+        const li = document.createElement('li');
+        li.className = 'shared-note-item';
+        li.innerHTML = `
+            <div class="shared-note-info">
+                ${escapeHTML(note.title || 'Untitled note')}
+                <small>From ${escapeHTML(getFriendProfile(note.sender).name)} · ${escapeHTML(timeAgo(note.timestamp))}</small>
+            </div>
+            <div class="shared-note-buttons">
+                <button type="button" class="btn primary-btn btn-sm" data-action="save">Save to my notes</button>
+                <button type="button" class="btn secondary-btn btn-sm" data-action="dismiss">Dismiss</button>
+            </div>
+        `;
+        li.querySelector('[data-action="save"]').addEventListener('click', () => saveSharedNoteToMyNotes(note.id));
+        li.querySelector('[data-action="dismiss"]').addEventListener('click', () => {
+            showConfirm(`Dismiss "${note.title || 'Untitled note'}"? It won't be saved to your notes.`, () => deleteSharedNote(note.id));
+        });
+        list.appendChild(li);
+    });
+}
+
+function openSharedNotes() {
+    closeNotifications();
+    document.querySelector('.dock-item[data-tab="notebook"]')?.click();
+    setTimeout(() => document.getElementById('shared-notes-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+}
+
+function renderSharePanel() {
+    const list = document.getElementById('share-friend-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const friends = (appState.friendsList || []).filter(email => email.toLowerCase() !== appState.user?.email?.toLowerCase());
+    if (!isOnlineAccount()) {
+        list.innerHTML = '<li class="share-empty">Log in to an online account to share notes.</li>';
+        return;
+    }
+    if (friends.length === 0) {
+        list.innerHTML = '<li class="share-empty">Add friends on the Friends page first, then share your notes with them.</li>';
+        return;
+    }
+    friends.forEach(email => {
+        const profile = getFriendProfile(email);
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <div class="share-friend-name">${escapeHTML(profile.name)}${profile.class ? `<small>${escapeHTML(profile.class)}</small>` : ''}</div>
+            <button type="button" class="btn primary-btn btn-sm">Send</button>
+        `;
+        const button = li.querySelector('button');
+        button.addEventListener('click', () => shareActiveNoteWith(email, button));
+        list.appendChild(li);
+    });
+}
+
+async function shareActiveNoteWith(email, button) {
+    const note = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!note || !isOnlineAccount()) return;
+    const content = note.content || '';
+    if (content.length > SHARE_MAX_CHARS) {
+        alert(`This note is too long to share (over ${SHARE_MAX_CHARS.toLocaleString()} characters). Split it into smaller notes first.`);
+        return;
+    }
+    const allImages = note.images || [];
+    const images = allImages.filter(src => /^https?:\/\//i.test(src)).slice(0, 20);
+    const title = (note.title || 'Untitled note').slice(0, 200);
+    const name = getFriendProfile(email).name;
+
+    button.disabled = true;
+    button.innerText = 'Sending...';
+    const { error } = await cloud.from('shared_notes').insert({
+        sender_email: appState.user.email.toLowerCase(),
+        recipient_email: email.toLowerCase(),
+        title,
+        content,
+        images
+    });
+    if (error) {
+        button.disabled = false;
+        button.innerText = 'Send';
+        alert(isMissingTableError(error)
+            ? 'Sharing isn\'t switched on yet: run supabase/add-note-sharing.sql in Supabase first.'
+            : `Couldn't share the note: ${error.message}`);
+        return;
+    }
+    button.innerText = 'Sent';
+    const left = allImages.length - images.length;
+    alert(`Sent "${title}" to ${name}.` + (left ? ` ${left} picture${left === 1 ? '' : 's'} uploaded from your device stayed behind.` : ''));
+}
+
+function closeSharePanel() {
+    const panel = document.getElementById('share-panel');
+    if (!panel || panel.hidden) return;
+    panel.hidden = true;
+    document.getElementById('btn-share-notebook')?.setAttribute('aria-expanded', 'false');
+}
+
+document.getElementById('btn-share-notebook')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById('share-panel');
+    if (!panel.hidden) return closeSharePanel();
+    renderSharePanel();
+    panel.style.transform = '';
+    panel.hidden = false;
+    e.currentTarget.setAttribute('aria-expanded', 'true');
+    // On narrow phones keep the panel inside the note area, which cuts off anything outside it
+    const area = panel.closest('#notebook-active-view')?.getBoundingClientRect();
+    const minLeft = Math.max(8, area ? area.left : 0);
+    const maxRight = Math.min(window.innerWidth - 8, area ? area.right : window.innerWidth);
+    panel.style.maxWidth = `${maxRight - minLeft}px`;
+    const rect = panel.getBoundingClientRect();
+    const shift = rect.left < minLeft ? minLeft - rect.left : Math.min(0, maxRight - rect.right);
+    if (shift) panel.style.transform = `translateX(${shift}px)`;
+});
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.share-wrap')) closeSharePanel();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSharePanel();
 });
 
 // On page load: make sure the saved login is still a valid online session

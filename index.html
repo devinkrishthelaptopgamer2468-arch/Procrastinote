@@ -254,6 +254,8 @@
                                 </div>
                                 <p class="notif-section-title">Messages from friends</p>
                                 <ul id="notif-messages" class="notif-list"></ul>
+                                <p class="notif-section-title" id="notif-shared-title" hidden>Notes shared with you</p>
+                                <ul id="notif-shared" class="notif-list" hidden></ul>
                                 <p class="notif-section-title">What's new on Procrastinote</p>
                                 <ul id="notif-updates" class="notif-list"></ul>
                             </div>
@@ -819,6 +821,11 @@
 
                 <div class="notebook-layout">
                     <div class="notebook-sidebar card">
+                        <!-- Notes friends sent you; filled by renderSharedNotes() -->
+                        <div id="shared-notes-section" class="shared-notes-section" hidden>
+                            <h3>Shared with me</h3>
+                            <ul id="shared-notes-list" class="shared-notes-list"></ul>
+                        </div>
                         <div class="notebook-sidebar-head">
                             <h3>My notes</h3>
                             <button id="btn-new-notebook" class="btn primary-btn icon-btn-small" title="New note" aria-label="New note">
@@ -861,6 +868,18 @@
                                         <svg id="fullscreen-collapse-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="display:none;"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
                                         Full screen
                                     </button>
+                                    <!-- Send a copy of this note to a friend (shared_notes table) -->
+                                    <div class="share-wrap">
+                                        <button id="btn-share-notebook" class="btn secondary-btn btn-sm" aria-haspopup="true" aria-expanded="false">
+                                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+                                            Share
+                                        </button>
+                                        <div id="share-panel" class="share-panel" role="dialog" aria-label="Share this note" hidden>
+                                            <p class="share-panel-title">Send a copy to a friend</p>
+                                            <ul id="share-friend-list" class="share-friend-list"></ul>
+                                            <p class="share-panel-hint">They get their own copy. Changes you make later aren't sent.</p>
+                                        </div>
+                                    </div>
                                     <button id="btn-delete-notebook" class="btn danger-btn btn-sm">Delete</button>
                                 </div>
                             </div>

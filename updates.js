@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'share-notes',
+        date: '2026-10-20',
+        title: 'Share notes with friends',
+        text: 'Open a note and press Share to send a copy to a friend. Notes friends send you appear under "Shared with me" in Notebook.'
+    },
+    {
         id: 'tamil-pdf-letters',
         date: '2026-10-20',
         title: 'Tamil PDFs read correctly',

@@ -132,6 +132,17 @@ The code is on the branch **`feature/supabase-chat`**. The Friends page shows "C
 2. Push the branch. Vercel builds a **Preview** link for it. Test chat there with your two accounts.
 3. When it works, merge it into `main` with a pull request as usual.
 
+## 7. Turn on sharing notes with friends
+
+Sharing notes needs one more table. You only do this once:
+
+1. In Supabase, open **SQL Editor** → **New query**.
+2. Open `supabase/add-note-sharing.sql` from this project, copy **all** of it, paste it in, and press **Run**.
+   You should see "Success. No rows returned".
+3. Check **Table Editor**: there is now a `shared_notes` table.
+
+Until this is done, pressing **Send** on a note says "Sharing isn't switched on yet".
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
