@@ -238,6 +238,26 @@
                     <div class="dash-planning">
                         <span class="planning-chip">Planning for <strong id="dash-tomorrow-label">Tomorrow</strong></span>
                         <span class="subtitle" id="dash-day-order-display">Day Order: --</span>
+                        <!-- Notifications: new messages from friends + "What's new" (updates.js) -->
+                        <div class="notif-wrap">
+                            <button id="btn-notifications" class="notif-btn" aria-haspopup="true" aria-expanded="false">
+                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                                <span>Notifications</span>
+                                <span id="notif-badge" class="notif-badge" hidden></span>
+                            </button>
+                            <div id="notif-panel" class="notif-panel" role="dialog" aria-label="Notifications" hidden>
+                                <div class="notif-panel-head">
+                                    <h3>Notifications</h3>
+                                    <button id="btn-notif-close" class="icon-btn icon-btn-small" aria-label="Close notifications">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+                                <p class="notif-section-title">Messages from friends</p>
+                                <ul id="notif-messages" class="notif-list"></ul>
+                                <p class="notif-section-title">What's new on Procrastinote</p>
+                                <ul id="notif-updates" class="notif-list"></ul>
+                            </div>
+                        </div>
                     </div>
                 </header>
 
@@ -863,9 +883,25 @@
                                 <div class="notebook-image-actions">
                                     <input type="text" id="notebook-image-url" placeholder="Paste an image link (https://...)">
                                     <button id="btn-add-image" class="btn secondary-btn btn-sm">Add image</button>
-                                    <input type="file" id="notebook-image-file" accept="image/*" style="display: none;">
-                                    <button id="btn-upload-image" class="btn secondary-btn btn-sm" onclick="document.getElementById('notebook-image-file').click()">Upload file</button>
+                                    <input type="file" id="notebook-image-file" accept="image/*,application/pdf,.pdf" style="display: none;">
+                                    <button id="btn-upload-image" class="btn secondary-btn btn-sm" onclick="document.getElementById('notebook-image-file').click()">Upload image or PDF</button>
                                     <button id="btn-ocr-images" class="btn primary-btn btn-sm">Extract text (Tamil / English)</button>
+                                </div>
+                                <!-- Shown after a PDF is picked: choose which pages to read -->
+                                <div id="pdf-ocr-panel" class="pdf-ocr-panel" hidden>
+                                    <p class="pdf-ocr-file"><strong id="pdf-ocr-name"></strong> <span id="pdf-ocr-pages"></span></p>
+                                    <div class="pdf-ocr-range">
+                                        <label for="pdf-ocr-from">From page</label>
+                                        <input type="number" id="pdf-ocr-from" min="1" value="1">
+                                        <label for="pdf-ocr-to">to</label>
+                                        <input type="number" id="pdf-ocr-to" min="1" value="1">
+                                    </div>
+                                    <p class="pdf-ocr-hint" id="pdf-ocr-hint"></p>
+                                    <p class="pdf-ocr-progress" id="pdf-ocr-progress" hidden></p>
+                                    <div class="pdf-ocr-buttons">
+                                        <button id="btn-pdf-ocr-start" class="btn primary-btn btn-sm">Extract text from these pages</button>
+                                        <button id="btn-pdf-ocr-cancel" class="btn secondary-btn btn-sm">Cancel</button>
+                                    </div>
                                 </div>
                                 <div id="notebook-image-gallery" class="image-gallery"></div>
                             </div>
@@ -1087,6 +1123,7 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
     <script src="supabase-config.js"></script>
+    <script src="updates.js"></script>
     <script src="school-app.js"></script>
 </body>
 </html>

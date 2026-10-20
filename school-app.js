@@ -738,6 +738,9 @@ function renderAllViews() {
     if (typeof renderFriends === 'function') {
         renderFriends();
     }
+    if (typeof renderNotifications === 'function') {
+        renderNotifications();
+    }
     if (typeof renderHomeSchedule === 'function') {
         const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
         renderHomeSchedule(activeFilter);
@@ -1630,7 +1633,9 @@ document.getElementById('btn-add-image')?.addEventListener('click', () => {
 
 document.getElementById('notebook-image-file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (file && isPdfFile(file)) {
+        openPdfForOcr(file);
+    } else if (file) {
         const reader = new FileReader();
         reader.onload = async (ev) => {
             // Phone photos are several MB; the browser only stores about 5 MB per site, so shrink them first
@@ -1773,7 +1778,7 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
         for (let i = 0; i < activeNb.images.length; i++) {
             const imgUrl = activeNb.images[i];
             const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng+tam');
-            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${text}\n`;
+            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${cleanOcrText(text)}\n`;
         }
         
         activeNb.content += `\n\n[OCR Extraction]\n${extractedText}\n`;
@@ -1790,6 +1795,228 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
     btn.disabled = false;
 });
 
+// --- PDF text extraction ---
+// A picked PDF is never stored: the chosen pages are drawn as pictures (pdf.js)
+// and read with the same Tamil + English OCR as images, then added to the note.
+const PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/';
+const PDF_MAX_PAGES_PER_RUN = 30;   // OCR takes a few seconds per page
+const PDF_MAX_FILE_MB = 50;
+let pdfjsLibPromise = null;
+let pdfOcrDoc = null;               // { pdf, name, numPages }
+let pdfOcrCancelled = false;
+
+const isPdfFile = file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+function loadPdfJs() {
+    if (!pdfjsLibPromise) {
+        pdfjsLibPromise = import(PDFJS_BASE + 'build/pdf.min.mjs').then(lib => {
+            lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'build/pdf.worker.min.mjs';
+            return lib;
+        });
+        pdfjsLibPromise.catch(() => { pdfjsLibPromise = null; }); // allow a retry after a network error
+    }
+    return pdfjsLibPromise;
+}
+
+function pdfOcrEls() {
+    return {
+        panel: document.getElementById('pdf-ocr-panel'),
+        name: document.getElementById('pdf-ocr-name'),
+        pages: document.getElementById('pdf-ocr-pages'),
+        from: document.getElementById('pdf-ocr-from'),
+        to: document.getElementById('pdf-ocr-to'),
+        hint: document.getElementById('pdf-ocr-hint'),
+        progress: document.getElementById('pdf-ocr-progress'),
+        start: document.getElementById('btn-pdf-ocr-start'),
+        cancel: document.getElementById('btn-pdf-ocr-cancel')
+    };
+}
+
+function closePdfOcrPanel() {
+    const els = pdfOcrEls();
+    if (pdfOcrDoc) pdfOcrDoc.pdf.destroy();
+    pdfOcrDoc = null;
+    els.panel.hidden = true;
+    els.progress.hidden = true;
+}
+
+// Returns { from, to } when the chosen range is valid, otherwise shows why and returns null
+function readPdfOcrRange() {
+    const els = pdfOcrEls();
+    const total = pdfOcrDoc.numPages;
+    const from = parseInt(els.from.value, 10);
+    const to = parseInt(els.to.value, 10);
+    let problem = '';
+    if (!Number.isInteger(from) || !Number.isInteger(to)) problem = 'Type a page number in both boxes.';
+    else if (from < 1 || to < 1 || from > total || to > total) problem = `Pages must be between 1 and ${total}.`;
+    else if (from > to) problem = '"From" must be the same as or smaller than "to".';
+    else if (to - from + 1 > PDF_MAX_PAGES_PER_RUN) problem = `You can read up to ${PDF_MAX_PAGES_PER_RUN} pages at a time. Pick a smaller range.`;
+    const count = problem ? 0 : to - from + 1;
+    els.hint.innerText = problem || `${count} page${count === 1 ? '' : 's'} will be read. This takes a few seconds per page.`;
+    els.start.disabled = !!problem;
+    return problem ? null : { from, to };
+}
+
+async function openPdfForOcr(file) {
+    if (!appState.notebooks.find(n => n.id === appState.activeNotebookId)) return;
+    if (file.size > PDF_MAX_FILE_MB * 1024 * 1024) {
+        alert(`That PDF is too big. Pick one under ${PDF_MAX_FILE_MB} MB.`);
+        return;
+    }
+    closePdfOcrPanel();
+    const els = pdfOcrEls();
+    els.panel.hidden = false;
+    els.name.innerText = file.name;
+    els.pages.innerText = '(opening...)';
+    els.hint.innerText = '';
+    els.start.disabled = true;
+    try {
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument({
+            data: new Uint8Array(await file.arrayBuffer()),
+            isEvalSupported: false, // never run code from inside a PDF
+            cMapUrl: PDFJS_BASE + 'cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: PDFJS_BASE + 'standard_fonts/'
+        }).promise;
+        pdfOcrDoc = { pdf, name: file.name, numPages: pdf.numPages };
+        els.pages.innerText = `(${pdf.numPages} page${pdf.numPages === 1 ? '' : 's'})`;
+        els.from.max = els.to.max = pdf.numPages;
+        els.from.value = 1;
+        els.to.value = Math.min(pdf.numPages, PDF_MAX_PAGES_PER_RUN);
+        readPdfOcrRange();
+    } catch (err) {
+        closePdfOcrPanel();
+        alert(/password/i.test(err.name + err.message)
+            ? 'This PDF is password-protected, so it can\'t be read.'
+            : `Couldn't open that PDF: ${err.message}`);
+    }
+}
+
+// Draw one PDF page onto a canvas big enough for OCR to read small print
+async function renderPdfPage(pdf, pageNumber) {
+    const page = await pdf.getPage(pageNumber);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2000 / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    page.cleanup();
+    return canvas;
+}
+
+// PDFs typed on a computer already contain their words. For Tamil this is exact where OCR
+// misreads some letters (கி as தி), so a page with enough Tamil text is copied, not scanned.
+// Pages with little or no Tamil text (scans, English, old non-Unicode Tamil fonts) use OCR.
+const PDF_MIN_TAMIL_CHARS = 20;
+
+async function getPdfPageTamilText(pdf, pageNumber) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const text = content.items.map(item => (item.str || '') + (item.hasEOL ? '\n' : '')).join('');
+    const tamilChars = (text.match(/[஀-௿]/g) || []).length;
+    return tamilChars >= PDF_MIN_TAMIL_CHARS ? fixTamilDisplayOrder(text).trim() : null;
+}
+
+// PDFs often store Tamil in display order: the sign ெ ே ை comes BEFORE its letter,
+// and ொ ோ ௌ are split around it (ெ + க + ா). Put them back in reading order.
+function fixTamilDisplayOrder(text) {
+    // A sign at the start of a word is impossible in reading order, so it shows display order
+    if (!/(^|[^஀-௿])[ெ-ை]/m.test(text)) return text;
+    return text.replace(/([ெ-ை])([க-ஹ](?:்ஷ)?)([ாௗ]?)/g, (match, sign, letter, after) => {
+        if (sign === 'ெ' && after === 'ா') return letter + 'ொ'; // ொ
+        if (sign === 'ே' && after === 'ா') return letter + 'ோ'; // ோ
+        if (sign === 'ெ' && after === 'ௗ') return letter + 'ௌ'; // ௌ
+        return letter + sign + after;
+    });
+}
+
+// OCR leaves invisible joiner characters after Tamil letters and reads specks as junk lines
+function cleanOcrText(text) {
+    return text
+        .replace(/[​-‍]/g, '')
+        .split('\n')
+        .filter(line => !line.trim() || /[஀-௿A-Za-z]{2}|\d{2}/.test(line))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+['pdf-ocr-from', 'pdf-ocr-to'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => { if (pdfOcrDoc) readPdfOcrRange(); });
+});
+
+document.getElementById('btn-pdf-ocr-cancel')?.addEventListener('click', () => {
+    if (pdfOcrDoc?.running) {
+        pdfOcrCancelled = true; // stops after the page being read
+        pdfOcrEls().progress.innerText = 'Stopping after this page...';
+    } else {
+        closePdfOcrPanel();
+    }
+});
+
+document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb || !pdfOcrDoc) return;
+    const range = readPdfOcrRange();
+    if (!range) return;
+
+    const els = pdfOcrEls();
+    const doc = pdfOcrDoc;
+    doc.running = true;
+    pdfOcrCancelled = false;
+    els.start.disabled = els.from.disabled = els.to.disabled = true;
+    els.cancel.innerText = 'Stop';
+    els.progress.hidden = false;
+
+    const total = range.to - range.from + 1;
+    const pagesText = [];
+    let worker = null;
+    try {
+        for (let p = range.from; p <= range.to && !pdfOcrCancelled; p++) {
+            els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
+            let text = await getPdfPageTamilText(doc.pdf, p);
+            if (text === null) {
+                if (!worker) {
+                    els.progress.innerText = 'Getting the text reader ready...';
+                    worker = await Tesseract.createWorker('eng+tam');
+                    els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
+                }
+                const canvas = await renderPdfPage(doc.pdf, p);
+                text = cleanOcrText((await worker.recognize(canvas)).data.text);
+            }
+            pagesText.push(`[Page ${p}]\n${text}`);
+        }
+    } catch (err) {
+        alert(`Error while reading the PDF: ${err.message}`);
+    } finally {
+        if (worker) await worker.terminate();
+    }
+
+    if (pagesText.length) {
+        const lastPage = range.from + pagesText.length - 1;
+        const label = lastPage === range.from ? `page ${range.from}` : `pages ${range.from}-${lastPage}`;
+        activeNb.content += `\n\n[PDF text: ${doc.name}, ${label}]\n${pagesText.join('\n\n')}\n`;
+        const contentInput = document.getElementById('notebook-content');
+        if (contentInput) contentInput.value = activeNb.content;
+        saveState();
+    }
+
+    doc.running = false;
+    els.from.disabled = els.to.disabled = false;
+    els.cancel.innerText = 'Cancel';
+    if (pdfOcrCancelled || !pagesText.length) {
+        els.progress.innerText = pagesText.length ? `Stopped. Added ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} to your note.` : 'No text was added.';
+        readPdfOcrRange();
+    } else {
+        closePdfOcrPanel();
+    }
+});
 // --- Theme Toggle Logic ---
 // 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
@@ -4152,6 +4379,7 @@ let loadedRooms = new Set();  // rooms whose history has been fetched
 let friendProfiles = {};      // email -> { id, name, class } from the profiles table
 let onlineUserIds = new Set();
 let cloudChannels = [];
+let friendNotifications = []; // newest first: [{ id, sender, text, timestamp }] (see "Notifications")
 
 // Friends are shown by name, never by email
 function getFriendProfile(email) {
@@ -4183,6 +4411,7 @@ async function fetchFriendProfiles(emails) {
     data.forEach(p => { friendProfiles[p.email] = { id: p.id, name: p.name, class: p.class }; });
     renderFriends();
     renderChatHeaderStatus();
+    renderNotifications(); // friends' names in message notifications
 }
 
 function addCloudMessage(row, render) {
@@ -4244,7 +4473,10 @@ function startCloudChat() {
     // Database security rules make sure we only receive messages from our own rooms
     const messagesChannel = cloud.channel('my-messages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
-            payload => addCloudMessage(payload.new, true))
+            payload => {
+                addCloudMessage(payload.new, true);
+                addFriendNotification(payload.new);
+            })
         .subscribe();
 
     // Presence shares only your account ID while the app is open, not your email
@@ -4263,6 +4495,7 @@ function startCloudChat() {
 
     cloudChannels = [messagesChannel, presenceChannel];
     loadCloudFriends();
+    loadFriendNotifications();
 }
 
 function stopCloudChat() {
@@ -4272,7 +4505,179 @@ function stopCloudChat() {
     loadedRooms = new Set();
     friendProfiles = {};
     onlineUserIds = new Set();
+    friendNotifications = [];
+    renderNotifications();
 }
+
+// --- Notifications: new messages from friends + "What's new" (updates.js) ---
+// What each person has already seen is remembered on this device:
+// { messagesSeenAt: time of the newest message seen, updatesSeen: [update ids] }
+const NOTIF_MESSAGE_LIMIT = 20;
+
+function notifStorageKey() {
+    return `procrastinote_notifications_${(appState.user?.email || '').toLowerCase()}`;
+}
+
+function getNotifSeen() {
+    try {
+        const seen = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
+        return { messagesSeenAt: seen.messagesSeenAt || 0, updatesSeen: seen.updatesSeen || [] };
+    } catch (e) {
+        return { messagesSeenAt: 0, updatesSeen: [] };
+    }
+}
+
+function setNotifSeen(seen) {
+    try {
+        localStorage.setItem(notifStorageKey(), JSON.stringify(seen));
+    } catch (e) { /* storage full or blocked: badges just reappear next time */ }
+}
+
+const appUpdates = () => (Array.isArray(window.PROCRASTINOTE_UPDATES) ? window.PROCRASTINOTE_UPDATES : []);
+
+async function loadFriendNotifications() {
+    if (!cloud || !appState.user?.cloudId) return;
+    const myEmail = appState.user.email.toLowerCase();
+    const { data, error } = await cloud.from('messages')
+        .select('id, sender_email, text, created_at')
+        .neq('sender_email', myEmail)
+        .order('created_at', { ascending: false })
+        .limit(NOTIF_MESSAGE_LIMIT);
+    if (error) {
+        console.error('Could not load notifications:', error.message);
+        return;
+    }
+    friendNotifications = data.map(row => ({
+        id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at)
+    }));
+    renderNotifications();
+}
+
+function addFriendNotification(row) {
+    const myEmail = appState.user?.email?.toLowerCase();
+    if (!myEmail || row.sender_email === myEmail) return;
+    if (friendNotifications.some(n => n.id === row.id)) return;
+    const note = { id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) };
+    friendNotifications.unshift(note);
+    friendNotifications = friendNotifications.slice(0, NOTIF_MESSAGE_LIMIT);
+
+    // Already reading that chat: it doesn't need a notification badge
+    const readingIt = document.getElementById('friends')?.classList.contains('active-view') &&
+        activeChatId?.toLowerCase() === note.sender;
+    if (readingIt) {
+        const seen = getNotifSeen();
+        setNotifSeen({ ...seen, messagesSeenAt: Math.max(seen.messagesSeenAt, note.timestamp) });
+    }
+    renderNotifications();
+}
+
+function timeAgo(timestamp) {
+    const minutes = Math.round((Date.now() - timestamp) / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return new Date(timestamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function formatUpdateDate(dateString) {
+    const [y, m, d] = dateString.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// `seenOverride` keeps unread highlights visible while the panel is open
+function renderNotifications(seenOverride) {
+    const badge = document.getElementById('notif-badge');
+    const messagesEl = document.getElementById('notif-messages');
+    const updatesEl = document.getElementById('notif-updates');
+    if (!badge || !messagesEl || !updatesEl) return;
+
+    const seen = seenOverride || getNotifSeen();
+    const updates = appUpdates();
+
+    const badgeSeen = getNotifSeen();
+    const badgeCount = friendNotifications.filter(n => n.timestamp > badgeSeen.messagesSeenAt).length +
+        updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length;
+    badge.hidden = badgeCount === 0;
+    badge.innerText = badgeCount > 9 ? '9+' : String(badgeCount);
+    document.getElementById('btn-notifications')?.setAttribute('aria-label',
+        badgeCount ? `Notifications, ${badgeCount} new` : 'Notifications');
+
+    messagesEl.innerHTML = '';
+    if (!cloud || !appState.user?.cloudId) {
+        messagesEl.innerHTML = '<li class="notif-empty">Log in to an online account to get messages from friends.</li>';
+    } else if (friendNotifications.length === 0) {
+        messagesEl.innerHTML = '<li class="notif-empty">No messages from friends yet.</li>';
+    } else {
+        friendNotifications.forEach(note => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'notif-item' + (note.timestamp > seen.messagesSeenAt ? ' unread' : '');
+            const preview = note.text.length > 90 ? note.text.slice(0, 90) + '...' : note.text;
+            btn.innerHTML = `<strong>${escapeHTML(getFriendProfile(note.sender).name)}</strong>: ${escapeHTML(preview)}` +
+                `<span class="notif-item-time">${escapeHTML(timeAgo(note.timestamp))}</span>`;
+            btn.addEventListener('click', () => openChatFromNotification(note.sender));
+            li.appendChild(btn);
+            messagesEl.appendChild(li);
+        });
+    }
+
+    updatesEl.innerHTML = '';
+    if (updates.length === 0) {
+        updatesEl.innerHTML = '<li class="notif-empty">No updates yet.</li>';
+    }
+    updates.forEach(update => {
+        const li = document.createElement('li');
+        li.className = 'notif-item' + (seen.updatesSeen.includes(update.id) ? '' : ' unread');
+        li.innerHTML = `<strong>${escapeHTML(update.title)}</strong><br>${escapeHTML(update.text)}` +
+            `<span class="notif-item-time">${escapeHTML(formatUpdateDate(update.date))}</span>`;
+        updatesEl.appendChild(li);
+    });
+}
+
+function openNotifications() {
+    const panel = document.getElementById('notif-panel');
+    const before = getNotifSeen();
+    // Everything shown now counts as seen; highlights stay until the panel closes
+    setNotifSeen({
+        messagesSeenAt: Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp)),
+        updatesSeen: appUpdates().map(u => u.id)
+    });
+    renderNotifications(before);
+    panel.hidden = false;
+    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'true');
+}
+
+function closeNotifications() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel || panel.hidden) return;
+    panel.hidden = true;
+    document.getElementById('btn-notifications').setAttribute('aria-expanded', 'false');
+    renderNotifications();
+}
+
+function openChatFromNotification(email) {
+    closeNotifications();
+    document.querySelector('.dock-item[data-tab="friends"]')?.click();
+    document.querySelector('.friends-cat-tab[data-category="humans"]')?.click();
+    activeChatId = email;
+    renderFriends();
+    renderChatWindow();
+}
+
+document.getElementById('btn-notifications')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (document.getElementById('notif-panel').hidden) openNotifications();
+    else closeNotifications();
+});
+document.getElementById('btn-notif-close')?.addEventListener('click', closeNotifications);
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.notif-wrap')) closeNotifications();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeNotifications();
+});
 
 // On page load: make sure the saved login is still a valid online session
 async function restoreCloudSession() {
