@@ -6,10 +6,10 @@
 -- No data is deleted.
 --
 -- How it works
--- * Anyone with an online account can create a class. It waits until the site owner
---   (is_site_owner below) approves it. Then classmates join with its 6-character code.
--- * The class owner can ask for co-admins or hand the class to someone else. The site owner
---   approves those too.
+-- * Only the site owner (is_site_owner below) can create classes. Then classmates join with
+--   its 6-character code. The site owner hands each class to its admin straight away.
+-- * A class owner can ask for co-admins or hand the class to someone else. The site owner
+--   approves those.
 -- * Admins publish the class timetable and post homework. Each class has a General chat plus up
 --   to 15 invite-only chats (each member can make 1). Members share files (100 MB per class).
 -- * Members start activity groups from a class, and that class's admin approves them. Then anyone
@@ -21,7 +21,7 @@
 -- instead of letting the app write to the tables directly.
 
 -- =========================================================
--- 1. The site owner: approves classes and role changes, handles reports.
+-- 1. The site owner: creates classes, approves role changes, handles reports.
 --    (The app shows the approval panel to the same email.)
 -- =========================================================
 create or replace function public.is_site_owner()
@@ -613,7 +613,7 @@ create policy "Class files: uploader or admin removes" on storage.objects
 -- 6. What the app calls
 -- =========================================================
 
--- Create a class. It waits for the site owner's approval.
+-- Create a class. Only the site owner can; it's ready to join straight away.
 create or replace function public.create_class(p_name text)
 returns uuid
 language plpgsql
@@ -625,17 +625,14 @@ declare
     v_id uuid;
     v_name text := btrim(coalesce(p_name, ''));
 begin
-    if auth.uid() is null then
-        raise exception 'Log in first.';
+    if not public.is_site_owner() then
+        raise exception 'Only the Procrastinote team can create classes. Ask your class admin for your class code.';
     end if;
     if char_length(v_name) not between 1 and 60 then
         raise exception 'Give the class a name (up to 60 letters).';
     end if;
-    if (select count(*) from public.classes c where c.owner_id = auth.uid() and c.status = 'pending') >= 2 then
-        raise exception 'You already have 2 classes waiting for approval. Wait until they are checked.';
-    end if;
-    insert into public.classes (name, code, owner_id)
-    values (v_name, public.new_group_code(), auth.uid())
+    insert into public.classes (name, code, owner_id, status, reviewed_at)
+    values (v_name, public.new_group_code(), auth.uid(), 'approved', now())
     returning id into v_id;
     insert into public.class_members (class_id, user_id, role) values (v_id, auth.uid(), 'owner');
     insert into public.chats (class_id, kind, name, created_by) values (v_id, 'general', 'General', auth.uid());
@@ -783,6 +780,7 @@ end;
 $$;
 
 -- The owner asks to make someone a co-admin, or to hand the class over. The site owner decides.
+-- When the site owner does it (e.g. handing a new class to its admin), it happens straight away.
 create or replace function public.request_class_role(p_class uuid, p_user uuid, p_kind text)
 returns void
 language plpgsql
@@ -792,8 +790,9 @@ set search_path = ''
 as $$
 declare
     v_theirs text;
+    v_old_owner uuid;
 begin
-    if coalesce(public.class_role(p_class), '') <> 'owner' then
+    if coalesce(public.class_role(p_class), '') <> 'owner' and not public.is_site_owner() then
         raise exception 'Only the class owner can do this.';
     end if;
     if p_kind not in ('make_admin', 'transfer_owner') then
@@ -808,6 +807,25 @@ begin
     end if;
     if p_kind = 'make_admin' and v_theirs <> 'member' then
         raise exception 'They are already an admin.';
+    end if;
+    if p_kind = 'transfer_owner' and v_theirs = 'owner' then
+        raise exception 'They already own this class.';
+    end if;
+    if public.is_site_owner() then
+        if p_kind = 'make_admin' then
+            update public.class_members set role = 'admin' where class_id = p_class and user_id = p_user;
+        else
+            select c.owner_id into v_old_owner from public.classes c where c.id = p_class;
+            update public.class_members set role = 'admin' where class_id = p_class and user_id = v_old_owner;
+            update public.class_members set role = 'owner' where class_id = p_class and user_id = p_user;
+            update public.classes set owner_id = p_user where id = p_class;
+        end if;
+        -- Anything still waiting about the same change is settled now
+        update public.class_requests set status = 'approved', reviewed_at = now()
+        where class_id = p_class and status = 'pending' and kind = p_kind and target_id = p_user;
+        update public.class_requests set status = 'rejected', reviewed_at = now()
+        where class_id = p_class and status = 'pending' and p_kind = 'transfer_owner' and kind = 'transfer_owner';
+        return;
     end if;
     if exists (select 1 from public.class_requests r where r.class_id = p_class and r.status = 'pending'
                and (r.kind = 'transfer_owner' and p_kind = 'transfer_owner' or (r.kind = p_kind and r.target_id = p_user))) then

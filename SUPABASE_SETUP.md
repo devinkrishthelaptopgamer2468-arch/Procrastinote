@@ -174,9 +174,15 @@ own tables, security rules and a private file bucket. You only do this once:
 
 Until this is done, the Classes page says "Classes aren't switched on yet".
 
-**You approve things.** The account `devinthegamer2468@gmail.com` is the site owner. On the
-Classes page it sees **Approvals**: new classes, co-admins and hand-overs wait there for you, and
-reported messages show up there with a **Delete message** button. You can also delete any class
+**Only you create classes.** The account `devinthegamer2468@gmail.com` is the site owner, and it's
+the only account with a **+ Create a class** button (the database refuses everyone else). A new
+class is ready straight away: give its code to the class admin, and once they've joined, open
+**People** and press **Hand over** next to their name. That happens straight away too, and you
+become a co-admin (you can then leave the class).
+
+The site owner also sees **Approvals** on the Classes page: when a class owner asks to make
+someone a co-admin or hand the class to someone else, it waits there for you, and reported
+messages show up there with a **Delete message** button. You can also delete any class
 or activity group from there. To make a different account the site owner, change the email in
 **both** `is_site_owner()` near the top of `supabase/add-classes.sql` (then run the file again)
 and `SITE_OWNER_EMAIL` near the top of `classes.js`.
@@ -185,7 +191,7 @@ and `SITE_OWNER_EMAIL` near the top of `classes.js`.
 
 | What | Limit |
 |---|---|
-| Classes waiting for approval | 2 per person |
+| Creating classes | Site owner only |
 | Wrong join codes | 10 per hour per account |
 | Invite-only chats | 15 per class, 1 per person (the General chat doesn't count) |
 | Activity groups | Small = up to 5 people (1 point), Big = up to 20 (2 points); 6 points per person |
@@ -193,8 +199,8 @@ and `SITE_OWNER_EMAIL` near the top of `classes.js`.
 
 The free plan has 1 GB of storage for the whole site, shared with photos sent in chat.
 
-**Test it** with two browsers, like step 5: create a class in one, approve it with the
-site-owner account, then join it with the code in the other. Send a message in General, post
+**Test it** with two browsers, like step 5: create a class with the site-owner account, then
+join it with the code in the other browser. Send a message in General, post
 homework (it lands in the other account's Homework list once they tick **Follow class homework**),
 and share a timetable.
 

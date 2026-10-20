@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'classes-team-only',
+        date: '2026-10-20',
+        title: 'Classes are set up by the team',
+        text: 'Only the Procrastinote team creates classes now. Ask your class admin for your class code and join it on the Classes page.'
+    },
+    {
         id: 'old-browser-message',
         date: '2026-10-20',
         title: 'No more blank page on old browsers',
