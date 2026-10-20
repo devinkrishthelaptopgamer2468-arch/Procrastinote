@@ -862,9 +862,25 @@
                                 <div class="notebook-image-actions">
                                     <input type="text" id="notebook-image-url" placeholder="Paste an image link (https://...)">
                                     <button id="btn-add-image" class="btn secondary-btn btn-sm">Add image</button>
-                                    <input type="file" id="notebook-image-file" accept="image/*" style="display: none;">
-                                    <button id="btn-upload-image" class="btn secondary-btn btn-sm" onclick="document.getElementById('notebook-image-file').click()">Upload file</button>
+                                    <input type="file" id="notebook-image-file" accept="image/*,application/pdf,.pdf" style="display: none;">
+                                    <button id="btn-upload-image" class="btn secondary-btn btn-sm" onclick="document.getElementById('notebook-image-file').click()">Upload image or PDF</button>
                                     <button id="btn-ocr-images" class="btn primary-btn btn-sm">Extract text (Tamil / English)</button>
+                                </div>
+                                <!-- Shown after a PDF is picked: choose which pages to read -->
+                                <div id="pdf-ocr-panel" class="pdf-ocr-panel" hidden>
+                                    <p class="pdf-ocr-file"><strong id="pdf-ocr-name"></strong> <span id="pdf-ocr-pages"></span></p>
+                                    <div class="pdf-ocr-range">
+                                        <label for="pdf-ocr-from">From page</label>
+                                        <input type="number" id="pdf-ocr-from" min="1" value="1">
+                                        <label for="pdf-ocr-to">to</label>
+                                        <input type="number" id="pdf-ocr-to" min="1" value="1">
+                                    </div>
+                                    <p class="pdf-ocr-hint" id="pdf-ocr-hint"></p>
+                                    <p class="pdf-ocr-progress" id="pdf-ocr-progress" hidden></p>
+                                    <div class="pdf-ocr-buttons">
+                                        <button id="btn-pdf-ocr-start" class="btn primary-btn btn-sm">Extract text from these pages</button>
+                                        <button id="btn-pdf-ocr-cancel" class="btn secondary-btn btn-sm">Cancel</button>
+                                    </div>
                                 </div>
                                 <div id="notebook-image-gallery" class="image-gallery"></div>
                             </div>

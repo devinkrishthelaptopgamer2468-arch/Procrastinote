@@ -1630,7 +1630,9 @@ document.getElementById('btn-add-image')?.addEventListener('click', () => {
 
 document.getElementById('notebook-image-file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (file && isPdfFile(file)) {
+        openPdfForOcr(file);
+    } else if (file) {
         const reader = new FileReader();
         reader.onload = async (ev) => {
             // Phone photos are several MB; the browser only stores about 5 MB per site, so shrink them first
@@ -1790,6 +1792,185 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
     btn.disabled = false;
 });
 
+// --- PDF text extraction ---
+// A picked PDF is never stored: the chosen pages are drawn as pictures (pdf.js)
+// and read with the same Tamil + English OCR as images, then added to the note.
+const PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/';
+const PDF_MAX_PAGES_PER_RUN = 30;   // OCR takes a few seconds per page
+const PDF_MAX_FILE_MB = 50;
+let pdfjsLibPromise = null;
+let pdfOcrDoc = null;               // { pdf, name, numPages }
+let pdfOcrCancelled = false;
+
+const isPdfFile = file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+
+function loadPdfJs() {
+    if (!pdfjsLibPromise) {
+        pdfjsLibPromise = import(PDFJS_BASE + 'build/pdf.min.mjs').then(lib => {
+            lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'build/pdf.worker.min.mjs';
+            return lib;
+        });
+        pdfjsLibPromise.catch(() => { pdfjsLibPromise = null; }); // allow a retry after a network error
+    }
+    return pdfjsLibPromise;
+}
+
+function pdfOcrEls() {
+    return {
+        panel: document.getElementById('pdf-ocr-panel'),
+        name: document.getElementById('pdf-ocr-name'),
+        pages: document.getElementById('pdf-ocr-pages'),
+        from: document.getElementById('pdf-ocr-from'),
+        to: document.getElementById('pdf-ocr-to'),
+        hint: document.getElementById('pdf-ocr-hint'),
+        progress: document.getElementById('pdf-ocr-progress'),
+        start: document.getElementById('btn-pdf-ocr-start'),
+        cancel: document.getElementById('btn-pdf-ocr-cancel')
+    };
+}
+
+function closePdfOcrPanel() {
+    const els = pdfOcrEls();
+    if (pdfOcrDoc) pdfOcrDoc.pdf.destroy();
+    pdfOcrDoc = null;
+    els.panel.hidden = true;
+    els.progress.hidden = true;
+}
+
+// Returns { from, to } when the chosen range is valid, otherwise shows why and returns null
+function readPdfOcrRange() {
+    const els = pdfOcrEls();
+    const total = pdfOcrDoc.numPages;
+    const from = parseInt(els.from.value, 10);
+    const to = parseInt(els.to.value, 10);
+    let problem = '';
+    if (!Number.isInteger(from) || !Number.isInteger(to)) problem = 'Type a page number in both boxes.';
+    else if (from < 1 || to < 1 || from > total || to > total) problem = `Pages must be between 1 and ${total}.`;
+    else if (from > to) problem = '"From" must be the same as or smaller than "to".';
+    else if (to - from + 1 > PDF_MAX_PAGES_PER_RUN) problem = `You can read up to ${PDF_MAX_PAGES_PER_RUN} pages at a time. Pick a smaller range.`;
+    const count = problem ? 0 : to - from + 1;
+    els.hint.innerText = problem || `${count} page${count === 1 ? '' : 's'} will be read. This takes a few seconds per page.`;
+    els.start.disabled = !!problem;
+    return problem ? null : { from, to };
+}
+
+async function openPdfForOcr(file) {
+    if (!appState.notebooks.find(n => n.id === appState.activeNotebookId)) return;
+    if (file.size > PDF_MAX_FILE_MB * 1024 * 1024) {
+        alert(`That PDF is too big. Pick one under ${PDF_MAX_FILE_MB} MB.`);
+        return;
+    }
+    closePdfOcrPanel();
+    const els = pdfOcrEls();
+    els.panel.hidden = false;
+    els.name.innerText = file.name;
+    els.pages.innerText = '(opening...)';
+    els.hint.innerText = '';
+    els.start.disabled = true;
+    try {
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument({
+            data: new Uint8Array(await file.arrayBuffer()),
+            isEvalSupported: false, // never run code from inside a PDF
+            cMapUrl: PDFJS_BASE + 'cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: PDFJS_BASE + 'standard_fonts/'
+        }).promise;
+        pdfOcrDoc = { pdf, name: file.name, numPages: pdf.numPages };
+        els.pages.innerText = `(${pdf.numPages} page${pdf.numPages === 1 ? '' : 's'})`;
+        els.from.max = els.to.max = pdf.numPages;
+        els.from.value = 1;
+        els.to.value = Math.min(pdf.numPages, PDF_MAX_PAGES_PER_RUN);
+        readPdfOcrRange();
+    } catch (err) {
+        closePdfOcrPanel();
+        alert(/password/i.test(err.name + err.message)
+            ? 'This PDF is password-protected, so it can\'t be read.'
+            : `Couldn't open that PDF: ${err.message}`);
+    }
+}
+
+// Draw one PDF page onto a canvas big enough for OCR to read small print
+async function renderPdfPage(pdf, pageNumber) {
+    const page = await pdf.getPage(pageNumber);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2000 / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    page.cleanup();
+    return canvas;
+}
+
+['pdf-ocr-from', 'pdf-ocr-to'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => { if (pdfOcrDoc) readPdfOcrRange(); });
+});
+
+document.getElementById('btn-pdf-ocr-cancel')?.addEventListener('click', () => {
+    if (pdfOcrDoc?.running) {
+        pdfOcrCancelled = true; // stops after the page being read
+        pdfOcrEls().progress.innerText = 'Stopping after this page...';
+    } else {
+        closePdfOcrPanel();
+    }
+});
+
+document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async () => {
+    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!activeNb || !pdfOcrDoc) return;
+    const range = readPdfOcrRange();
+    if (!range) return;
+
+    const els = pdfOcrEls();
+    const doc = pdfOcrDoc;
+    doc.running = true;
+    pdfOcrCancelled = false;
+    els.start.disabled = els.from.disabled = els.to.disabled = true;
+    els.cancel.innerText = 'Stop';
+    els.progress.hidden = false;
+
+    const total = range.to - range.from + 1;
+    const pagesText = [];
+    let worker = null;
+    try {
+        els.progress.innerText = 'Getting the text reader ready...';
+        worker = await Tesseract.createWorker('eng+tam');
+        for (let p = range.from; p <= range.to && !pdfOcrCancelled; p++) {
+            els.progress.innerText = `Reading page ${p} (${p - range.from + 1} of ${total})...`;
+            const canvas = await renderPdfPage(doc.pdf, p);
+            const { data: { text } } = await worker.recognize(canvas);
+            pagesText.push(`[Page ${p}]\n${text.trim()}`);
+        }
+    } catch (err) {
+        alert(`Error while reading the PDF: ${err.message}`);
+    } finally {
+        if (worker) await worker.terminate();
+    }
+
+    if (pagesText.length) {
+        const lastPage = range.from + pagesText.length - 1;
+        const label = lastPage === range.from ? `page ${range.from}` : `pages ${range.from}-${lastPage}`;
+        activeNb.content += `\n\n[PDF text: ${doc.name}, ${label}]\n${pagesText.join('\n\n')}\n`;
+        const contentInput = document.getElementById('notebook-content');
+        if (contentInput) contentInput.value = activeNb.content;
+        saveState();
+    }
+
+    doc.running = false;
+    els.from.disabled = els.to.disabled = false;
+    els.cancel.innerText = 'Cancel';
+    if (pdfOcrCancelled || !pagesText.length) {
+        els.progress.innerText = pagesText.length ? `Stopped. Added ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} to your note.` : 'No text was added.';
+        readPdfOcrRange();
+    } else {
+        closePdfOcrPanel();
+    }
+});
 // --- Theme Toggle Logic ---
 // 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');

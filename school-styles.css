@@ -3142,6 +3142,7 @@ li.completing .done-check {
     flex-direction: column;
     gap: 1rem;
     min-height: 0;
+    overflow-y: auto; /* the PDF page picker can make it taller than the card */
 }
 
 .notebook-title-row {
@@ -3224,6 +3225,55 @@ li.completing .done-check {
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-bottom: 0.85rem;
+}
+
+/* PDF page range picker for text extraction */
+.pdf-ocr-panel {
+    margin-bottom: 0.85rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    font-size: 0.9rem;
+}
+
+.pdf-ocr-panel[hidden],
+.pdf-ocr-progress[hidden] {
+    display: none;
+}
+
+.pdf-ocr-panel p {
+    margin: 0 0 0.5rem;
+}
+
+.pdf-ocr-file {
+    overflow-wrap: anywhere;
+}
+
+.pdf-ocr-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.pdf-ocr-range input {
+    width: 5.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.pdf-ocr-hint,
+.pdf-ocr-progress {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.pdf-ocr-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 #notebook-image-url {
