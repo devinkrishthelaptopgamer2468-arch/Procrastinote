@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'google-sign-in',
+        date: '2026-10-21',
+        title: 'Sign in with Google',
+        text: 'Press "Continue with Google" on the Sign Up or Log In page to use your Google account. No new password needed.'
+    },
+    {
         id: 'privacy-policy',
         date: '2026-10-21',
         title: 'Privacy policy',

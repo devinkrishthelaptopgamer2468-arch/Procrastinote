@@ -57,6 +57,17 @@ function isSecretSupabaseKey(key) {
     }
 }
 
+// Read before Supabase starts (it removes these from the address): is this page load the return
+// trip from Google sign-in or an email link? type is 'recovery' for password resets.
+const AUTH_REDIRECT = (() => {
+    const params = new URLSearchParams(`${location.hash.slice(1)}&${location.search.slice(1)}`);
+    return {
+        signedIn: params.has('access_token') || params.has('code'),
+        type: params.get('type') || '',
+        error: params.get('error_description') || ''
+    };
+})();
+
 const cloud = (function createCloudClient() {
     const cfg = window.PROCRASTINOTE_SUPABASE || {};
     const url = (cfg.url || '').trim();
@@ -2328,6 +2339,98 @@ function shakePasswordInput(id) {
     setTimeout(() => passInput.classList.remove('shake-error'), 750);
 }
 
+// --- Sign in with Google ---
+// Google sends people back to this site already signed in to Supabase (finishRedirectLogin).
+// Google doesn't tell us their class, so first-timers pick it once (pick-class-overlay).
+document.querySelectorAll('.google-only').forEach(el => { el.hidden = !cloud; });
+
+// Asks Supabase whether Google sign-in is switched on, so nobody lands on an error page
+async function isGoogleSignInOn() {
+    try {
+        const cfg = window.PROCRASTINOTE_SUPABASE;
+        const res = await fetch(`${cfg.url.trim().replace(/\/$/, '')}/auth/v1/settings`, { headers: { apikey: cfg.publishableKey.trim() } });
+        if (!res.ok) return true; // can't tell: let Supabase answer
+        return !!(await res.json()).external?.google;
+    } catch (e) {
+        return true;
+    }
+}
+
+document.getElementById('btn-google-sign-in')?.addEventListener('click', async (e) => {
+    const button = e.currentTarget;
+    button.disabled = true;
+    showAuthMessage('');
+    if (!(await isGoogleSignInOn())) {
+        showAuthMessage('Sign in with Google isn\'t switched on yet. Use your email and password for now.');
+        button.disabled = false;
+        return;
+    }
+    const { error } = await cloud.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+    if (error) {
+        showAuthMessage(`Couldn't open Google sign-in: ${error.message}`);
+        button.disabled = false;
+    }
+    // Otherwise the browser is now on its way to Google
+});
+
+async function finishRedirectLogin() {
+    if (!cloud) return;
+    if (AUTH_REDIRECT.error) {
+        openAuth('login');
+        setTimeout(() => showAuthMessage(`Signing in didn't work: ${AUTH_REDIRECT.error}`), 500);
+        return;
+    }
+    if (!AUTH_REDIRECT.signedIn || AUTH_REDIRECT.type === 'recovery') return; // resets: see "Forgot password"
+    const { data } = await cloud.auth.getSession();
+    const user = data.session?.user;
+    if (!user || appState.user?.cloudId === user.id) return;
+    loadUserFromCloud(user);
+    saveState();
+    checkAuth();
+    startCloudChat();
+    startPlannerSync();
+    openPendingCreatorChat();
+    if (!appState.user.class) openPickClass();
+}
+
+function openPickClass() {
+    // The same themed dropdown and grades as the Sign Up form
+    const grades = [...document.querySelectorAll('#grade-options .custom-option')].map(o => o.getAttribute('data-value'));
+    setupCustomDropdown('pick-class-display', 'pick-class-options', 'pick-class-value',
+        grades.map(g => ({ label: g, value: g })),
+        () => { document.getElementById('pick-class-message').hidden = true; });
+    document.getElementById('pick-class-message').hidden = true;
+    document.getElementById('pick-class-overlay').style.display = 'flex';
+}
+
+document.getElementById('pick-class-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cls = document.getElementById('pick-class-value').value;
+    const message = document.getElementById('pick-class-message');
+    if (!cls) {
+        message.innerText = 'Please select your Class / Grade.';
+        message.hidden = false;
+        return;
+    }
+    const button = document.getElementById('pick-class-btn');
+    button.disabled = true;
+    // Saved on the account (other devices) and the profile (what friends see)
+    const [meta, profile] = await Promise.all([
+        cloud.auth.updateUser({ data: { class: cls } }),
+        cloud.from('profiles').update({ class: cls }).eq('id', appState.user.cloudId)
+    ]);
+    button.disabled = false;
+    if (meta.error || profile.error) {
+        message.innerText = `Couldn't save your class: ${(meta.error || profile.error).message}`;
+        message.hidden = false;
+        return;
+    }
+    appState.user.class = cls;
+    saveState();
+    checkAuth();
+    document.getElementById('pick-class-overlay').style.display = 'none';
+});
+
 // Build appState from an online account, keeping this browser's planner data for that email
 function loadUserFromCloud(user) {
     const email = user.email.toLowerCase();
@@ -2435,6 +2538,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         checkAuth();
         startCloudChat();
         startPlannerSync(); // loads this account's planner from other devices
+        openPendingCreatorChat(); // "Message me on Friends" pressed before logging in
         return;
     }
 
@@ -2551,6 +2655,79 @@ function openAuth(mode) {
         document.getElementById(mode === 'login' ? 'login-email' : 'login-name')?.focus({ preventScroll: true });
     }, reducedMotion.matches ? 0 : 380);
 }
+
+// --- About me (opened from "Created by Devin Krish" on the welcome page) ---
+const CREATOR_EMAIL = 'devinkrishthelaptopgamer2468@gmail.com';
+const PENDING_CREATOR_CHAT_KEY = 'procrastinote_open_creator_chat'; // survives the trip to Google sign-in
+
+function openAboutMe() {
+    document.getElementById('about-me-message').hidden = true;
+    document.getElementById('about-me-overlay').style.display = 'flex';
+    document.getElementById('about-me-close')?.focus({ preventScroll: true });
+}
+
+function closeAboutMe() {
+    document.getElementById('about-me-overlay').style.display = 'none';
+}
+
+function openCreatorChat() {
+    addFriendIfNew(CREATOR_EMAIL);
+    openChatFromNotification(CREATOR_EMAIL);
+}
+
+function openPendingCreatorChat() {
+    let pending = false;
+    try {
+        pending = sessionStorage.getItem(PENDING_CREATOR_CHAT_KEY) === '1';
+        sessionStorage.removeItem(PENDING_CREATOR_CHAT_KEY);
+    } catch (e) { /* storage blocked: nothing was saved */ }
+    if (pending && appState.user?.cloudId && appState.user.email.toLowerCase() !== CREATOR_EMAIL) openCreatorChat();
+}
+
+document.getElementById('about-me-link')?.addEventListener('click', openAboutMe);
+document.getElementById('about-me-close')?.addEventListener('click', closeAboutMe);
+document.getElementById('about-me-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'about-me-overlay') closeAboutMe(); // click outside the card
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('about-me-overlay')?.style.display === 'flex') closeAboutMe();
+});
+
+document.getElementById('about-me-chat')?.addEventListener('click', () => {
+    const message = document.getElementById('about-me-message');
+    const say = text => { message.innerText = text; message.hidden = false; };
+    if (!cloud) return say('Messaging needs online accounts, which aren\'t switched on here.');
+    if (appState.user?.email?.toLowerCase() === CREATOR_EMAIL) return say('That\'s you! 😄');
+    if (appState.user?.cloudId) {
+        closeAboutMe();
+        openCreatorChat();
+        return;
+    }
+    // Not logged in yet: log in (or sign up) first, then the chat opens by itself
+    try { sessionStorage.setItem(PENDING_CREATOR_CHAT_KEY, '1'); } catch (e) { /* the chat just won't open by itself */ }
+    closeAboutMe();
+    openAuth('login');
+    setTimeout(() => showAuthMessage('Log in (or sign up) first. Your chat with Devin opens right after.', 'info'), 450);
+});
+
+// The link lights up more the closer the mouse gets (within about 180px)
+(function setupAboutLinkGlow() {
+    const link = document.getElementById('about-me-link');
+    if (!link || !window.matchMedia('(hover: hover)').matches) return;
+    let frame = 0;
+    document.addEventListener('mousemove', (e) => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+            frame = 0;
+            const r = link.getBoundingClientRect();
+            if (!r.width) return; // welcome page hidden
+            const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
+            const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+            const near = Math.max(0, 1 - Math.hypot(dx, dy) / 180);
+            link.style.setProperty('--near', near.toFixed(2));
+        });
+    }, { passive: true });
+})();
 
 document.getElementById('get-started-btn')?.addEventListener('click', () => openAuth('signup'));
 document.getElementById('welcome-login-btn')?.addEventListener('click', () => openAuth('login'));
@@ -5262,6 +5439,7 @@ async function restoreCloudSession() {
     }
     startCloudChat();
     startPlannerSync();
+    if (!appState.user.class) openPickClass(); // e.g. closed the page before picking after Google sign-in
 }
 
 // --- Planner sync: the same account works on every device ---
@@ -5865,5 +6043,6 @@ updateRobotExpression();
 applyTheme();
 checkAuth();
 restoreCloudSession();
+finishRedirectLogin(); // after restoreCloudSession, which may first log out a different saved account
 window.__procrastinoteStarted = true; // tells the browser check in index.html that startup worked
 
