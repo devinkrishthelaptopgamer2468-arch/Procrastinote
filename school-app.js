@@ -2393,13 +2393,18 @@ async function finishRedirectLogin() {
 }
 
 function openPickClass() {
+    // The same themed dropdown and grades as the Sign Up form
+    const grades = [...document.querySelectorAll('#grade-options .custom-option')].map(o => o.getAttribute('data-value'));
+    setupCustomDropdown('pick-class-display', 'pick-class-options', 'pick-class-value',
+        grades.map(g => ({ label: g, value: g })),
+        () => { document.getElementById('pick-class-message').hidden = true; });
     document.getElementById('pick-class-message').hidden = true;
     document.getElementById('pick-class-overlay').style.display = 'flex';
 }
 
 document.getElementById('pick-class-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const cls = document.getElementById('pick-class-select').value;
+    const cls = document.getElementById('pick-class-value').value;
     const message = document.getElementById('pick-class-message');
     if (!cls) {
         message.innerText = 'Please select your Class / Grade.';

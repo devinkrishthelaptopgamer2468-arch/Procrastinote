@@ -1781,23 +1781,6 @@ li.empty-state::before {
     text-align: center;
 }
 
-/* Same look as the text boxes */
-#pick-class-select {
-    width: 100%;
-    padding: 0.78rem 0.95rem;
-    background: var(--field);
-    color: var(--text);
-    border: 1px solid var(--field-border);
-    border-radius: 12px;
-    font: inherit;
-    font-size: 0.95rem;
-}
-
-#pick-class-select option {
-    background: var(--surface-solid);
-    color: var(--text);
-}
-
 .login-btn {
     width: 100%;
     padding: 0.95rem 1.2rem;
