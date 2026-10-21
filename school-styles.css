@@ -1674,6 +1674,28 @@ li.empty-state::before {
     margin-top: 0.4rem;
 }
 
+/* Special thanks: one name per line, each with a small accent heart */
+.about-me-thanks {
+    list-style: none;
+    margin: 0 0 0.6rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.about-me-thanks li {
+    color: var(--text);
+    font-size: 0.93rem;
+    font-weight: 600;
+}
+
+.about-me-thanks li::before {
+    content: '\2665';
+    margin-right: 0.5rem;
+    color: var(--accent);
+}
+
 /* ---------- Sign up / log in ---------- */
 .login-overlay {
     position: fixed;
