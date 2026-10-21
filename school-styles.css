@@ -1586,6 +1586,65 @@ li.empty-state::before {
     text-decoration: none;
 }
 
+/* Settings: phone notifications */
+.push-hint {
+    margin: 0.6rem 0 0;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--text-2);
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.push-hint[hidden],
+.push-buttons [hidden] {
+    display: none;
+}
+
+.push-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 1rem 0;
+}
+
+.push-option {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.push-option input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}
+
+.push-time {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-left: 1.75rem;
+    font-size: 0.9rem;
+    color: var(--text-2);
+}
+
+.push-time input {
+    width: auto;
+    padding: 0.4rem 0.6rem;
+}
+
+.push-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 /* "Created by Devin Krish" opens the About me page. --near (0 to 1, set by school-app.js)
    grows as the mouse gets closer, so it lights up before you even touch it. */
 .about-me-link {

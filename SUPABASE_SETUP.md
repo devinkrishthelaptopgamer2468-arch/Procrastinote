@@ -212,6 +212,51 @@ join it with the code in the other browser. Send a message in General, post
 homework (it lands in the other account's Homework list once they tick **Follow class homework**),
 and share a timetable.
 
+## 10. Phone notifications when Procrastinote is closed
+
+Without this step, notifications already work while Procrastinote is open in the background
+(another tab or app). This step adds notifications when it's fully closed, and the daily
+homework reminder. Do it **before** merging the branch that sets `pushPublicKey` in
+`supabase-config.js`.
+
+**How it works:** when a message, file, note, class homework or timetable is saved, a database
+trigger calls the `send-push` Edge Function, which sends the notification to the right phones.
+A schedule also calls it every 15 minutes to send each student's homework reminder at the time
+they chose in Settings.
+
+You need the three secret values in `procrastinote-push-secrets.txt` (in your **Documents**
+folder). **Never** paste them in a chat, a GitHub file or anywhere else but Supabase. If you lose
+the file, ask for a new key pair (everyone then turns notifications on again).
+
+1. **Save the phone list.** In **SQL Editor** → **New query**, paste all of
+   `supabase/add-push-notifications.sql` and press **Run**.
+2. **Create the function.** Open **Edge Functions** (left menu) → **Deploy a new function** →
+   **Via Editor**. Name it exactly `send-push`. Delete the example code, paste **all** of
+   `supabase/functions/send-push/index.ts`, and press **Deploy function**.
+3. **Let the database call it.** On the `send-push` function, open **Details** (or
+   **Settings**) and turn **off** "Enforce JWT verification" (or "Verify JWT"), then **Save**.
+   This is safe: the function refuses any call without the secret header.
+4. **Add the function's secrets.** **Edge Functions** → **Secrets** → add these three names,
+   each with its value from the text file, then **Save**:
+   `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `PUSH_WEBHOOK_SECRET`.
+5. **Give the database the same webhook secret.** Open **Integrations** → **Vault** (or search
+   "Vault" in the dashboard; press **Install** or **Enable** if asked) → **Add new secret**.
+   Name: `push_webhook_secret`. Secret: the same value as `PUSH_WEBHOOK_SECRET`. Save.
+6. **Turn on the triggers and the reminder.** In **SQL Editor** → **New query**, paste all of
+   `supabase/add-push-triggers.sql` and press **Run**. If Supabase warns about
+   "destructive operations", that's only the lines that recreate this feature's own triggers.
+   Press **Run** anyway.
+7. **Delete `procrastinote-push-secrets.txt`** (and empty the Recycle Bin). Supabase keeps the
+   values now.
+8. **Test it.** After merging and the Vercel deploy, open the site on your phone, log in, and
+   in **Settings → Phone notifications** press **Turn on**. It should say "On. You'll get
+   notifications even when Procrastinote is closed." Close Procrastinote completely, then send
+   that account a message from another account. The notification should arrive within a few
+   seconds. If nothing comes, open **Edge Functions** → `send-push` → **Logs** to see why.
+
+**Updating:** if `index.ts` changes, open the function → **Code**, paste the new file and deploy
+again. If `add-push-triggers.sql` changes, run it again.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

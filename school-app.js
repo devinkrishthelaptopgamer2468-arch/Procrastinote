@@ -84,6 +84,7 @@ const cloud = (function createCloudClient() {
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
     'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
+let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
 let plannerDirty = false;     // local changes not saved online yet
 let plannerSyncTimer = null;
@@ -759,6 +760,9 @@ function renderAllViews() {
     }
     if (typeof renderNotifications === 'function') {
         renderNotifications();
+    }
+    if (typeof renderPushSettings === 'function') {
+        renderPushSettings();
     }
     if (typeof renderHomeSchedule === 'function') {
         const activeFilter = document.querySelector('.hs-pill.active')?.getAttribute('data-filter') || 'all';
@@ -5054,6 +5058,13 @@ function addFriendNotification(row) {
     if (readingIt) {
         const seen = getNotifSeen();
         setNotifSeen({ ...seen, messagesSeenAt: Math.max(seen.messagesSeenAt, note.timestamp) });
+    } else {
+        showPhoneNotification('friends', {
+            title: getFriendProfile(note.sender).name,
+            body: note.text,
+            url: `/#open=chat&with=${encodeURIComponent(note.sender)}`,
+            tag: `chat-${note.sender}`
+        });
     }
     renderNotifications();
 }
@@ -5260,6 +5271,12 @@ function addSharedNote(row) {
     sharedNotes.unshift(sharedNoteFromRow(row));
     renderSharedNotes();
     renderNotifications();
+    showPhoneNotification('friends', {
+        title: `${getFriendProfile(row.sender_email).name} shared a note`,
+        body: row.title || 'Untitled note',
+        url: '/#open=notes',
+        tag: 'shared-notes'
+    });
 }
 
 function removeSharedNote(id) {
@@ -5421,6 +5438,207 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSharePanel();
 });
+
+// --- Phone notifications ---
+// sw.js (the background helper) shows them. They're sent two ways:
+// 1. While Procrastinote is open but not on screen (another tab or app): showPhoneNotification
+//    is called when a friend message, file, shared note or class update arrives.
+// 2. When Procrastinote is closed: Supabase sends a push message. That needs pushPublicKey in
+//    supabase-config.js, supabase/add-push-notifications.sql and the send-push Edge Function
+//    (SUPABASE_SETUP.md, section 10). Until then only way 1 works.
+const PUSH_SUPPORTED = 'serviceWorker' in navigator && 'Notification' in window;
+const PUSH_PUBLIC_KEY = (window.PROCRASTINOTE_SUPABASE?.pushPublicKey || '').trim();
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const IS_INSTALLED_APP = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const DEFAULT_PUSH_PREFS = { enabled: false, closedToo: false, friends: true, classes: true, homework: true, reminderTime: '18:00' };
+
+// Saved per account on this device; the Supabase copy (for closed-app pushes) is per phone
+const pushPrefsKey = () => `procrastinote_push_${(appState.user?.email || 'guest').toLowerCase()}`;
+
+function getPushPrefs() {
+    try {
+        return { ...DEFAULT_PUSH_PREFS, ...JSON.parse(localStorage.getItem(pushPrefsKey()) || '{}') };
+    } catch (e) {
+        return { ...DEFAULT_PUSH_PREFS };
+    }
+}
+
+function savePushPrefs(prefs) {
+    try { localStorage.setItem(pushPrefsKey(), JSON.stringify(prefs)); } catch (e) { /* storage blocked */ }
+}
+
+function readPushPrefsFromForm() {
+    return {
+        friends: document.getElementById('push-pref-friends').checked,
+        classes: document.getElementById('push-pref-classes').checked,
+        homework: document.getElementById('push-pref-homework').checked,
+        reminderTime: document.getElementById('push-reminder-time').value || '18:00'
+    };
+}
+
+// kind: 'friends' | 'classes' | 'test'. url opens that page when the notification is tapped.
+function showPhoneNotification(kind, { title, body, url, tag }, force = false) {
+    if (!PUSH_SUPPORTED || !swRegistration || Notification.permission !== 'granted') return;
+    if (!force) {
+        const prefs = getPushPrefs();
+        if (!prefs.enabled || prefs[kind] === false) return;
+        if (!document.hidden) return;   // they can already see it on screen
+        if (prefs.closedToo) return;    // Supabase sends this one too: don't show it twice
+    }
+    swRegistration.showNotification(title, {
+        body: String(body || '').slice(0, 180),
+        icon: 'icon-192.png',
+        badge: 'icon-maskable-192.png',
+        tag,
+        data: { url: url || '/' }
+    }).catch(err => console.error('Could not show a notification:', err.message));
+}
+
+// Tapping a notification opens /#open=chat&with=<email>, /#open=notes or /#open=<dock page>
+function openFromNotificationLink(url) {
+    const params = new URLSearchParams(new URL(url, location.origin).hash.slice(1));
+    const open = params.get('open');
+    if (!open || !appState.user) return;
+    if (open === 'chat' && params.get('with')) openChatFromNotification(params.get('with'));
+    else if (open === 'notes') openSharedNotes();
+    else document.querySelector(`.dock-item[data-tab="${open}"]`)?.click();
+    history.replaceState(null, '', location.pathname);
+}
+
+const urlBase64ToUint8Array = text => {
+    const base64 = (text + '='.repeat((4 - text.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+};
+
+// Push (closed-app) subscription for this phone, saved in Supabase. Returns true when it worked.
+async function syncPushSubscription(prefs) {
+    if (!PUSH_PUBLIC_KEY || !isOnlineAccount() || !swRegistration || !('PushManager' in window)) return false;
+    try {
+        const subscription = (await swRegistration.pushManager.getSubscription()) ||
+            await swRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH_PUBLIC_KEY) });
+        const { endpoint, keys } = subscription.toJSON();
+        const { error } = await cloud.rpc('save_push_subscription', {
+            p_endpoint: endpoint,
+            p_p256dh: keys.p256dh,
+            p_auth: keys.auth,
+            p_prefs: { friends: prefs.friends, classes: prefs.classes, homework: prefs.homework, reminderTime: prefs.reminderTime },
+            p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
+        });
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.error('Closed-app notifications are not available yet:', e.message);
+        return false;
+    }
+}
+
+async function removePushSubscription() {
+    try {
+        const subscription = await swRegistration?.pushManager?.getSubscription();
+        if (!subscription) return;
+        if (isOnlineAccount()) await cloud.rpc('remove_push_subscription', { p_endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+    } catch (e) {
+        console.error('Could not remove the push subscription:', e.message);
+    }
+}
+
+function renderPushSettings() {
+    const status = document.getElementById('push-status');
+    if (!status) return;
+    const hint = document.getElementById('push-hint');
+    const options = document.getElementById('push-options');
+    const enableBtn = document.getElementById('btn-push-enable');
+    const testBtn = document.getElementById('btn-push-test');
+    const disableBtn = document.getElementById('btn-push-disable');
+    const prefs = getPushPrefs();
+    const showHint = text => { hint.innerText = text; hint.hidden = !text; };
+
+    document.getElementById('push-pref-friends').checked = prefs.friends;
+    document.getElementById('push-pref-classes').checked = prefs.classes;
+    document.getElementById('push-pref-homework').checked = prefs.homework;
+    document.getElementById('push-reminder-time').value = prefs.reminderTime;
+    document.getElementById('push-reminder-time').disabled = !prefs.homework;
+
+    if (!PUSH_SUPPORTED) {
+        status.innerText = 'This browser can\'t show notifications. Try Google Chrome.';
+        options.hidden = enableBtn.hidden = testBtn.hidden = disableBtn.hidden = true;
+        showHint('');
+        return;
+    }
+    options.hidden = false;
+    const on = prefs.enabled && Notification.permission === 'granted';
+    enableBtn.hidden = on;
+    testBtn.hidden = disableBtn.hidden = !on;
+    enableBtn.disabled = IS_IOS && !IS_INSTALLED_APP;
+
+    if (IS_IOS && !IS_INSTALLED_APP) {
+        status.innerText = 'Get a notification for new messages, class homework and homework due tomorrow.';
+        showHint('On iPhone or iPad, add Procrastinote to your Home Screen first: tap Share, then "Add to Home Screen". Open it from there and turn notifications on.');
+    } else if (Notification.permission === 'denied') {
+        status.innerText = 'Notifications are blocked for this site.';
+        showHint('To allow them, open your browser\'s site settings for Procrastinote (the lock or ⓘ next to the address), set Notifications to Allow, then reload.');
+    } else if (on && prefs.closedToo) {
+        status.innerText = 'On. You\'ll get notifications even when Procrastinote is closed.';
+        showHint('');
+    } else if (on) {
+        status.innerText = 'On while Procrastinote is open in the background (another tab or app).';
+        showHint(PUSH_PUBLIC_KEY && isOnlineAccount()
+            ? 'Couldn\'t set up notifications for when Procrastinote is closed. Tap "Turn off", then turn them on again to retry.'
+            : 'Log in with an online account to also get notifications when Procrastinote is closed, and the homework reminder.');
+    } else {
+        status.innerText = 'Get a notification for new messages, class homework and homework due tomorrow.';
+        showHint(!IS_INSTALLED_APP && /Android/i.test(navigator.userAgent)
+            ? 'Tip: in Chrome, tap ⋮ then "Add to Home screen" to use Procrastinote like an app.' : '');
+    }
+}
+
+document.getElementById('btn-push-enable')?.addEventListener('click', async () => {
+    if (!PUSH_SUPPORTED) return;
+    const permission = await Notification.requestPermission();
+    const prefs = { ...getPushPrefs(), ...readPushPrefsFromForm(), enabled: permission === 'granted' };
+    if (prefs.enabled) prefs.closedToo = await syncPushSubscription(prefs);
+    savePushPrefs(prefs);
+    renderPushSettings();
+    if (prefs.enabled) showPhoneNotification('test', { title: 'Procrastinote', body: 'Notifications are on.', tag: 'push-test' }, true);
+});
+
+document.getElementById('btn-push-disable')?.addEventListener('click', async () => {
+    await removePushSubscription();
+    savePushPrefs({ ...getPushPrefs(), enabled: false, closedToo: false });
+    renderPushSettings();
+});
+
+document.getElementById('btn-push-test')?.addEventListener('click', () => {
+    showPhoneNotification('test', { title: 'Procrastinote', body: 'This is a test notification.', tag: 'push-test' }, true);
+});
+
+// Changing a choice saves it here and (if set up) in Supabase
+['push-pref-friends', 'push-pref-classes', 'push-pref-homework', 'push-reminder-time'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', async () => {
+        const prefs = { ...getPushPrefs(), ...readPushPrefsFromForm() };
+        savePushPrefs(prefs);
+        renderPushSettings();
+        if (prefs.enabled && prefs.closedToo) await syncPushSubscription(prefs);
+    });
+});
+
+if (PUSH_SUPPORTED) {
+    navigator.serviceWorker.register('sw.js')
+        .then(async registration => {
+            swRegistration = registration;
+            // Turned on before closed-app notifications existed (or the save failed): try again now
+            const prefs = getPushPrefs();
+            if (prefs.enabled && !prefs.closedToo && Notification.permission === 'granted' && await syncPushSubscription(prefs)) {
+                savePushPrefs({ ...prefs, closedToo: true });
+            }
+            renderPushSettings();
+        })
+        .catch(err => console.error('Could not start the notification helper:', err.message));
+    navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data?.type === 'open-from-notification') openFromNotificationLink(e.data.url);
+    });
+}
 
 // On page load: make sure the saved login is still a valid online session
 async function restoreCloudSession() {
@@ -6047,5 +6265,7 @@ applyTheme();
 checkAuth();
 restoreCloudSession();
 finishRedirectLogin(); // after restoreCloudSession, which may first log out a different saved account
+// Opened by tapping a notification while the site was closed (/#open=...): go to that page
+if (/[#&]open=/.test(location.hash)) setTimeout(() => openFromNotificationLink(location.href), 1200);
 window.__procrastinoteStarted = true; // tells the browser check in index.html that startup worked
 

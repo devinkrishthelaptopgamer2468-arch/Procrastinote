@@ -334,6 +334,15 @@
             const knownSender = Object.values(state.members).some(list => list.some(m => m.user_id === row.sender_id));
             if (!state.chats.some(c => c.id === row.chat_id) || !knownSender) scheduleReload();
             if (isReadingChat(row.chat_id)) markClassesSeen(Date.parse(row.created_at));
+            else {
+                const chat = state.chats.find(c => c.id === row.chat_id);
+                showPhoneNotification('classes', {
+                    title: chat ? chatPlace(chat) : 'Class chat',
+                    body: `${personName(row.sender_id)}: ${row.text}`,
+                    url: '/#open=classes',
+                    tag: `class-chat-${row.chat_id}`
+                });
+            }
             renderNotifications();
         }
     }
@@ -350,6 +359,14 @@
             const row = payload.new;
             const list = state.homework[row.class_id] = state.homework[row.class_id] || [];
             const at = list.findIndex(h => h.id === row.id);
+            if (at === -1 && payload.eventType === 'INSERT' && row.created_by !== myId()) {
+                showPhoneNotification('classes', {
+                    title: `New homework · ${findClass(row.class_id)?.name || 'Class'}`,
+                    body: `${row.subject}: ${row.task} (due ${row.due_date})`,
+                    url: '/#open=classes',
+                    tag: `class-homework-${row.class_id}`
+                });
+            }
             if (at === -1) list.push(row);
             else list[at] = row;
             list.sort((a, b) => a.due_date.localeCompare(b.due_date));
