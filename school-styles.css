@@ -1553,6 +1553,94 @@ li.empty-state::before {
     animation: fadeIn 1s ease 1.4s forwards;
 }
 
+/* "Created by Devin Krish" opens the About me page. --near (0 to 1, set by school-app.js)
+   grows as the mouse gets closer, so it lights up before you even touch it. */
+.about-me-link {
+    --near: 0;
+    padding: 0.2rem 0.1rem;
+    border: none;
+    background: none;
+    font: inherit;
+    color: color-mix(in srgb, var(--accent) calc(var(--near) * 100%), var(--text-3));
+    text-shadow: 0 0 calc(var(--near) * 14px) color-mix(in srgb, var(--accent) calc(var(--near) * 80%), transparent);
+    cursor: pointer;
+    transition: color 0.15s, text-shadow 0.15s;
+}
+
+.about-me-link:hover,
+.about-me-link:focus-visible {
+    --near: 1;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* Phones and tablets have no mouse to come close: always show it's tappable */
+@media (hover: none) {
+    .about-me-link {
+        text-decoration: underline dotted;
+        text-underline-offset: 3px;
+    }
+}
+
+/* ---------- About me ---------- */
+#about-me-overlay {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    overflow-y: auto;
+}
+
+.about-me-box {
+    position: relative;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    text-align: left;
+}
+
+.about-me-avatar {
+    width: 76px;
+    height: 76px;
+    margin: 0.4rem auto 0.9rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--grad);
+    color: #fff;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    box-shadow: var(--shadow-accent);
+}
+
+.about-me-box h2 {
+    text-align: center;
+}
+
+.about-me-sub {
+    margin: 0.3rem 0 1.2rem;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 0.92rem;
+}
+
+.about-me-box h3 {
+    margin: 1.1rem 0 0.35rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.about-me-box p:not(.about-me-sub):not(.auth-message) {
+    margin: 0 0 0.6rem;
+    color: var(--text-2);
+    font-size: 0.93rem;
+    line-height: 1.6;
+}
+
+.about-me-box .login-btn {
+    margin-top: 0.4rem;
+}
+
 /* ---------- Sign up / log in ---------- */
 .login-overlay {
     position: fixed;

@@ -2389,6 +2389,7 @@ async function finishRedirectLogin() {
     checkAuth();
     startCloudChat();
     startPlannerSync();
+    openPendingCreatorChat();
     if (!appState.user.class) openPickClass();
 }
 
@@ -2537,6 +2538,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         checkAuth();
         startCloudChat();
         startPlannerSync(); // loads this account's planner from other devices
+        openPendingCreatorChat(); // "Message me on Friends" pressed before logging in
         return;
     }
 
@@ -2653,6 +2655,79 @@ function openAuth(mode) {
         document.getElementById(mode === 'login' ? 'login-email' : 'login-name')?.focus({ preventScroll: true });
     }, reducedMotion.matches ? 0 : 380);
 }
+
+// --- About me (opened from "Created by Devin Krish" on the welcome page) ---
+const CREATOR_EMAIL = 'devinkrishthelaptopgamer2468@gmail.com';
+const PENDING_CREATOR_CHAT_KEY = 'procrastinote_open_creator_chat'; // survives the trip to Google sign-in
+
+function openAboutMe() {
+    document.getElementById('about-me-message').hidden = true;
+    document.getElementById('about-me-overlay').style.display = 'flex';
+    document.getElementById('about-me-close')?.focus({ preventScroll: true });
+}
+
+function closeAboutMe() {
+    document.getElementById('about-me-overlay').style.display = 'none';
+}
+
+function openCreatorChat() {
+    addFriendIfNew(CREATOR_EMAIL);
+    openChatFromNotification(CREATOR_EMAIL);
+}
+
+function openPendingCreatorChat() {
+    let pending = false;
+    try {
+        pending = sessionStorage.getItem(PENDING_CREATOR_CHAT_KEY) === '1';
+        sessionStorage.removeItem(PENDING_CREATOR_CHAT_KEY);
+    } catch (e) { /* storage blocked: nothing was saved */ }
+    if (pending && appState.user?.cloudId && appState.user.email.toLowerCase() !== CREATOR_EMAIL) openCreatorChat();
+}
+
+document.getElementById('about-me-link')?.addEventListener('click', openAboutMe);
+document.getElementById('about-me-close')?.addEventListener('click', closeAboutMe);
+document.getElementById('about-me-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'about-me-overlay') closeAboutMe(); // click outside the card
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('about-me-overlay')?.style.display === 'flex') closeAboutMe();
+});
+
+document.getElementById('about-me-chat')?.addEventListener('click', () => {
+    const message = document.getElementById('about-me-message');
+    const say = text => { message.innerText = text; message.hidden = false; };
+    if (!cloud) return say('Messaging needs online accounts, which aren\'t switched on here.');
+    if (appState.user?.email?.toLowerCase() === CREATOR_EMAIL) return say('That\'s you! 😄');
+    if (appState.user?.cloudId) {
+        closeAboutMe();
+        openCreatorChat();
+        return;
+    }
+    // Not logged in yet: log in (or sign up) first, then the chat opens by itself
+    try { sessionStorage.setItem(PENDING_CREATOR_CHAT_KEY, '1'); } catch (e) { /* the chat just won't open by itself */ }
+    closeAboutMe();
+    openAuth('login');
+    setTimeout(() => showAuthMessage('Log in (or sign up) first. Your chat with Devin opens right after.', 'info'), 450);
+});
+
+// The link lights up more the closer the mouse gets (within about 180px)
+(function setupAboutLinkGlow() {
+    const link = document.getElementById('about-me-link');
+    if (!link || !window.matchMedia('(hover: hover)').matches) return;
+    let frame = 0;
+    document.addEventListener('mousemove', (e) => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+            frame = 0;
+            const r = link.getBoundingClientRect();
+            if (!r.width) return; // welcome page hidden
+            const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
+            const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+            const near = Math.max(0, 1 - Math.hypot(dx, dy) / 180);
+            link.style.setProperty('--near', near.toFixed(2));
+        });
+    }, { passive: true });
+})();
 
 document.getElementById('get-started-btn')?.addEventListener('click', () => openAuth('signup'));
 document.getElementById('welcome-login-btn')?.addEventListener('click', () => openAuth('login'));
