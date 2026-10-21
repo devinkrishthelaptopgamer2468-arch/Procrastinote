@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'phone-notifications',
+        date: '2026-10-21',
+        title: 'Phone notifications',
+        text: 'Turn them on in Settings to hear about new messages, shared notes and class homework. You can also add Procrastinote to your home screen like an app.'
+    },
+    {
         id: 'google-sign-in',
         date: '2026-10-21',
         title: 'Sign in with Google',

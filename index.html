@@ -14,6 +14,10 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <!-- Installable as an app (Add to Home Screen), needed for phone notifications -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Procrastinote">
     <meta name="description" content="Personal school planner for day orders, uniforms, and homework.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -637,6 +641,31 @@
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                         </div>
                     </a>
+
+                    <!-- Phone notifications (school-app.js: "Phone notifications") -->
+                    <div class="card push-card" id="push-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+                            <h3>Phone notifications</h3>
+                        </div>
+                        <p class="subtitle" id="push-status">Get a notification for new messages, class homework and homework due tomorrow.</p>
+                        <p class="push-hint" id="push-hint" hidden></p>
+
+                        <div class="push-options" id="push-options">
+                            <label class="push-option"><input type="checkbox" id="push-pref-friends" checked> Messages, photos and notes from friends</label>
+                            <label class="push-option"><input type="checkbox" id="push-pref-classes" checked> Class chat, homework and timetable changes</label>
+                            <label class="push-option"><input type="checkbox" id="push-pref-homework" checked> Reminder about homework due tomorrow</label>
+                            <label class="push-time" for="push-reminder-time">Remind me at
+                                <input type="time" id="push-reminder-time" value="18:00">
+                            </label>
+                        </div>
+
+                        <div class="push-buttons">
+                            <button type="button" id="btn-push-enable" class="btn primary-btn btn-sm">Turn on notifications</button>
+                            <button type="button" id="btn-push-test" class="btn secondary-btn btn-sm" hidden>Send a test</button>
+                            <button type="button" id="btn-push-disable" class="btn secondary-btn btn-sm" hidden>Turn off</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

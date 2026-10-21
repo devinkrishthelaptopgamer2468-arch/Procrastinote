@@ -212,6 +212,16 @@ join it with the code in the other browser. Send a message in General, post
 homework (it lands in the other account's Homework list once they tick **Follow class homework**),
 and share a timetable.
 
+## 9. Phone notifications when Procrastinote is closed
+
+Without this step, notifications already work while Procrastinote is open in the background
+(another tab or app). This step adds notifications when it's fully closed, and the daily
+homework reminder.
+
+1. Run `supabase/add-push-notifications.sql` in **SQL Editor** (same as the other scripts).
+2. The rest (a push key pair, the `send-push` Edge Function and the triggers that call it) comes
+   in the next part of the setup.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

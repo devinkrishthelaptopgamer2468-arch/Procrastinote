@@ -8,5 +8,9 @@
 // Leave both empty to keep using local-only accounts (chat stays on this device).
 window.PROCRASTINOTE_SUPABASE = {
     url: 'https://nyjhisnjsuhihjonktfc.supabase.co',
-    publishableKey: 'sb_publishable_QkUL8INjcDCwR6M8ZHzphw_kF4jJGgv'  // public key, safe to share
+    publishableKey: 'sb_publishable_QkUL8INjcDCwR6M8ZHzphw_kF4jJGgv',  // public key, safe to share
+    // Phone notifications when the site is closed: the PUBLIC half of the push key pair.
+    // Empty until phone notifications are set up in Supabase (SUPABASE_SETUP.md, section 9).
+    // The private half only ever goes into Supabase's Edge Function secrets, never here.
+    pushPublicKey: ''
 };
