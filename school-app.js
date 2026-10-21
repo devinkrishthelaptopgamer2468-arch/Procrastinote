@@ -2684,7 +2684,8 @@ function openPendingCreatorChat() {
     if (pending && appState.user?.cloudId && appState.user.email.toLowerCase() !== CREATOR_EMAIL) openCreatorChat();
 }
 
-document.getElementById('about-me-link')?.addEventListener('click', openAboutMe);
+// Welcome page and in-app copies of "Created by Devin Krish"
+document.querySelectorAll('.about-me-link').forEach(link => link.addEventListener('click', openAboutMe));
 document.getElementById('about-me-close')?.addEventListener('click', closeAboutMe);
 document.getElementById('about-me-overlay')?.addEventListener('click', (e) => {
     if (e.target.id === 'about-me-overlay') closeAboutMe(); // click outside the card
@@ -2710,21 +2711,23 @@ document.getElementById('about-me-chat')?.addEventListener('click', () => {
     setTimeout(() => showAuthMessage('Log in (or sign up) first. Your chat with Devin opens right after.', 'info'), 450);
 });
 
-// The link lights up more the closer the mouse gets (within about 180px)
+// The links light up more the closer the mouse gets (within about 180px)
 (function setupAboutLinkGlow() {
-    const link = document.getElementById('about-me-link');
-    if (!link || !window.matchMedia('(hover: hover)').matches) return;
+    const links = [...document.querySelectorAll('.about-me-link')];
+    if (!links.length || !window.matchMedia('(hover: hover)').matches) return;
     let frame = 0;
     document.addEventListener('mousemove', (e) => {
         if (frame) return;
         frame = requestAnimationFrame(() => {
             frame = 0;
-            const r = link.getBoundingClientRect();
-            if (!r.width) return; // welcome page hidden
-            const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
-            const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
-            const near = Math.max(0, 1 - Math.hypot(dx, dy) / 180);
-            link.style.setProperty('--near', near.toFixed(2));
+            links.forEach(link => {
+                const r = link.getBoundingClientRect();
+                if (!r.width) return; // its page is hidden
+                const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
+                const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+                const near = Math.max(0, 1 - Math.hypot(dx, dy) / 180);
+                link.style.setProperty('--near', near.toFixed(2));
+            });
         });
     }, { passive: true });
 })();

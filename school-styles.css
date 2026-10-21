@@ -1553,6 +1553,15 @@ li.empty-state::before {
     animation: fadeIn 1s ease 1.4s forwards;
 }
 
+/* Inside the app: the same credit, centred at the bottom of every page (above the dock) */
+.app-credit {
+    margin: 2.5rem 0 0;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-3);
+}
+
 /* "Created by Devin Krish" opens the About me page. --near (0 to 1, set by school-app.js)
    grows as the mouse gets closer, so it lights up before you even touch it. */
 .about-me-link {
