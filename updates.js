@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'privacy-policy',
+        date: '2026-10-21',
+        title: 'Privacy policy',
+        text: 'There is now a page explaining what Procrastinote keeps and who can see it. Find it at the bottom of the welcome page.'
+    },
+    {
         id: 'messages-and-updates',
         date: '2026-10-20',
         title: 'Messages and Updates',
