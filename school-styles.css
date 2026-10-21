@@ -1553,13 +1553,37 @@ li.empty-state::before {
     animation: fadeIn 1s ease 1.4s forwards;
 }
 
-/* Inside the app: the same credit, centred at the bottom of every page (above the dock) */
+/* Inside the app: the same credit. Phones: at the end of the page, on the left.
+   Computers: pinned to the bottom-left corner, level with the dock (the robot is bottom-right). */
 .app-credit {
     margin: 2.5rem 0 0;
-    text-align: center;
+    text-align: left;
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-3);
+}
+
+@media (min-width: 1100px) {
+    .app-credit {
+        position: fixed;
+        left: clamp(20px, 2.5vw, 40px);
+        bottom: max(28px, env(safe-area-inset-bottom));
+        z-index: 800;
+        margin: 0;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        background: var(--surface);
+        -webkit-backdrop-filter: var(--blur);
+        backdrop-filter: var(--blur);
+        border: 1px solid var(--surface-border);
+    }
+}
+
+/* Settings: the privacy policy card is a link */
+.privacy-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
 }
 
 /* "Created by Devin Krish" opens the About me page. --near (0 to 1, set by school-app.js)
