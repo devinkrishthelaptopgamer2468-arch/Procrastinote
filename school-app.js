@@ -5445,7 +5445,7 @@ document.addEventListener('keydown', (e) => {
 //    is called when a friend message, file, shared note or class update arrives.
 // 2. When Procrastinote is closed: Supabase sends a push message. That needs pushPublicKey in
 //    supabase-config.js, supabase/add-push-notifications.sql and the send-push Edge Function
-//    (SUPABASE_SETUP.md, section 9). Until then only way 1 works.
+//    (SUPABASE_SETUP.md, section 10). Until then only way 1 works.
 const PUSH_SUPPORTED = 'serviceWorker' in navigator && 'Notification' in window;
 const PUSH_PUBLIC_KEY = (window.PROCRASTINOTE_SUPABASE?.pushPublicKey || '').trim();
 const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -5583,7 +5583,9 @@ function renderPushSettings() {
         showHint('');
     } else if (on) {
         status.innerText = 'On while Procrastinote is open in the background (another tab or app).';
-        showHint('Notifications when Procrastinote is fully closed, and the homework reminder, are coming soon.');
+        showHint(PUSH_PUBLIC_KEY && isOnlineAccount()
+            ? 'Couldn\'t set up notifications for when Procrastinote is closed. Tap "Turn off", then turn them on again to retry.'
+            : 'Log in with an online account to also get notifications when Procrastinote is closed, and the homework reminder.');
     } else {
         status.innerText = 'Get a notification for new messages, class homework and homework due tomorrow.';
         showHint(!IS_INSTALLED_APP && /Android/i.test(navigator.userAgent)
@@ -5623,7 +5625,15 @@ document.getElementById('btn-push-test')?.addEventListener('click', () => {
 
 if (PUSH_SUPPORTED) {
     navigator.serviceWorker.register('sw.js')
-        .then(registration => { swRegistration = registration; renderPushSettings(); })
+        .then(async registration => {
+            swRegistration = registration;
+            // Turned on before closed-app notifications existed (or the save failed): try again now
+            const prefs = getPushPrefs();
+            if (prefs.enabled && !prefs.closedToo && Notification.permission === 'granted' && await syncPushSubscription(prefs)) {
+                savePushPrefs({ ...prefs, closedToo: true });
+            }
+            renderPushSettings();
+        })
         .catch(err => console.error('Could not start the notification helper:', err.message));
     navigator.serviceWorker.addEventListener('message', (e) => {
         if (e.data?.type === 'open-from-notification') openFromNotificationLink(e.data.url);

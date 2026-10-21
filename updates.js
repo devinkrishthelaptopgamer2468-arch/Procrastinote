@@ -7,7 +7,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'phone-notifications',
         date: '2026-10-21',
         title: 'Phone notifications',
-        text: 'Turn them on in Settings to hear about new messages, shared notes and class homework. You can also add Procrastinote to your home screen like an app.'
+        text: 'Turn them on in Settings to hear about new messages, shared notes and class homework, even when Procrastinote is closed, plus a daily reminder at your chosen time for homework due tomorrow.'
     },
     {
         id: 'google-sign-in',

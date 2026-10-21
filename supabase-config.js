@@ -10,7 +10,7 @@ window.PROCRASTINOTE_SUPABASE = {
     url: 'https://nyjhisnjsuhihjonktfc.supabase.co',
     publishableKey: 'sb_publishable_QkUL8INjcDCwR6M8ZHzphw_kF4jJGgv',  // public key, safe to share
     // Phone notifications when the site is closed: the PUBLIC half of the push key pair.
-    // Empty until phone notifications are set up in Supabase (SUPABASE_SETUP.md, section 9).
+    // Set up in Supabase with SUPABASE_SETUP.md, section 10. It's safe to be public.
     // The private half only ever goes into Supabase's Edge Function secrets, never here.
-    pushPublicKey: ''
+    pushPublicKey: 'BKOYEEiN7SmAgyCARJ8DrkOALLiHt28gRPvstqK6N2R_Cb-9LQxhH4VnMJWfqLpz8NIGZcGBSAYbNXEeWNkgJhQ'
 };
