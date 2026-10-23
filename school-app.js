@@ -3705,12 +3705,15 @@ updateClock(); // Initial call
 // Groq retires models from time to time (llama-3.1-8b-instant was shut down on 16 Aug 2026).
 // The first model is used normally; if Groq says it's gone, the app asks Groq which models
 // this key can use and switches to the first one from this list (or any other chat model).
+// Each model has its own free limits (about 1,000 questions and 200,000 tokens a day), so when
+// one is used up (Groq answers 429), the next model in the list answers instead.
 const AI_CONFIG = {
     models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
     baseUrl: "https://api.groq.com/openai/v1/chat/completions",
     modelsUrl: "https://api.groq.com/openai/v1/models"
 };
 let activeGroqModel = AI_CONFIG.models[0];
+const groqBusyUntil = {}; // model -> time (ms) until which Groq said its limit is used up
 
 function addMessage(text, isBot = true) {
     const chatMessages = document.getElementById('ai-chat-messages');
@@ -3855,7 +3858,20 @@ async function requestGroqChat(apiKey, model, sys, prompt) {
     });
     const data = await response.json();
     console.log("[Groq API Response]", data);
+    if (response.status === 429) {
+        // This model's per-minute or per-day limit is used up; Groq says how long to wait
+        const wait = parseFloat(response.headers.get('retry-after'));
+        groqBusyUntil[model] = Date.now() + (wait > 0 ? wait * 1000 : 60000);
+        data.rateLimited = true;
+    }
     return data;
+}
+
+// The models to try, in order: the current one first, then the others that aren't resting
+function groqModelsToTry() {
+    const now = Date.now();
+    const order = [activeGroqModel, ...AI_CONFIG.models.filter(m => m !== activeGroqModel)];
+    return order.filter(m => !(groqBusyUntil[m] > now));
 }
 
 function isModelUnavailableError(error) {
@@ -3889,7 +3905,22 @@ async function callGroq(prompt, systemPrompt = null) {
     const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
 
     try {
-        let data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+        const models = groqModelsToTry();
+        if (models.length === 0) {
+            return "API Error: The AI is busy right now (its free limit is used up for a bit). Try again in a minute.";
+        }
+        let data;
+        for (const model of models) {
+            data = await requestGroqChat(apiKey, model, sys, prompt);
+            if (!data.rateLimited) {
+                activeGroqModel = model; // keep using the model that answered
+                break;
+            }
+            console.warn(`[Groq] ${model} hit its limit, trying the next model`);
+        }
+        if (data.rateLimited) {
+            return "API Error: The AI is busy right now (its free limit is used up for a bit). Try again in a minute.";
+        }
 
         // The model was retired or isn't available to this key: pick another one and retry once
         if (data.error && isModelUnavailableError(data.error)) {

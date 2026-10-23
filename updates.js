@@ -7,7 +7,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'week-2026-10-19',
         date: '2026-10-23',
         title: 'This week: half days and school occasions',
-        text: 'Mark a day as a half day in the Calendar: it gets Day Order 7 and the normal Day Orders carry on after it. You can also add occasions like Sports Day and get a reminder the day before.'
+        text: 'Mark a day as a half day in the Calendar: it gets Day Order 7 and the normal Day Orders carry on after it. You can also add occasions like Sports Day and get a reminder the day before. And the AI helper now switches to another AI model when one is busy, so it runs out less often.'
     },
     {
         id: 'phone-notifications',
