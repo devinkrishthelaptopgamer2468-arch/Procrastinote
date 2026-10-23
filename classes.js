@@ -53,6 +53,7 @@
         messages: {},          // chat id -> rows, oldest first
         loadedChats: new Set(),
         homework: {},          // class id -> rows
+        occasions: {},         // class id -> occasion rows (Sports Day...), by date
         files: {},             // group key -> rows, newest first
         requests: {},          // class id -> pending co-admin / hand-over requests
         inbox: null,           // site owner: waiting classes, requests, reports, every group
@@ -187,6 +188,33 @@
         syncHomework(classId);
     }
 
+    // Class occasions show in every member's Calendar and dashboard (school-app.js asks occasionsOn)
+    async function loadOccasions(classId) {
+        const { data, error } = await cloud.from('class_occasions')
+            .select('*')
+            .eq('class_id', classId)
+            .order('occasion_date', { ascending: true })
+            .limit(300);
+        if (error) {
+            // Not set up yet (add-class-occasions.sql not run): the rest of Classes still works
+            if (!isMissingSetup(error)) console.error('Could not load class occasions:', error.message);
+            return;
+        }
+        state.occasions[classId] = data || [];
+    }
+
+    function occasionsOn(dateKey) {
+        return state.classes.flatMap(cls => (state.occasions[cls.id] || [])
+            .filter(o => o.occasion_date === dateKey)
+            .map(o => ({ name: o.name, className: cls.name })));
+    }
+
+    // The Calendar and dashboard show class occasions, so redraw them when they change
+    function refreshPlannerViews() {
+        if (typeof renderCalendar === 'function') renderCalendar();
+        if (typeof renderDashboard === 'function') renderDashboard();
+    }
+
     async function loadChats() {
         const { data, error } = await cloud.from('chats').select('*').order('created_at');
         if (error) {
@@ -292,6 +320,7 @@
             ...state.classes.map(c => loadMembers('class', c.id)),
             ...state.activities.map(a => loadMembers('activity', a.id)),
             ...state.classes.filter(c => c.status === 'approved').map(c => loadHomework(c.id)),
+            ...state.classes.filter(c => c.status === 'approved').map(c => loadOccasions(c.id)),
             ...state.classes.filter(c => c.myRole === 'owner' || c.myRole === 'admin').map(c => loadRequests(c.id)),
             loadChats(),
             loadRecentMessages(),
@@ -303,6 +332,7 @@
         if (group && state.selected.kind !== 'inbox') await loadFiles(state.selected.kind, group.id);
         render();
         renderNotifications();
+        refreshPlannerViews();
     }
 
     // Many live changes can arrive at once; reload a moment later, once
@@ -376,6 +406,32 @@
         renderNotifications();
     }
 
+    function onOccasion(payload) {
+        if (payload.eventType === 'DELETE') {
+            const id = payload.old?.id;
+            Object.keys(state.occasions).forEach(classId => {
+                state.occasions[classId] = state.occasions[classId].filter(o => o.id !== id);
+            });
+        } else if (payload.eventType === 'INSERT') {
+            const row = payload.new;
+            const list = state.occasions[row.class_id] = state.occasions[row.class_id] || [];
+            if (!list.some(o => o.id === row.id)) {
+                list.push(row);
+                list.sort((a, b) => a.occasion_date.localeCompare(b.occasion_date));
+                if (row.created_by !== myId()) {
+                    showPhoneNotification('classes', {
+                        title: `New occasion · ${findClass(row.class_id)?.name || 'Class'}`,
+                        body: `${row.name} on ${dueText(row.occasion_date)}`,
+                        url: '/#open=calendar',
+                        tag: `class-occasion-${row.class_id}`
+                    });
+                }
+            }
+        }
+        renderDetail();
+        refreshPlannerViews();
+    }
+
     function onFile(payload) {
         if (payload.eventType === 'DELETE') {
             const id = payload.old?.id;
@@ -410,6 +466,7 @@
         state.channel = cloud.channel('classes-live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, onMessage)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'class_homework' }, onHomework)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'class_occasions' }, onOccasion)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_files' }, onFile)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, onClassChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, scheduleReload)
@@ -724,12 +781,13 @@
             return html;
         }
 
-        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
+        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['occasions', 'Occasions'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
         const tab = state.tabs[key] || 'chats';
         html += tabsHtml(key, tabs, tab);
         let pane = '';
         if (tab === 'chats') pane = classChatsHtml(cls);
         else if (tab === 'homework') pane = homeworkHtml(cls);
+        else if (tab === 'occasions') pane = occasionsHtml(cls);
         else if (tab === 'timetable') pane = timetableHtml(cls);
         else if (tab === 'files') pane = filesHtml('class', cls, admin);
         else if (tab === 'people') pane = peopleHtml('class', cls);
@@ -1072,6 +1130,69 @@
             html += `<details class="cls-past"><summary>Past homework (${past.length})</summary><ul class="cls-hw-list">${past.map(item).join('')}</ul></details>`;
         }
         return html;
+    }
+
+    function occasionsHtml(cls) {
+        const admin = isAdminRole(cls.myRole);
+        const list = state.occasions[cls.id];
+        const today = todayString();
+        let html = `<p class="cls-hint">Occasions like Sports Day or a PTM show up in everyone's Calendar and dashboard, with a reminder the day before.</p>`;
+        if (!list) {
+            return html + '<p class="cls-banner">Class occasions aren\'t switched on yet. Run supabase/add-class-occasions.sql (SUPABASE_SETUP.md, step 11).</p>';
+        }
+        if (admin) {
+            html += `
+                <form class="cls-hw-form" data-form="occ-add" data-id="${cls.id}">
+                    <input type="text" id="cls-occ-name" data-keep maxlength="60" placeholder="e.g. Sports Day, PTM" aria-label="Occasion" required>
+                    <input type="date" id="cls-occ-date" data-keep aria-label="Date" min="${today}" required>
+                    <button type="submit" class="btn primary-btn btn-sm">Add</button>
+                </form>`;
+        }
+        const upcoming = list.filter(o => o.occasion_date >= today);
+        const past = list.filter(o => o.occasion_date < today).reverse();
+        const item = o => `
+            <li class="cls-hw-item">
+                <div class="hw-info">
+                    <strong>${escapeHTML(o.name)}</strong>
+                    <span>${escapeHTML(dueText(o.occasion_date))} · added by ${escapeHTML(personName(o.created_by))}</span>
+                </div>
+                ${admin ? `<span class="cls-row-actions">
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="occ-delete" data-occ="${o.id}">Delete</button>
+                </span>` : ''}
+            </li>`;
+        html += '<p class="cls-section-title">Coming up</p>';
+        html += upcoming.length ? `<ul class="cls-hw-list">${upcoming.map(item).join('')}</ul>` :
+            `<p class="cls-hint">${admin ? 'No occasions yet. Add one above.' : 'No occasions yet.'}</p>`;
+        if (past.length) {
+            html += `<details class="cls-past"><summary>Past occasions (${past.length})</summary><ul class="cls-hw-list">${past.map(item).join('')}</ul></details>`;
+        }
+        return html;
+    }
+
+    async function postOccasion(form) {
+        const name = form.querySelector('#cls-occ-name').value.trim();
+        const date = form.querySelector('#cls-occ-date').value;
+        if (!name) return;
+        if (!date) { // date boxes are read-only (pickers.js), so the browser doesn't check "required"
+            const box = form.querySelector('#cls-occ-date');
+            box.classList.add('shake-error');
+            setTimeout(() => box.classList.remove('shake-error'), 600);
+            alert('Pick the date.');
+            return;
+        }
+        const button = form.querySelector('button');
+        button.disabled = true;
+        const { error } = await cloud.from('class_occasions')
+            .insert({ class_id: form.dataset.id, name, occasion_date: date, created_by: myId() });
+        button.disabled = false;
+        if (error) {
+            alert(`Occasion not added: ${friendlyError(error)}`);
+            return;
+        }
+        form.reset();
+        await loadOccasions(form.dataset.id);
+        renderDetail();
+        refreshPlannerViews();
     }
 
     // Day Orders 1..days, plus the half-day Day Order when the timetable has one
@@ -1863,6 +1984,13 @@
                     else onHomework({ eventType: 'DELETE', old: { id: Number(el.dataset.hw) } });
                 });
                 break;
+            case 'occ-delete':
+                showConfirm('Delete this occasion for the whole class?', async () => {
+                    const { error } = await cloud.from('class_occasions').delete().eq('id', el.dataset.occ);
+                    if (error) alert(friendlyError(error));
+                    else onOccasion({ eventType: 'DELETE', old: { id: Number(el.dataset.occ) } });
+                });
+                break;
             case 'tt-import':
                 importTimetable(group);
                 break;
@@ -1954,6 +2082,7 @@
         e.preventDefault();
         if (form.dataset.form === 'send') sendMessage(form);
         else if (form.dataset.form === 'hw-add') postHomework(form);
+        else if (form.dataset.form === 'occ-add') postOccasion(form);
     }
 
     function onChange(e) {
@@ -2183,6 +2312,7 @@
         stop,
         render,
         notificationItems,
-        renderNotificationList
+        renderNotificationList,
+        occasionsOn
     };
 })();

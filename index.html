@@ -476,6 +476,25 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Exam countdown: each exam has a ring that fills up as the day gets closer -->
+                    <div class="card tile exams-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-rose"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v4.5L5.5 17A2.5 2.5 0 0 0 7.7 20.5h8.6a2.5 2.5 0 0 0 2.2-3.5L14 7.5V3"/><path d="M7.5 14h9"/></svg></span>
+                            <h3>Exam countdown</h3>
+                        </div>
+                        <ul id="dash-exam-list" class="exam-list"></ul>
+                        <form id="exam-form" class="exam-form">
+                            <div class="form-group exam-subject-group">
+                                <div id="exam-subject-display" class="custom-select-display">Subject</div>
+                                <div id="exam-subject-options" class="custom-select-options"></div>
+                                <input type="hidden" id="exam-subject">
+                            </div>
+                            <input type="text" id="exam-name" maxlength="40" placeholder="Test, unit test, mid-term..." aria-label="What kind of exam">
+                            <input type="date" id="exam-date" aria-label="Exam date">
+                            <button type="submit" class="btn primary-btn">Add exam</button>
+                        </form>
+                    </div>
                 </div>
             </section>
 
@@ -659,8 +678,8 @@
 
                         <div class="push-options" id="push-options">
                             <label class="push-option"><input type="checkbox" id="push-pref-friends" checked> Messages, photos and notes from friends</label>
-                            <label class="push-option"><input type="checkbox" id="push-pref-classes" checked> Class chat, homework and timetable changes</label>
-                            <label class="push-option"><input type="checkbox" id="push-pref-homework" checked> Reminder about homework due and school occasions tomorrow</label>
+                            <label class="push-option"><input type="checkbox" id="push-pref-classes" checked> Class chat, homework, occasions and timetable changes</label>
+                            <label class="push-option"><input type="checkbox" id="push-pref-homework" checked> Reminder about homework, exams and occasions tomorrow</label>
                             <label class="push-time" for="push-reminder-time">Remind me at
                                 <input type="time" id="push-reminder-time" value="18:00">
                             </label>

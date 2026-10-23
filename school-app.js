@@ -82,7 +82,7 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
@@ -112,6 +112,7 @@ let defaultState = {
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
     halfdayDates: {}, // e.g. { "2026-10-19": true }: a half day (half-day Day Order and study plan)
     occasions: {}, // e.g. { "2026-11-14": "Sports Day" }: reminded the day before
+    exams: [], // e.g. [{ id, subject: "Chemistry", name: "test", date: "2026-10-27", addedOn: "2026-10-20" }]
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -156,6 +157,7 @@ function saveState() {
                 holidays: appState.holidays || {},
                 halfdayDates: appState.halfdayDates || {},
                 occasions: appState.occasions || {},
+                exams: appState.exams || [],
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -487,9 +489,118 @@ function setOccasion(date, name) {
     saveState();
 }
 
-function getOccasion(date) {
+// Your own occasion on this date (the one you can remove)
+function getOwnOccasion(date) {
     return (appState.occasions || {})[formatDateString(date)];
 }
+
+// Every occasion on this date: yours, and your classes' (classes.js), e.g.
+// [{ name: "Sports Day", className: "10 A" }, { name: "Birthday party" }]
+function getOccasions(date) {
+    const list = [];
+    const own = getOwnOccasion(date);
+    if (own) list.push({ name: own });
+    if (window.Classes?.occasionsOn) list.push(...Classes.occasionsOn(formatDateString(date)));
+    return list;
+}
+
+// All of them as one line, e.g. "Sports Day (10 A), Birthday party"
+function getOccasion(date) {
+    const list = getOccasions(date);
+    return list.length ? list.map(o => (o.className ? `${o.name} (${o.className})` : o.name)).join(', ') : undefined;
+}
+
+// --- Exam countdown ---
+// Exams you add show on the dashboard with the days left, and a ring that fills up from the
+// day you added it to the exam day. Exams disappear the day after.
+function upcomingExams() {
+    const today = formatDateString(new Date());
+    return (appState.exams || []).filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function examTitle(exam) {
+    return `${exam.subject} ${exam.name || 'exam'}`.trim();
+}
+
+function examsOn(date) {
+    const key = formatDateString(date);
+    return (appState.exams || []).filter(e => e.date === key);
+}
+
+function addExam(subject, name, date) {
+    const today = formatDateString(new Date());
+    appState.exams = upcomingExams(); // tidy away exams that are over
+    appState.exams.push({ id: 'ex_' + Date.now(), subject, name: name.slice(0, 40), date, addedOn: today });
+    saveState();
+}
+
+function removeExam(id) {
+    appState.exams = (appState.exams || []).filter(e => e.id !== id);
+    saveState();
+}
+
+function renderExams() {
+    const list = document.getElementById('dash-exam-list');
+    if (!list) return;
+    const exams = upcomingExams();
+    if (exams.length === 0) {
+        list.innerHTML = '<li class="empty-state">No exams coming up. Add one below to start a countdown.</li>';
+        return;
+    }
+    const today = parseDay(formatDateString(new Date()));
+    const dayMs = 1000 * 60 * 60 * 24;
+    const r = 26;
+    const circumference = 2 * Math.PI * r;
+    list.innerHTML = exams.map(exam => {
+        const daysLeft = Math.round((parseDay(exam.date) - today) / dayMs);
+        const total = Math.max(1, Math.round((parseDay(exam.date) - parseDay(exam.addedOn || exam.date)) / dayMs));
+        const filled = Math.min(1, Math.max(0.04, 1 - daysLeft / total));
+        const when = daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `in ${daysLeft} days`;
+        const soon = daysLeft <= 3 ? ' soon' : '';
+        return `
+            <li class="exam-item${soon}">
+                <span class="exam-ring" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" width="64" height="64">
+                        <circle class="exam-ring-track" cx="32" cy="32" r="${r}"/>
+                        <circle class="exam-ring-fill" cx="32" cy="32" r="${r}" stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${(circumference * (1 - filled)).toFixed(1)}"/>
+                    </svg>
+                    <span class="exam-ring-days">${daysLeft === 0 ? '!' : daysLeft}</span>
+                </span>
+                <span class="exam-text">
+                    <strong>${escapeHTML(examTitle(exam))}</strong>
+                    <span>${when} · ${parseDay(exam.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                </span>
+                <button type="button" class="exam-remove" data-exam="${escapeHTML(exam.id)}" aria-label="Remove ${escapeHTML(examTitle(exam))}" title="Remove">×</button>
+            </li>`;
+    }).join('');
+}
+
+document.getElementById('dash-exam-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.exam-remove');
+    if (btn) removeExam(btn.dataset.exam);
+});
+
+document.getElementById('exam-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = document.getElementById('exam-subject').value;
+    const date = document.getElementById('exam-date').value;
+    const name = document.getElementById('exam-name').value.trim();
+    if (!subject) {
+        alert('Pick the subject of the exam.');
+        return;
+    }
+    if (!date || date < formatDateString(new Date())) {
+        alert('Pick the exam date (today or later).');
+        return;
+    }
+    addExam(subject, name, date);
+    document.getElementById('exam-name').value = '';
+    document.getElementById('exam-date').value = '';
+    document.getElementById('exam-subject').value = '';
+    const subjectDisplay = document.getElementById('exam-subject-display');
+    subjectDisplay.innerText = 'Subject';
+    subjectDisplay.classList.remove('has-value');
+});
 
 // --- Calendar Logic ---
 let currentCalendarDate = new Date();
@@ -565,13 +676,24 @@ function showCalendarDayDetails(date) {
     
     let html = '';
     
-    const occasion = getOccasion(date);
-    if (occasion) {
+    const occasions = getOccasions(date);
+    const ownOccasion = getOwnOccasion(date);
+    if (occasions.length) {
         html += `
             <div class="calendar-detail-section occasion-section">
-                <h4>Occasion</h4>
-                <p>${escapeHTML(occasion)}</p>
+                <h4>${occasions.length > 1 ? 'Occasions' : 'Occasion'}</h4>
+                ${occasions.map(o => `<p>${escapeHTML(o.name)}${o.className ? ` <span class="occasion-from">· ${escapeHTML(o.className)}</span>` : ''}</p>`).join('')}
                 <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">You'll get a reminder the day before.</p>
+            </div>
+        `;
+    }
+
+    const exams = examsOn(date);
+    if (exams.length) {
+        html += `
+            <div class="calendar-detail-section exam-section">
+                <h4>${exams.length > 1 ? 'Exams' : 'Exam'}</h4>
+                ${exams.map(e => `<p>${escapeHTML(examTitle(e))}</p>`).join('')}
             </div>
         `;
     }
@@ -654,8 +776,8 @@ function showCalendarDayDetails(date) {
         }
     }
 
-    // School occasions can be on any day, weekends too
-    if (occasion) {
+    // School occasions can be on any day, weekends too. Class occasions are managed by class admins.
+    if (ownOccasion) {
         html += `
             <div class="calendar-detail-section">
                 <button type="button" id="cal-remove-occasion" class="btn secondary-btn holiday-btn">Remove occasion</button>
@@ -787,6 +909,14 @@ function createDayCell(date, isCurrentMonth) {
         infoDiv.appendChild(holidayBadge);
     }
     
+    if (examsOn(date).length) {
+        const examBadge = document.createElement('span');
+        examBadge.className = 'calendar-mini-badge exam-badge';
+        examBadge.innerText = examsOn(date).map(examTitle).join(', ');
+        examBadge.title = examBadge.innerText;
+        infoDiv.appendChild(examBadge);
+    }
+
     const occasion = getOccasion(date);
     if (occasion) {
         cell.classList.add('has-occasion');
@@ -1190,6 +1320,8 @@ function renderDashboard() {
         hwList.innerHTML = '<li class="empty-state">Nothing due soon. Nice.</li>';
     }
 
+    setupCustomDropdown('exam-subject-display', 'exam-subject-options', 'exam-subject', SUBJECT_LIST.map(s => ({ label: s, value: s })));
+    renderExams();
     renderStudyPlan();
 }
 

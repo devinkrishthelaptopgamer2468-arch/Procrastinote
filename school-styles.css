@@ -2498,6 +2498,163 @@ button.notif-item:hover {
     grid-column: span 2;
 }
 
+/* Exam countdown: a ring per exam that fills up as the day gets closer */
+.exams-card {
+    grid-column: 1 / -1;
+}
+
+.tint-rose { background: var(--danger-soft); color: var(--danger); }
+
+.exam-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.exam-list .empty-state {
+    width: 100%;
+}
+
+.exam-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 230px;
+    flex: 1 1 230px;
+    max-width: 340px;
+    padding: 0.7rem 2rem 0.7rem 0.7rem;
+    border-radius: 16px;
+    background: var(--inset);
+}
+
+.exam-ring {
+    position: relative;
+    flex: none;
+    width: 64px;
+    height: 64px;
+}
+
+.exam-ring svg {
+    transform: rotate(-90deg);
+}
+
+.exam-ring circle {
+    fill: none;
+    stroke-width: 6;
+}
+
+.exam-ring-track {
+    stroke: var(--inset-hover);
+}
+
+.exam-ring-fill {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s ease;
+}
+
+.exam-item.soon .exam-ring-fill {
+    stroke: var(--danger);
+}
+
+.exam-ring-days {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.exam-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.exam-text strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.exam-text span {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.exam-item.soon .exam-text span {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.exam-remove {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.45rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.exam-remove:hover {
+    background: var(--inset-hover);
+    color: var(--text-primary);
+}
+
+.exam-form {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(150px, 1.3fr) minmax(140px, 1fr) auto;
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.exam-form .form-group {
+    position: relative;
+    margin: 0;
+}
+
+@media (max-width: 700px) {
+    .exam-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .exam-item {
+        max-width: none;
+    }
+}
+
+/* Calendar: exams and class occasions */
+.calendar-mini-badge.exam-badge {
+    background: var(--danger-soft);
+    color: var(--danger);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.exam-section {
+    background: var(--danger-soft);
+}
+
+.exam-section h4 {
+    color: var(--danger);
+}
+
+.occasion-from {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
 .primary-text {
     font-size: 1.7rem;
     font-weight: 800;

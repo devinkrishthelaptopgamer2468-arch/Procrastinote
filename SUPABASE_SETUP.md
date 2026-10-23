@@ -257,6 +257,18 @@ the file, ask for a new key pair (everyone then turns notifications on again).
 **Updating:** if `index.ts` changes, open the function → **Code**, paste the new file and deploy
 again. If `add-push-triggers.sql` changes, run it again.
 
+## 11. Turn on class occasions
+
+Class admins can add occasions (Sports Day, PTM...) on the **Occasions** tab of a class. Everyone
+in the class sees them in their Calendar and dashboard and gets a reminder the day before.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-class-occasions.sql` and press
+   **Run**. If Supabase warns about "destructive operations", press **Run** anyway.
+2. If you set up phone notifications (step 10), deploy the latest
+   `supabase/functions/send-push/index.ts` too, so reminders include class occasions and exams.
+
+Until step 1 is done, the Occasions tab says "Class occasions aren't switched on yet".
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
