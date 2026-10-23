@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'half-days-and-occasions',
+        date: '2026-10-23',
+        title: 'Half days and school occasions',
+        text: 'Mark a day as a half day in the Calendar: it gets Day Order 7 and the normal Day Orders carry on after it. You can also add occasions like Sports Day and get a reminder the day before.'
+    },
+    {
         id: 'phone-notifications',
         date: '2026-10-21',
         title: 'Phone notifications',

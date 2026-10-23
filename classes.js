@@ -1074,6 +1074,13 @@
         return html;
     }
 
+    // Day Orders 1..days, plus the half-day Day Order when the timetable has one
+    function timetableKeys(days, withHalf) {
+        return [...Array.from({ length: days }, (_, i) => i + 1), ...(withHalf ? ['half'] : [])];
+    }
+
+    const timetableDayLabel = (d, days) => (d === 'half' ? `Day ${days + 1} · Half day` : `Day ${d}`);
+
     function timetableHtml(cls) {
         const admin = isAdminRole(cls.myRole);
         const tt = cls.timetable;
@@ -1087,12 +1094,12 @@
             else if (imported) html += '<p class="cls-hint">Your timetable matches this one.</p>';
             html += `<p class="cls-hint">${pluralise(tt.totalDays, 'day order')}${when ? ` · updated ${escapeHTML(when)}` : ''}</p>`;
             html += '<div class="cls-tt-grid">';
-            for (let d = 1; d <= tt.totalDays; d++) {
+            for (const d of timetableKeys(tt.totalDays, Array.isArray(tt.timetable?.half))) {
                 const subjects = Array.isArray(tt.timetable?.[d]) ? tt.timetable[d] : [];
                 const uniform = UNIFORMS.includes(tt.uniforms?.[d]) ? tt.uniforms[d] : 'Regular Uniform';
                 html += `
                     <div class="cls-tt-day">
-                        <h4>Day ${d}</h4>
+                        <h4>${timetableDayLabel(d, tt.totalDays)}</h4>
                         <span class="cls-tt-uniform">${escapeHTML(uniform)}</span>
                         <ol>${Array.from({ length: 8 }, (_, j) => `<li>${escapeHTML(subjects[j] || '-')}</li>`).join('')}</ol>
                     </div>`;
@@ -1553,7 +1560,7 @@
             const days = Math.min(10, Math.max(1, parseInt(tt.totalDays, 10) || 6));
             const timetable = {};
             const uniforms = {};
-            for (let d = 1; d <= days; d++) {
+            for (const d of timetableKeys(days, Array.isArray(tt.timetable?.half))) {
                 const subjects = Array.isArray(tt.timetable?.[d]) ? tt.timetable[d] : [];
                 // Only known subjects and uniforms, so nothing unexpected ends up in your planner
                 timetable[d] = Array.from({ length: 8 }, (_, j) => (SUBJECT_LIST.includes(subjects[j]) ? subjects[j] : ''));
@@ -1580,7 +1587,8 @@
         }
         showConfirm(`Share your timetable (${pluralise(days, 'day order')}, with uniforms) with ${cls.name}? Classmates who imported the old one will be told it changed.`, async () => {
             const payload = { totalDays: days, timetable: {}, uniforms: {} };
-            for (let d = 1; d <= days; d++) {
+            const withHalf = (appState.timetable?.half || []).some(Boolean);
+            for (const d of timetableKeys(days, withHalf)) {
                 payload.timetable[d] = Array.from({ length: 8 }, (_, j) => {
                     const subject = (appState.timetable[d] || [])[j];
                     return SUBJECT_LIST.includes(subject) ? subject : '';

@@ -11,6 +11,7 @@
 //      classes (timetable changed)             -> everyone in the class
 //   2. Every 15 minutes by a schedule: { job: 'homework-reminders' }
 //      -> each phone that wants it, once a day at its chosen time, if homework is due tomorrow
+//         or a school occasion (Sports Day...) is marked for tomorrow in the calendar
 //
 // Secrets (Supabase > Edge Functions > Secrets): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY,
 // PUSH_WEBHOOK_SECRET, and optionally VAPID_SUBJECT. SUPABASE_URL and
@@ -197,18 +198,36 @@ export async function sendHomeworkReminders(db, send, now = new Date()) {
 
         if (!planners.has(phone.user_id)) {
             const { data } = await db.from('planner_data').select('data').eq('user_id', phone.user_id).maybeSingle();
-            planners.set(phone.user_id, Array.isArray(data?.data?.homework) ? data.data.homework : []);
+            planners.set(phone.user_id, {
+                homework: Array.isArray(data?.data?.homework) ? data.data.homework : [],
+                occasions: data?.data?.occasions && typeof data.data.occasions === 'object' ? data.data.occasions : {}
+            });
         }
         await db.from('push_subscriptions').update({ last_reminded_on: clock.date }).eq('id', phone.id);
-        const due = planners.get(phone.user_id).filter(hw => hw?.date === nextDay(clock.date));
-        if (!due.length) continue;
+        const planner = planners.get(phone.user_id);
+        const tomorrow = nextDay(clock.date);
+        const due = planner.homework.filter(hw => hw?.date === tomorrow);
+        const occasion = typeof planner.occasions[tomorrow] === 'string' ? short(planner.occasions[tomorrow], 60) : '';
+        if (!due.length && !occasion) continue;
         const names = due.slice(0, 3).map(hw => short(`${hw.subject ? `${hw.subject}: ` : ''}${hw.task}`, 60));
-        sent += await sendToPhones(db, send, [phone], {
-            title: due.length === 1 ? 'Homework due tomorrow' : `${due.length} homework due tomorrow`,
-            body: names.join(', ') + (due.length > 3 ? ', …' : ''),
-            url: '/#open=homework',
-            tag: 'homework-reminder'
-        });
+        const homeworkText = names.join(', ') + (due.length > 3 ? ', …' : '');
+        let message;
+        if (occasion) {
+            message = {
+                title: `Tomorrow: ${occasion}`,
+                body: due.length ? `Also due: ${homeworkText}` : 'A school occasion from your calendar.',
+                url: due.length ? '/#open=homework' : '/#open=calendar',
+                tag: 'homework-reminder'
+            };
+        } else {
+            message = {
+                title: due.length === 1 ? 'Homework due tomorrow' : `${due.length} homework due tomorrow`,
+                body: homeworkText,
+                url: '/#open=homework',
+                tag: 'homework-reminder'
+            };
+        }
+        sent += await sendToPhones(db, send, [phone], message);
     }
     return sent;
 }

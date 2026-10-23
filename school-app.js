@@ -82,7 +82,7 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
@@ -110,7 +110,8 @@ let defaultState = {
     emailVerified: false,
     friendsList: [], // Holds list of added friend emails
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
-    halfdayDates: {}, // e.g. { "2026-10-19": true }: use the half-day study plan that day
+    halfdayDates: {}, // e.g. { "2026-10-19": true }: a half day (half-day Day Order and study plan)
+    occasions: {}, // e.g. { "2026-11-14": "Sports Day" }: reminded the day before
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -154,6 +155,7 @@ function saveState() {
                 friendsList: appState.friendsList || [],
                 holidays: appState.holidays || {},
                 halfdayDates: appState.halfdayDates || {},
+                occasions: appState.occasions || {},
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -330,8 +332,10 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 // --- Date & Day Order Math ---
-// currentDayOrder belongs to the last school day on or before lastUpdatedDate.
+// currentDayOrder belongs to the last full school day on or before lastUpdatedDate.
 // Weekends and holidays have no Day Order and are skipped when counting.
+// Half days use their own extra Day Order (one after the last, e.g. Day Order 7 with 6 days) and
+// are skipped when counting too, so the normal Day Orders carry on where they left off.
 function getHoliday(date) {
     return (appState.holidays || {})[formatDateString(date)];
 }
@@ -339,6 +343,42 @@ function getHoliday(date) {
 function isSchoolDay(date) {
     const dow = date.getDay(); // 0 is Sunday, 6 is Saturday
     return dow !== 0 && dow !== 6 && getHoliday(date) === undefined;
+}
+
+function isHalfDay(date) {
+    return isSchoolDay(date) && !!(appState.halfdayDates || {})[formatDateString(date)];
+}
+
+// A full school day: it takes the next Day Order in the cycle
+function countsInRotation(date) {
+    return isSchoolDay(date) && !isHalfDay(date);
+}
+
+function halfDayOrder() {
+    return (parseInt(appState.settings.totalDays) || 6) + 1;
+}
+
+// Where a Day Order's timetable and uniform are kept ('half' for the half-day Day Order)
+function dayKey(dayOrder) {
+    return dayOrder > (parseInt(appState.settings.totalDays) || 6) ? 'half' : dayOrder;
+}
+
+function dayOrderLabel(dayOrder) {
+    return dayKey(dayOrder) === 'half' ? `Day Order ${dayOrder} (half day)` : `Day Order ${dayOrder}`;
+}
+
+// After a past date (or today) gains or loses its place in the Day Order cycle, shift the stored
+// Day Order so the days after it stay right. Future dates shift on their own.
+function shiftDayOrderAfterChange(day, wasCounted) {
+    const lastDate = new Date(appState.settings.lastUpdatedDate);
+    lastDate.setHours(0, 0, 0, 0);
+    const counted = countsInRotation(day);
+    if (day <= lastDate && wasCounted !== counted) {
+        const total = parseInt(appState.settings.totalDays) || 6;
+        const current = parseInt(appState.settings.currentDayOrder) || 1;
+        const step = counted ? 1 : -1;
+        appState.settings.currentDayOrder = ((current - 1 + step + total) % total) + 1;
+    }
 }
 
 function updateDayOrderIfNeeded() {
@@ -369,7 +409,7 @@ function updateDayOrderIfNeeded() {
         let weekdays = 0;
         while (temp < today) {
             temp.setDate(temp.getDate() + 1);
-            if (isSchoolDay(temp)) {
+            if (countsInRotation(temp)) {
                 weekdays++;
             }
         }
@@ -412,22 +452,43 @@ function setHoliday(date, name) {
     const day = new Date(date);
     day.setHours(0, 0, 0, 0);
     const key = formatDateString(day);
-    const wasSchoolDay = isSchoolDay(day);
+    const wasCounted = countsInRotation(day);
     if (name === null) {
         delete appState.holidays[key];
     } else {
         appState.holidays[key] = name;
+        if (appState.halfdayDates) delete appState.halfdayDates[key]; // a holiday isn't a half day too
     }
-
-    const lastDate = new Date(appState.settings.lastUpdatedDate);
-    lastDate.setHours(0, 0, 0, 0);
-    if (day <= lastDate && wasSchoolDay !== isSchoolDay(day)) {
-        const total = parseInt(appState.settings.totalDays) || 6;
-        const current = parseInt(appState.settings.currentDayOrder) || 1;
-        const step = isSchoolDay(day) ? 1 : -1;
-        appState.settings.currentDayOrder = ((current - 1 + step + total) % total) + 1;
-    }
+    shiftDayOrderAfterChange(day, wasCounted);
     saveState();
+}
+
+// Mark (on = true) or unmark a school day as a half day. It gets the half-day Day Order, and the
+// normal Day Orders after it carry on as if it weren't there.
+function setHalfDay(date, on) {
+    if (!appState.halfdayDates) appState.halfdayDates = {};
+    const day = new Date(date);
+    day.setHours(0, 0, 0, 0);
+    const key = formatDateString(day);
+    const wasCounted = countsInRotation(day);
+    if (on) appState.halfdayDates[key] = true;
+    else delete appState.halfdayDates[key];
+    shiftDayOrderAfterChange(day, wasCounted);
+    saveState();
+}
+
+// Add (name = string) or remove (name = null) a school occasion, e.g. Sports Day.
+// You get a reminder the day before it.
+function setOccasion(date, name) {
+    if (!appState.occasions) appState.occasions = {};
+    const key = formatDateString(date);
+    if (name) appState.occasions[key] = name.slice(0, 60);
+    else delete appState.occasions[key];
+    saveState();
+}
+
+function getOccasion(date) {
+    return (appState.occasions || {})[formatDateString(date)];
 }
 
 // --- Calendar Logic ---
@@ -440,6 +501,7 @@ function getDayOrderForDate(targetDate) {
     targetCopy.setHours(0,0,0,0);
     
     if (!isSchoolDay(targetCopy)) return null; // Weekends and holidays have no Day Order
+    if (isHalfDay(targetCopy)) return halfDayOrder();
 
     let lastDate = new Date(appState.settings.lastUpdatedDate);
     lastDate.setHours(0,0,0,0);
@@ -457,15 +519,15 @@ function getDayOrderForDate(targetDate) {
     if (targetCopy > lastDate) {
         while (temp.getTime() < targetCopy.getTime()) {
             temp.setDate(temp.getDate() + 1);
-            if (isSchoolDay(temp)) {
+            if (countsInRotation(temp)) {
                 weekdays++;
             }
         }
         return ((currentDayOrder - 1 + weekdays) % totalDays) + 1;
     } else {
-        // Mirror of the forward case: count school days in (target, lastDate]
+        // Mirror of the forward case: count full school days in (target, lastDate]
         while (temp.getTime() > targetCopy.getTime()) {
-            if (isSchoolDay(temp)) {
+            if (countsInRotation(temp)) {
                 weekdays++;
             }
             temp.setDate(temp.getDate() - 1);
@@ -503,15 +565,27 @@ function showCalendarDayDetails(date) {
     
     let html = '';
     
+    const occasion = getOccasion(date);
+    if (occasion) {
+        html += `
+            <div class="calendar-detail-section occasion-section">
+                <h4>Occasion</h4>
+                <p>${escapeHTML(occasion)}</p>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">You'll get a reminder the day before.</p>
+            </div>
+        `;
+    }
+
     if (dayOrder !== null) {
         html += `
             <div class="calendar-detail-section">
                 <h4>Day Order</h4>
-                <p>Day Order ${dayOrder}</p>
+                <p>${dayOrderLabel(dayOrder)}</p>
+                ${isHalfDay(date) ? '<p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">Half day. The normal Day Orders carry on the next school day.</p>' : ''}
             </div>
         `;
-        
-        const uniform = appState.uniforms[dayOrder] || 'Not configured in settings';
+
+        const uniform = appState.uniforms[dayKey(dayOrder)] || 'Not configured in settings';
         html += `
             <div class="calendar-detail-section">
                 <h4>Required Uniform</h4>
@@ -519,7 +593,7 @@ function showCalendarDayDetails(date) {
             </div>
         `;
         
-        const daySubjects = appState.timetable[dayOrder] || [];
+        const daySubjects = appState.timetable[dayKey(dayOrder)] || [];
         let subjectsHtml = '';
         daySubjects.forEach((sub, idx) => {
             if (sub.trim() !== '') {
@@ -556,7 +630,7 @@ function showCalendarDayDetails(date) {
         `;
     }
 
-    // Holiday controls (weekdays only; weekends already have no Day Order)
+    // Holiday and half-day controls (weekdays only; weekends already have no Day Order)
     const dow = date.getDay();
     if (dow !== 0 && dow !== 6) {
         if (getHoliday(date) !== undefined) {
@@ -568,12 +642,33 @@ function showCalendarDayDetails(date) {
         } else {
             html += `
                 <div class="calendar-detail-section">
+                    <h4>Half day?</h4>
+                    <button type="button" id="cal-toggle-halfday" class="btn secondary-btn holiday-btn">${isHalfDay(date) ? 'Back to a full day' : `Mark as half day (Day Order ${halfDayOrder()})`}</button>
+                </div>
+                <div class="calendar-detail-section">
                     <h4>Holiday?</h4>
                     <input type="text" id="cal-holiday-name" class="holiday-name-input" maxlength="60" placeholder="Name (optional), e.g. Diwali">
                     <button type="button" id="cal-mark-holiday" class="btn primary-btn holiday-btn">Mark as Holiday</button>
                 </div>
             `;
         }
+    }
+
+    // School occasions can be on any day, weekends too
+    if (occasion) {
+        html += `
+            <div class="calendar-detail-section">
+                <button type="button" id="cal-remove-occasion" class="btn secondary-btn holiday-btn">Remove occasion</button>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="calendar-detail-section">
+                <h4>School occasion?</h4>
+                <input type="text" id="cal-occasion-name" class="holiday-name-input" maxlength="60" placeholder="e.g. Sports Day, Annual Day">
+                <button type="button" id="cal-add-occasion" class="btn secondary-btn holiday-btn">Add occasion</button>
+            </div>
+        `;
     }
 
     const matchingHw = appState.homework.filter(hw => formatDateString(parseDay(hw.date)) === formattedDate);
@@ -611,6 +706,24 @@ function showCalendarDayDetails(date) {
     document.getElementById('cal-holiday-name')?.addEventListener('keyup', (e) => {
         if (e.key === 'Enter') document.getElementById('cal-mark-holiday')?.click();
     });
+    document.getElementById('cal-toggle-halfday')?.addEventListener('click', () => {
+        setHalfDay(date, !isHalfDay(date));
+    });
+    document.getElementById('cal-add-occasion')?.addEventListener('click', () => {
+        const input = document.getElementById('cal-occasion-name');
+        const name = input.value.trim();
+        if (!name) {
+            input.focus();
+            return;
+        }
+        setOccasion(date, name);
+    });
+    document.getElementById('cal-occasion-name')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') document.getElementById('cal-add-occasion')?.click();
+    });
+    document.getElementById('cal-remove-occasion')?.addEventListener('click', () => {
+        setOccasion(date, null);
+    });
 }
 
 function createDayCell(date, isCurrentMonth) {
@@ -643,8 +756,15 @@ function createDayCell(date, isCurrentMonth) {
         doBadge.className = 'calendar-mini-badge day-order';
         doBadge.innerText = `DO ${dayOrder}`;
         infoDiv.appendChild(doBadge);
-        
-        const uniform = appState.uniforms[dayOrder];
+        if (isHalfDay(date)) {
+            cell.classList.add('half-day');
+            const halfBadge = document.createElement('span');
+            halfBadge.className = 'calendar-mini-badge halfday-badge';
+            halfBadge.innerText = 'Half day';
+            infoDiv.appendChild(halfBadge);
+        }
+
+        const uniform = appState.uniforms[dayKey(dayOrder)];
         if (uniform) {
             const uniBadge = document.createElement('span');
             uniBadge.className = 'calendar-mini-badge';
@@ -667,6 +787,16 @@ function createDayCell(date, isCurrentMonth) {
         infoDiv.appendChild(holidayBadge);
     }
     
+    const occasion = getOccasion(date);
+    if (occasion) {
+        cell.classList.add('has-occasion');
+        const occasionBadge = document.createElement('span');
+        occasionBadge.className = 'calendar-mini-badge occasion-badge';
+        occasionBadge.innerText = occasion;
+        occasionBadge.title = occasion;
+        infoDiv.appendChild(occasionBadge);
+    }
+
     const formattedDate = formatDateString(date);
     const hasHw = appState.homework.some(hw => formatDateString(parseDay(hw.date)) === formattedDate);
     if (hasHw) {
@@ -839,11 +969,11 @@ function renderSettings() {
         {label: 'Sports Uniform', value: 'Sports Uniform'}
     ];
 
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         const val = appState.uniforms[i] || 'Regular Uniform';
         container.innerHTML += `
             <div class="form-group" style="position: relative; margin-bottom: 2rem;">
-                <label>Day ${i} Uniform</label>
+                <label>${setupDayLabel(i)} Uniform</label>
                 <div id="uniform-day-${i}-display" class="custom-select-display">${val}</div>
                 <div id="uniform-day-${i}-options" class="custom-select-options"></div>
                 <input type="hidden" id="uniform-day-${i}" value="${val}">
@@ -852,7 +982,7 @@ function renderSettings() {
     }
 
     // Initialize dropdowns after HTML is added
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         setupCustomDropdown(`uniform-day-${i}-display`, `uniform-day-${i}-options`, `uniform-day-${i}`, uniformOptions);
         const display = document.getElementById(`uniform-day-${i}-display`);
         if (display && appState.uniforms[i]) {
@@ -861,13 +991,23 @@ function renderSettings() {
     }
 }
 
+// The Day Orders set up in Timetable and Uniform rules: 1, 2, ... and the half-day Day Order
+function setupDayKeys() {
+    const total = parseInt(appState.settings.totalDays) || 6;
+    return [...Array.from({ length: total }, (_, i) => i + 1), 'half'];
+}
+
+function setupDayLabel(key) {
+    return key === 'half' ? `Day ${halfDayOrder()} · Half day` : `Day ${key}`;
+}
+
 function renderTimetable() {
     const container = document.getElementById('timetable-container');
     container.innerHTML = '';
-    
+
     const subOptions = SUBJECT_LIST.map(s => ({label: s, value: s}));
 
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         const daySubjects = appState.timetable[i] || ['', '', '', '', '', '', '', ''];
         let subjectsHtml = '';
         
@@ -884,15 +1024,15 @@ function renderTimetable() {
         }
 
         container.innerHTML += `
-            <div class="day-column">
-                <h4>Day ${i}</h4>
+            <div class="day-column${i === 'half' ? ' half-day-column' : ''}">
+                <h4>${setupDayLabel(i)}</h4>
                 ${subjectsHtml}
             </div>
         `;
     }
 
     // Initialize all timetable dropdowns
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         for (let j = 0; j < 8; j++) {
             setupCustomDropdown(`day-${i}-sub-${j}-display`, `day-${i}-sub-${j}-options`, `day-${i}-sub-${j}`, subOptions, (val) => {
                 // Optional: handle immediate save or feedback
@@ -960,16 +1100,30 @@ function renderDashboard() {
     const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
     const tomorrowLabel = document.getElementById('dash-tomorrow-label');
     if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
-    let dayOrderText = `Day Order ${tmrwDay}`;
+    let dayOrderText = dayOrderLabel(tmrwDay);
     if (!isTomorrow) {
         const holidayName = getHoliday(tomorrow);
         const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
-        dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, Day Order ${tmrwDay}`;
+        dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, ${dayOrderLabel(tmrwDay)}`;
     }
     document.getElementById('dash-day-order-display').innerText = dayOrderText;
 
+    // School occasion today or tomorrow (the reminder the day before)
+    const occasionEl = document.getElementById('dash-occasion');
+    if (occasionEl) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayOccasion = getOccasion(today);
+        const tomorrowOccasion = getOccasion(tomorrow);
+        const parts = [];
+        if (todayOccasion) parts.push(`Today: ${todayOccasion}`);
+        if (tomorrowOccasion) parts.push(`Tomorrow: ${tomorrowOccasion}`);
+        occasionEl.hidden = parts.length === 0;
+        occasionEl.querySelector('span').innerText = parts.join(' · ');
+    }
+
     // Uniform
-    const unif = appState.uniforms[tmrwDay];
+    const unif = appState.uniforms[dayKey(tmrwDay)];
     document.getElementById('dash-uniform').innerText = unif ? unif : "Not set yet";
 
     // Subjects & Books
@@ -977,7 +1131,7 @@ function renderDashboard() {
     let allSubjects = new Set();
     const totalDays = parseInt(appState.settings.totalDays) || 6;
     Object.entries(appState.timetable).forEach(([day, dayList]) => {
-        if (parseInt(day) > totalDays) return; // ignore day orders that were removed in setup
+        if (day !== 'half' && parseInt(day) > totalDays) return; // ignore day orders that were removed in setup
         dayList.forEach(sub => {
             if (sub.trim() !== '') allSubjects.add(sub.trim());
         });
@@ -985,7 +1139,7 @@ function renderDashboard() {
 
     // Get tomorrow's subjects
     let tmrwSubjects = new Set();
-    const dayList = appState.timetable[tmrwDay] || [];
+    const dayList = appState.timetable[dayKey(tmrwDay)] || [];
     dayList.forEach(sub => {
         if (sub.trim() !== '') tmrwSubjects.add(sub.trim());
     });
@@ -1045,7 +1199,7 @@ function getTodayStudyCategory() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (!isSchoolDay(today)) return getHoliday(today) !== undefined ? 'holiday' : 'weekend';
-    return (appState.halfdayDates || {})[formatDateString(today)] ? 'halfday' : 'weekday';
+    return isHalfDay(today) ? 'halfday' : 'weekday';
 }
 
 function renderStudyPlan() {
@@ -1100,11 +1254,8 @@ function renderStudyPlan() {
 }
 
 document.getElementById('dash-halfday-toggle')?.addEventListener('click', () => {
-    if (!appState.halfdayDates) appState.halfdayDates = {};
-    const key = formatDateString(new Date());
-    if (appState.halfdayDates[key]) delete appState.halfdayDates[key];
-    else appState.halfdayDates[key] = true;
-    saveState();
+    const today = new Date();
+    setHalfDay(today, !isHalfDay(today));
 });
 
 setInterval(renderStudyPlan, 60000); // keep the "Now" highlight current
@@ -1132,7 +1283,7 @@ document.getElementById('save-school-setup').addEventListener('click', (e) => {
 });
 
 document.getElementById('save-uniforms-btn').addEventListener('click', (e) => {
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         const hiddenInput = document.getElementById(`uniform-day-${i}`);
         if(hiddenInput) {
             appState.uniforms[i] = hiddenInput.value;
@@ -1144,7 +1295,7 @@ document.getElementById('save-uniforms-btn').addEventListener('click', (e) => {
 
 // Timetable setup
 document.getElementById('save-timetable-btn').addEventListener('click', (e) => {
-    for (let i = 1; i <= appState.settings.totalDays; i++) {
+    for (const i of setupDayKeys()) {
         let subs = [];
         document.querySelectorAll(`.day-${i}-sub`).forEach(input => {
             subs.push(input.value);

@@ -387,6 +387,10 @@
                     <div class="dash-planning">
                         <span class="planning-chip">Planning for <strong id="dash-tomorrow-label">Tomorrow</strong></span>
                         <span class="subtitle" id="dash-day-order-display">Day Order: --</span>
+                        <span class="occasion-chip" id="dash-occasion" hidden>
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="m12 13 .9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z"/></svg>
+                            <span></span>
+                        </span>
                         <!-- Two buttons: Messages (classes, friends, shared notes...) and Updates ("What's new", updates.js) -->
                         <div class="notif-wrap">
                             <button id="btn-messages" class="notif-btn" aria-haspopup="true" aria-expanded="false" aria-controls="msg-panel">
@@ -656,7 +660,7 @@
                         <div class="push-options" id="push-options">
                             <label class="push-option"><input type="checkbox" id="push-pref-friends" checked> Messages, photos and notes from friends</label>
                             <label class="push-option"><input type="checkbox" id="push-pref-classes" checked> Class chat, homework and timetable changes</label>
-                            <label class="push-option"><input type="checkbox" id="push-pref-homework" checked> Reminder about homework due tomorrow</label>
+                            <label class="push-option"><input type="checkbox" id="push-pref-homework" checked> Reminder about homework due and school occasions tomorrow</label>
                             <label class="push-time" for="push-reminder-time">Remind me at
                                 <input type="time" id="push-reminder-time" value="18:00">
                             </label>
