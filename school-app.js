@@ -518,8 +518,11 @@ function upcomingExams() {
     return (appState.exams || []).filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// "Chemistry test", or "Chemistry · Revision Exam 3" for exams from a timetable
 function examTitle(exam) {
-    return `${exam.subject} ${exam.name || 'exam'}`.trim();
+    if (exam.name) return `${exam.subject} ${exam.name}`.trim();
+    if (exam.series) return `${exam.subject} · ${exam.series}`;
+    return `${exam.subject} exam`;
 }
 
 function examsOn(date) {
@@ -527,11 +530,37 @@ function examsOn(date) {
     return (appState.exams || []).filter(e => e.date === key);
 }
 
-function addExam(subject, name, date) {
+// Exams that ended more than a month ago are tidied away; recent ones stay so a finished
+// exam series can still be looked back on
+function keepRecentExams() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const oldest = formatDateString(cutoff);
+    return (appState.exams || []).filter(e => e.date >= oldest);
+}
+
+// exams: [{ subject, date, name?, time?, portions?, series? }]
+function addExams(exams) {
     const today = formatDateString(new Date());
-    appState.exams = upcomingExams(); // tidy away exams that are over
-    appState.exams.push({ id: 'ex_' + Date.now(), subject, name: name.slice(0, 40), date, addedOn: today });
+    const stamp = Date.now();
+    appState.exams = keepRecentExams();
+    exams.forEach((exam, i) => {
+        appState.exams.push({
+            id: `ex_${stamp}_${i}`,
+            subject: String(exam.subject || '').trim().slice(0, 40),
+            name: String(exam.name || '').trim().slice(0, 40),
+            date: exam.date,
+            time: String(exam.time || '').trim().slice(0, 30),
+            portions: String(exam.portions || '').trim().slice(0, 200),
+            series: String(exam.series || '').trim().slice(0, 40),
+            addedOn: today
+        });
+    });
     saveState();
+}
+
+function addExam(subject, name, date) {
+    addExams([{ subject, name, date }]);
 }
 
 function removeExam(id) {
@@ -542,9 +571,9 @@ function removeExam(id) {
 function renderExams() {
     const list = document.getElementById('dash-exam-list');
     if (!list) return;
-    const exams = upcomingExams();
+    const exams = upcomingExams().slice(0, 4); // the next few; the Exams page has the rest
     if (exams.length === 0) {
-        list.innerHTML = '<li class="empty-state">No exams coming up. Add one below to start a countdown.</li>';
+        list.innerHTML = '<li class="empty-state">No exams coming up. Add one below, or upload an exam timetable on the Exams page.</li>';
         return;
     }
     const today = parseDay(formatDateString(new Date()));
@@ -575,6 +604,10 @@ function renderExams() {
     }).join('');
 }
 
+document.getElementById('dash-exams-open')?.addEventListener('click', () => {
+    document.querySelector('.dock-item[data-tab="exams"]')?.click();
+});
+
 document.getElementById('dash-exam-list')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.exam-remove');
     if (btn) removeExam(btn.dataset.exam);
@@ -600,6 +633,410 @@ document.getElementById('exam-form')?.addEventListener('submit', (e) => {
     const subjectDisplay = document.getElementById('exam-subject-display');
     subjectDisplay.innerText = 'Subject';
     subjectDisplay.classList.remove('has-value');
+});
+
+// --- Exams page and exam timetables ---
+// The Exams page groups exams by series ("Revision Exam 3"). A timetable photo or PDF is read
+// (the PDF's own text when it has some, otherwise OCR), turned into exams by the AI helper (or,
+// without an AI key, by a simpler reader that looks for dates and subject names), and shown in
+// a table to check and fix before anything is added.
+const EXAM_SUBJECT_WORDS = [...SUBJECT_LIST.filter(s => !['Sixth Subject', 'Library'].includes(s)),
+    'Maths', 'Math', 'Science', 'Social Studies', 'SST', 'Computer Science', 'Computer Applications',
+    'Information Technology', 'Economics', 'Accountancy', 'Business Studies', 'Geography', 'History',
+    'Civics', 'EVS', 'Physical Education', 'Malayalam', 'Telugu', 'Kannada', 'Urdu', 'German', 'Spanish', 'Art'];
+const EXAM_SUBJECT_ALIASES = { maths: 'Mathematics', math: 'Mathematics', sst: 'Social Science', 'social studies': 'Social Science' };
+const MONTH_INDEX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+
+// "maths" -> "Mathematics", "CHEMISTRY" -> "Chemistry", unknown names keep their own spelling
+function normaliseExamSubject(raw) {
+    const text = String(raw || '').replace(/\s+/g, ' ').trim();
+    const lower = text.toLowerCase();
+    if (EXAM_SUBJECT_ALIASES[lower]) return EXAM_SUBJECT_ALIASES[lower];
+    const known = [...SUBJECT_LIST, ...EXAM_SUBJECT_WORDS].find(s => s.toLowerCase() === lower);
+    if (known) return known;
+    return text.replace(/\b([a-z])/g, c => c.toUpperCase());
+}
+
+// A day and month with no year means the next one from about two months ago on, so a
+// timetable for January read in December lands in the right year
+function examDateFrom(day, month, year) {
+    if (!(day >= 1 && day <= 31 && month >= 0 && month <= 11)) return null;
+    let y = year;
+    if (y && y < 100) y += 2000;
+    if (!y) {
+        const recent = new Date();
+        recent.setDate(recent.getDate() - 60);
+        y = new Date().getFullYear();
+        if (new Date(y, month, day) < recent) y += 1;
+    }
+    const date = new Date(y, month, day);
+    if (date.getMonth() !== month) return null; // 31 Feb and the like
+    return formatDateString(date);
+}
+
+function findDateInLine(line) {
+    // "9 Nov 2026", "10th November", "Nov 9"
+    let m = /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]*(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?,?\s*(\d{4})?/i.exec(line);
+    if (m) return examDateFrom(+m[1], MONTH_INDEX[m[2].toLowerCase()], m[3] ? +m[3] : 0);
+    m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b,?\s*(\d{4})?/i.exec(line);
+    if (m) return examDateFrom(+m[2], MONTH_INDEX[m[1].toLowerCase()], m[3] ? +m[3] : 0);
+    // "02/11/2026", "06-11-26", "03.11" (Indian timetables put the day first). Without a year
+    // only / and . count, so portions like "Ch 1-4" and times like "9.30 a.m." aren't dates.
+    for (const n of line.matchAll(/\b(\d{1,2})([./-])(\d{1,2})(?:\2(\d{2,4}))?\b(?!\s*(?:am|pm|a\.m|p\.m))/gi)) {
+        if (!n[4] && n[2] === '-') continue;
+        const date = examDateFrom(+n[1], +n[3] - 1, n[4] ? +n[4] : 0);
+        if (date) return date;
+    }
+    return null;
+}
+
+function findSubjectInLine(line) {
+    // Longest names first, so "Computer Science" wins over "Science"
+    const words = [...EXAM_SUBJECT_WORDS].sort((a, b) => b.length - a.length);
+    const hit = words.find(s => new RegExp(`(^|[^a-z])${s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}([^a-z]|$)`, 'i').test(line));
+    return hit ? normaliseExamSubject(hit) : '';
+}
+
+// "9:00", "9.00 a.m.", "9.00 a.m. to 11.30 a.m." (a plain "03.11" is part of a date, not a time)
+function findTimeInLine(line) {
+    const clock = String.raw`\d{1,2}[:.]\d{2}(?![./-]\d)\s*(?:(?:am|pm|a\.m|p\.m)\.?)?`;
+    const range = new RegExp(String.raw`\b${clock}\s*(?:-|–|to)\s*${clock}`, 'i').exec(line);
+    if (range) return range[0].replace(/\s+/g, ' ').trim();
+    const single = /\b\d{1,2}(?::\d{2}(?![./-]\d)\s*(?:am|pm|a\.m\.?|p\.m\.?)?|\.\d{2}\s*(?:am|pm|a\.m\.?|p\.m\.?))/i.exec(line);
+    return single ? single[0].replace(/\s+/g, ' ').trim() : '';
+}
+
+// Without AI: pair each date with the subject on the same line, or on the line next to it
+// (OCR often splits a table row in two)
+function parseExamTimetableLocally(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const exams = [];
+    const used = new Set();
+    // A "Timing: 9.00 a.m. to 11.30 a.m." line above the table is the time of every exam
+    const timingLine = lines.find(l => /timing|time\s*:/i.test(l) && !findDateInLine(l));
+    const sharedTime = timingLine ? findTimeInLine(timingLine) : '';
+    lines.forEach((line, i) => {
+        const date = findDateInLine(line);
+        if (!date) return;
+        let subject = findSubjectInLine(line.replace(/\b\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?\b/, ''));
+        let subjectLine = i;
+        for (const j of [i + 1, i - 1]) {
+            if (subject || j < 0 || j >= lines.length || used.has(j) || findDateInLine(lines[j])) continue;
+            subject = findSubjectInLine(lines[j]);
+            subjectLine = j;
+        }
+        if (!subject) return;
+        used.add(i);
+        used.add(subjectLine);
+        exams.push({ subject, date, time: findTimeInLine(line) || findTimeInLine(lines[subjectLine]) || sharedTime, portions: '' });
+    });
+    return exams;
+}
+
+// With AI: the helper reads the messy text and answers with the exams as JSON
+async function parseExamTimetableWithAI(text) {
+    const today = formatDateString(new Date());
+    const reply = await callGroq(
+        `Today is ${today}. Below is the text of a school exam timetable, read from a photo or PDF, so it may have reading mistakes.\n` +
+        `List every exam in it. Use these subject names when one fits: ${SUBJECT_LIST.join(', ')}. ` +
+        'Dates are usually day first (12/11 is 12 November). If a date has no year, use the next such date from about two months ago on. ' +
+        'Leave out holidays and study leave days. Keep portions/syllabus short (under 150 characters) or empty.\n' +
+        'Answer with JSON only, no other words, in exactly this shape:\n' +
+        '{"exams":[{"subject":"Chemistry","date":"YYYY-MM-DD","time":"9:00-11:30","portions":"Ch 1-3"}]}\n\n' +
+        `Timetable text:\n${text.slice(0, 6000)}`,
+        'You turn school exam timetables into JSON. You only ever answer with valid JSON.'
+    );
+    const start = reply.indexOf('{');
+    const end = reply.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
+    const data = JSON.parse(reply.slice(start, end + 1));
+    return (Array.isArray(data.exams) ? data.exams : [])
+        .filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && String(e.subject || '').trim())
+        .map(e => ({ subject: normaliseExamSubject(e.subject), date: e.date, time: String(e.time || ''), portions: String(e.portions || '') }));
+}
+
+// Timetables are tables: the grid lines confuse the normal OCR layout, so read them enlarged
+// (about 2000 px) in "one column of lines" mode (measured: 7 of 7 exams found, 0 the default way)
+async function createTimetableOcrWorker() {
+    const worker = await Tesseract.createWorker('eng');
+    await worker.setParameters({ tessedit_pageseg_mode: '4', preserve_interword_spaces: '1' });
+    return worker;
+}
+
+async function imageFileToCanvas(file) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(3, Math.max(1, 2000 / Math.max(bitmap.width, bitmap.height)));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas;
+}
+
+async function readExamTimetableText(file, status) {
+    if (isPdfFile(file)) {
+        if (file.size > PDF_MAX_FILE_MB * 1024 * 1024) throw new Error(`That PDF is too big. Pick one under ${PDF_MAX_FILE_MB} MB.`);
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument({
+            data: new Uint8Array(await file.arrayBuffer()),
+            isEvalSupported: false, // never run code from inside a PDF
+            cMapUrl: PDFJS_BASE + 'cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: PDFJS_BASE + 'standard_fonts/'
+        }).promise;
+        const pages = [];
+        let worker = null;
+        try {
+            for (let p = 1; p <= Math.min(pdf.numPages, 5); p++) {
+                status(`Reading page ${p} of ${Math.min(pdf.numPages, 5)}...`);
+                const page = await pdf.getPage(p);
+                const content = await page.getTextContent();
+                // Keep each table row on its own line
+                const rows = new Map();
+                content.items.forEach(item => {
+                    const y = Math.round(item.transform[5] / 4);
+                    rows.set(y, `${rows.get(y) || ''} ${item.str}`);
+                });
+                let text = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(r => r[1].trim()).join('\n');
+                if ((text.match(/[A-Za-z]/g) || []).length < 30) {
+                    // A scanned PDF: no saved words, so read the picture
+                    worker = worker || await createTimetableOcrWorker();
+                    text = cleanOcrText((await worker.recognize(await renderPdfPage(pdf, p))).data.text);
+                }
+                pages.push(text);
+            }
+        } finally {
+            if (worker) await worker.terminate();
+            pdf.destroy();
+        }
+        return pages.join('\n');
+    }
+    if (!file.type.startsWith('image/')) throw new Error('Pick a photo or a PDF of the timetable.');
+    status('Reading the photo... (this takes a few seconds)');
+    const worker = await createTimetableOcrWorker();
+    try {
+        return cleanOcrText((await worker.recognize(await imageFileToCanvas(file))).data.text);
+    } finally {
+        await worker.terminate();
+    }
+}
+
+let examReviewSeries = '';
+
+function examReviewRowHtml(exam = {}) {
+    return `
+        <li class="exam-review-row">
+            <input type="text" class="er-subject" maxlength="40" value="${escapeHTML(exam.subject || '')}" placeholder="Subject" aria-label="Subject" list="exam-subject-names">
+            <input type="date" class="er-date" value="${escapeHTML(exam.date || '')}" aria-label="Date">
+            <input type="text" class="er-time" maxlength="30" value="${escapeHTML(exam.time || '')}" placeholder="Time" aria-label="Time">
+            <input type="text" class="er-portions" maxlength="200" value="${escapeHTML(exam.portions || '')}" placeholder="Portions" aria-label="Portions">
+            <button type="button" class="exam-remove er-remove" aria-label="Remove this row" title="Remove">×</button>
+        </li>`;
+}
+
+function showExamReview(exams, series) {
+    examReviewSeries = series;
+    const list = document.getElementById('exam-review-list');
+    list.innerHTML = exams.map(examReviewRowHtml).join('');
+    if (!exams.length) list.innerHTML = examReviewRowHtml();
+    document.getElementById('exam-review').hidden = false;
+}
+
+function closeExamReview() {
+    document.getElementById('exam-review').hidden = true;
+    document.getElementById('exam-review-list').innerHTML = '';
+}
+
+function setExamTimetableStatus(text, isError = false) {
+    const el = document.getElementById('exam-tt-status');
+    el.hidden = !text;
+    el.innerText = text;
+    el.classList.toggle('error', isError);
+}
+
+document.getElementById('exam-tt-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // the same file can be picked again
+    if (!file) return;
+    const series = document.getElementById('exam-tt-series').value.trim();
+    closeExamReview();
+    const label = document.querySelector('.exam-file-btn');
+    label.classList.add('busy');
+    try {
+        setExamTimetableStatus('Opening the timetable...');
+        const text = await readExamTimetableText(file, setExamTimetableStatus);
+        if (!text.trim()) throw new Error('No writing was found in it. Try a clearer photo.');
+        let exams = [];
+        let usedAI = false;
+        if ((await getGroqKey()).startsWith('gsk_')) {
+            setExamTimetableStatus('Working out the exams with the AI helper...');
+            try {
+                exams = await parseExamTimetableWithAI(text);
+                usedAI = true;
+            } catch (err) {
+                console.warn('AI could not read the timetable, using the simple reader:', err.message);
+            }
+        }
+        if (!usedAI) exams = parseExamTimetableLocally(text);
+        exams.sort((a, b) => a.date.localeCompare(b.date));
+        showExamReview(exams, series);
+        setExamTimetableStatus(exams.length
+            ? `Found ${exams.length} exam${exams.length === 1 ? '' : 's'}. Check the subjects and dates, fix anything wrong, then press "Add these exams".`
+            : `Couldn't find the exams in it${usedAI ? '' : ' (adding an AI key in Settings helps with messy timetables)'}. You can type them in below.`, !exams.length);
+    } catch (err) {
+        setExamTimetableStatus(`Couldn't read that timetable: ${err.message}`, true);
+    } finally {
+        label.classList.remove('busy');
+    }
+});
+
+document.getElementById('exam-review-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.er-remove');
+    if (btn) btn.closest('li').remove();
+});
+
+document.getElementById('exam-review-add-row')?.addEventListener('click', () => {
+    document.getElementById('exam-review-list').insertAdjacentHTML('beforeend', examReviewRowHtml());
+});
+
+document.getElementById('exam-review-cancel')?.addEventListener('click', () => {
+    closeExamReview();
+    setExamTimetableStatus('');
+});
+
+document.getElementById('exam-review-save')?.addEventListener('click', () => {
+    const rows = [...document.querySelectorAll('#exam-review-list .exam-review-row')];
+    const exams = [];
+    let problem = '';
+    rows.forEach(row => {
+        const subject = row.querySelector('.er-subject').value.trim();
+        const date = row.querySelector('.er-date').value;
+        if (!subject && !date) return; // an empty row
+        if (!subject || !date) {
+            problem = 'Every row needs a subject and a date (or remove the row with ×).';
+            row.classList.add('shake-error');
+            setTimeout(() => row.classList.remove('shake-error'), 600);
+            return;
+        }
+        exams.push({
+            subject: normaliseExamSubject(subject), date,
+            time: row.querySelector('.er-time').value, portions: row.querySelector('.er-portions').value,
+            series: examReviewSeries || document.getElementById('exam-tt-series').value.trim()
+        });
+    });
+    if (problem) {
+        alert(problem);
+        return;
+    }
+    if (!exams.length) {
+        alert('There are no exams to add.');
+        return;
+    }
+    addExams(exams);
+    closeExamReview();
+    setExamTimetableStatus(`Added ${exams.length} exam${exams.length === 1 ? '' : 's'}.`);
+});
+
+document.getElementById('exam-page-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = document.getElementById('exam-page-subject').value.trim();
+    const date = document.getElementById('exam-page-date').value;
+    if (!subject || !date) {
+        alert('Type the subject and pick the date.');
+        return;
+    }
+    addExams([{
+        subject: normaliseExamSubject(subject), date,
+        series: document.getElementById('exam-page-series').value,
+        time: document.getElementById('exam-page-time').value,
+        portions: document.getElementById('exam-page-portions').value
+    }]);
+    ['exam-page-subject', 'exam-page-date', 'exam-page-time', 'exam-page-portions'].forEach(id => { document.getElementById(id).value = ''; });
+});
+
+function renderExamsPage() {
+    const container = document.getElementById('exam-series-list');
+    if (!container) return;
+    const seriesNames = [...new Set((appState.exams || []).map(e => e.series).filter(Boolean))];
+    document.getElementById('exam-series-names').innerHTML = seriesNames.map(s => `<option value="${escapeHTML(s)}"></option>`).join('');
+    document.getElementById('exam-subject-names').innerHTML = SUBJECT_LIST.filter(s => s !== 'Sixth Subject')
+        .map(s => `<option value="${escapeHTML(s)}"></option>`).join('');
+
+    const today = formatDateString(new Date());
+    const groups = new Map();
+    keepRecentExams().sort((a, b) => a.date.localeCompare(b.date)).forEach(exam => {
+        const key = exam.series || '';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(exam);
+    });
+    if (groups.size === 0) {
+        container.innerHTML = '<div class="card exam-series-card"><p class="empty-state">No exams yet. Upload a timetable or add an exam above.</p></div>';
+        return;
+    }
+    const dayMs = 1000 * 60 * 60 * 24;
+    const todayDate = parseDay(today);
+    // Series still going first (soonest first), finished ones after
+    const ordered = [...groups.entries()].sort((a, b) => {
+        const aDone = a[1].every(e => e.date < today);
+        const bDone = b[1].every(e => e.date < today);
+        if (aDone !== bDone) return aDone ? 1 : -1;
+        return a[1][0].date.localeCompare(b[1][0].date);
+    });
+    container.innerHTML = ordered.map(([series, exams]) => {
+        const done = exams.every(e => e.date < today);
+        const next = exams.find(e => e.date >= today);
+        const daysToNext = next ? Math.round((parseDay(next.date) - todayDate) / dayMs) : null;
+        const range = `${parseDay(exams[0].date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` +
+            (exams.length > 1 ? ` – ${parseDay(exams[exams.length - 1].date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : '');
+        const summary = done ? 'Finished' : daysToNext === 0 ? `${escapeHTML(next.subject)} today` :
+            daysToNext === 1 ? `${escapeHTML(next.subject)} tomorrow` : `Next: ${escapeHTML(next.subject)} in ${daysToNext} days`;
+        const rows = exams.map(exam => {
+            const left = Math.round((parseDay(exam.date) - todayDate) / dayMs);
+            const when = left < 0 ? 'Done' : left === 0 ? 'Today' : left === 1 ? 'Tomorrow' : `${left} days`;
+            return `
+                <li class="exam-row${left < 0 ? ' past' : left <= 3 ? ' soon' : ''}">
+                    <span class="exam-row-date">${parseDay(exam.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    <span class="exam-row-main">
+                        <strong>${escapeHTML(exam.name ? `${exam.subject} ${exam.name}` : exam.subject)}</strong>
+                        ${exam.time || exam.portions ? `<span>${escapeHTML([exam.time, exam.portions].filter(Boolean).join(' · '))}</span>` : ''}
+                    </span>
+                    <span class="exam-row-when">${when}</span>
+                    <button type="button" class="exam-remove" data-exam="${escapeHTML(exam.id)}" aria-label="Remove ${escapeHTML(examTitle(exam))}" title="Remove">×</button>
+                </li>`;
+        }).join('');
+        return `
+            <div class="card exam-series-card${done ? ' finished' : ''}">
+                <div class="exam-series-head">
+                    <div>
+                        <h3>${escapeHTML(series || 'Other exams')}</h3>
+                        <p class="exam-series-sub">${exams.length} exam${exams.length === 1 ? '' : 's'} · ${range} · ${summary}</p>
+                    </div>
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text exam-series-delete" data-series="${escapeHTML(series)}">Delete all</button>
+                </div>
+                <ul class="exam-rows">${rows}</ul>
+            </div>`;
+    }).join('');
+}
+
+document.getElementById('exam-series-list')?.addEventListener('click', (e) => {
+    const remove = e.target.closest('.exam-remove');
+    if (remove) {
+        removeExam(remove.dataset.exam);
+        return;
+    }
+    const del = e.target.closest('.exam-series-delete');
+    if (del) {
+        const series = del.dataset.series;
+        showConfirm(`Delete all ${series ? `"${series}"` : 'these'} exams?`, () => {
+            appState.exams = (appState.exams || []).filter(ex => (ex.series || '') !== series);
+            saveState();
+        }, { title: 'Delete exams', confirmLabel: 'Delete', danger: true });
+    }
 });
 
 // --- Calendar Logic ---
@@ -1014,6 +1451,7 @@ function renderAllViews() {
     renderNotebooks();
     updateRobotExpression();
     renderCalendar();
+    renderExamsPage();
     renderEmailJSSettings();
     if (typeof renderFriends === 'function') {
         renderFriends();

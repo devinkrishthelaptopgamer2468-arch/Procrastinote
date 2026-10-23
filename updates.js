@@ -6,8 +6,8 @@ window.PROCRASTINOTE_UPDATES = [
     {
         id: 'week-2026-10-19',
         date: '2026-10-23',
-        title: 'This week: half days, occasions and exam countdowns',
-        text: 'Mark half days in the Calendar (Day Order 7), add occasions like Sports Day, and add your exams to see a countdown on the dashboard. Class admins can add occasions for the whole class, and you get a reminder the day before. The AI helper also switches models when one is busy.'
+        title: 'This week: an Exams page, half days and occasions',
+        text: 'New Exams page: upload a photo or PDF of an exam timetable and Procrastinote fills in the exams for you, with countdowns on the dashboard. You can also mark half days (Day Order 7) and occasions like Sports Day in the Calendar, and class admins can add occasions for the whole class.'
     },
     {
         id: 'phone-notifications',

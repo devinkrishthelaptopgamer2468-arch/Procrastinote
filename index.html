@@ -332,6 +332,10 @@
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19.5v-15A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zm0 0A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="m9.5 10 2 2 3.5-4"/></svg></span>
                     <span class="nav-label">Homework</span>
                 </li>
+                <li class="dock-item" data-tab="exams">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7.5L19 8v11a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V5a1.5 1.5 0 0 1 1-1.5z"/><path d="M14 3.5V8h5"/><path d="m9 14 2 2 4-4.5"/></svg></span>
+                    <span class="nav-label">Exams</span>
+                </li>
                 <li class="dock-item" data-tab="zen">
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20c-2-1.8-3-4.2-3-6.8C9 10 10.3 7.2 12 5c1.7 2.2 3 5 3 8.2 0 2.6-1 5-3 6.8z"/><path d="M12 20c-4.5 0-8-2.5-8.5-6 2.4-.3 4.8.5 6.4 2.2M12 20c4.5 0 8-2.5 8.5-6-2.4-.3-4.8.5-6.4 2.2"/></svg></span>
                     <span class="nav-label">Zen</span>
@@ -482,6 +486,7 @@
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-rose"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v4.5L5.5 17A2.5 2.5 0 0 0 7.7 20.5h8.6a2.5 2.5 0 0 0 2.2-3.5L14 7.5V3"/><path d="M7.5 14h9"/></svg></span>
                             <h3>Exam countdown</h3>
+                            <button type="button" id="dash-exams-open" class="study-halfday-btn exams-see-all">See all exams</button>
                         </div>
                         <ul id="dash-exam-list" class="exam-list"></ul>
                         <form id="exam-form" class="exam-form">
@@ -867,6 +872,68 @@
                         <h3>Active homework</h3>
                         <ul id="active-homework-list" class="interactive-list"></ul>
                     </div>
+                </div>
+            </section>
+
+            <!-- Exams: exam series (Revision Exam 1, 2...) with countdowns. A timetable photo or PDF
+                 is read (school-app.js "Exam timetables"), checked by you, then added. -->
+            <section id="exams" class="view">
+                <header class="view-header">
+                    <p class="eyebrow">Prepare</p>
+                    <h2>Exams</h2>
+                    <p class="subtitle">Exam timetables and countdowns</p>
+                </header>
+
+                <div class="exams-layout">
+                    <div class="card exam-upload-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15"/></svg></span>
+                            <h3>Upload an exam timetable</h3>
+                        </div>
+                        <p class="subtitle">Add a photo or PDF of the timetable. Procrastinote reads it and fills in the exams for you to check.</p>
+                        <div class="exam-upload-row">
+                            <input type="text" id="exam-tt-series" maxlength="40" placeholder="Name, e.g. Revision Exam 3" aria-label="Name of these exams" list="exam-series-names">
+                            <label class="btn primary-btn exam-file-btn">
+                                <input type="file" id="exam-tt-file" accept="image/*,application/pdf" class="visually-hidden">
+                                Choose photo or PDF
+                            </label>
+                        </div>
+                        <datalist id="exam-series-names"></datalist>
+                        <p id="exam-tt-status" class="exam-tt-status" role="status" hidden></p>
+
+                        <!-- What was read, to check and fix before adding -->
+                        <div id="exam-review" class="exam-review" hidden>
+                            <p class="exam-review-title">Check these before adding them</p>
+                            <div class="exam-review-head" aria-hidden="true">
+                                <span>Subject</span><span>Date</span><span>Time</span><span>Portions</span><span></span>
+                            </div>
+                            <ul id="exam-review-list" class="exam-review-list"></ul>
+                            <div class="exam-review-actions">
+                                <button type="button" id="exam-review-add-row" class="btn secondary-btn btn-sm">+ Add a row</button>
+                                <span class="exam-review-spacer"></span>
+                                <button type="button" id="exam-review-cancel" class="btn ghost-btn">Cancel</button>
+                                <button type="button" id="exam-review-save" class="btn primary-btn">Add these exams</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card exam-manual-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-rose"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                            <h3>Add one exam</h3>
+                        </div>
+                        <form id="exam-page-form" class="exam-page-form">
+                            <input type="text" id="exam-page-subject" maxlength="40" placeholder="Subject" aria-label="Subject" list="exam-subject-names" required>
+                            <input type="text" id="exam-page-series" maxlength="40" placeholder="Exam name, e.g. Revision Exam 3" aria-label="Exam name" list="exam-series-names">
+                            <input type="date" id="exam-page-date" aria-label="Date">
+                            <input type="text" id="exam-page-time" maxlength="30" placeholder="Time (optional)" aria-label="Time">
+                            <input type="text" id="exam-page-portions" maxlength="200" placeholder="Portions (optional)" aria-label="Portions">
+                            <button type="submit" class="btn primary-btn">Add exam</button>
+                        </form>
+                        <datalist id="exam-subject-names"></datalist>
+                    </div>
+
+                    <div id="exam-series-list" class="exam-series-list"></div>
                 </div>
             </section>
 
