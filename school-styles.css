@@ -6558,6 +6558,20 @@ body.external-pip-body .pip-header {
     margin-bottom: 0.75rem;
 }
 
+/* Class AI key box (People tab) */
+.cls-ai-box {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: var(--radius);
+    background: var(--accent-soft);
+}
+
+.cls-ai-box .cls-actions {
+    margin-top: 0.4rem;
+}
+
 /* Homework */
 .cls-follow {
     display: flex;

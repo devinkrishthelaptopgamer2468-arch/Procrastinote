@@ -54,6 +54,8 @@
         loadedChats: new Set(),
         homework: {},          // class id -> rows
         occasions: {},         // class id -> occasion rows (Sports Day...), by date
+        ai: {},                // class id -> { has_key, key_hint, daily_limit, used_today } (class AI key)
+        aiMissing: false,      // add-class-ai.sql hasn't been run yet
         files: {},             // group key -> rows, newest first
         requests: {},          // class id -> pending co-admin / hand-over requests
         inbox: null,           // site owner: waiting classes, requests, reports, every group
@@ -209,6 +211,32 @@
             .map(o => ({ name: o.name, className: cls.name })));
     }
 
+    // Class AI keys: which of my classes have one, and how much of today's allowance I've used
+    async function loadAiStatus() {
+        const { data, error } = await cloud.rpc('class_ai_status');
+        if (error) {
+            state.aiMissing = isMissingSetup(error) || /class_ai_status/.test(error.message || '');
+            if (!state.aiMissing) console.error('Could not load class AI keys:', error.message);
+            state.ai = {};
+            return;
+        }
+        state.aiMissing = false;
+        state.ai = {};
+        (data || []).forEach(row => { state.ai[row.class_id] = row; });
+        if (typeof renderGroqKeyStatus === 'function') renderGroqKeyStatus();
+    }
+
+    // Is there a class key the AI helper can use? (classId's own, or any of my classes')
+    function hasAiKey(classId) {
+        if (classId && state.ai[classId]?.has_key) return true;
+        return Object.values(state.ai).some(row => row.has_key);
+    }
+
+    // After a question to the class AI: refresh "used x of y today"
+    function noteAiUse() {
+        loadAiStatus().then(renderDetail);
+    }
+
     // The Calendar and dashboard show class occasions, so redraw them when they change
     function refreshPlannerViews() {
         if (typeof renderCalendar === 'function') renderCalendar();
@@ -323,6 +351,7 @@
             ...state.classes.filter(c => c.status === 'approved').map(c => loadOccasions(c.id)),
             ...state.classes.filter(c => c.myRole === 'owner' || c.myRole === 'admin').map(c => loadRequests(c.id)),
             loadChats(),
+            loadAiStatus(),
             loadRecentMessages(),
             loadInbox()
         ]);
@@ -957,19 +986,21 @@
     }
 
     // Procrasti-Bot answers in the chat. The reply is written on the device of the person who
-    // pinged it, with their AI key (only their message is sent to the AI, not the rest of the chat).
-    // Without a key it answers with one of its built-in study tips.
+    // pinged it, with their AI key, or the class's key if they have none (only their message is
+    // sent to the AI, not the rest of the chat). Without a key it answers with a built-in study tip.
     async function askBot(chatId, text) {
         const buddy = typeof AI_BUDDIES !== 'undefined' ? AI_BUDDIES.find(b => b.id === 'procrasti-bot') : null;
         const question = text.replace(BOT_PING, '').trim() || 'Hi!';
+        const classId = state.chats.find(c => c.id === chatId)?.class_id;
         state.botTyping = chatId;
         renderMessages(chatId);
         let reply = '';
         try {
-            if (typeof getGroqKey === 'function' && (await getGroqKey()).startsWith('gsk_')) {
+            if (typeof aiAvailable === 'function' && await aiAvailable(classId)) {
                 reply = await callGroq(
                     `${(appState.user?.name || 'A student').split(' ')[0]} asked in their class group chat: "${question}"`,
-                    `${buddy?.systemPrompt || 'You are Procrasti-Bot, a friendly study helper.'} You are answering in a class group chat at ${SCHOOL_NAME}, so classmates read your reply too. You may help with study questions. Keep it to 1-3 short sentences, kind and suitable for school.`
+                    `${buddy?.systemPrompt || 'You are Procrasti-Bot, a friendly study helper.'} You are answering in a class group chat at ${SCHOOL_NAME}, so classmates read your reply too. You may help with study questions. Keep it to 1-3 short sentences, kind and suitable for school.`,
+                    { classId }
                 );
             }
         } catch (e) {
@@ -1266,6 +1297,78 @@
         return html + '</ul>';
     }
 
+    // The class AI key box at the top of People: admins add/change/remove it, everyone sees
+    // how much of today's allowance they've used
+    function classAiHtml(cls) {
+        const admin = isAdminRole(cls.myRole);
+        const ai = state.ai[cls.id];
+        if (state.aiMissing) {
+            return admin ? '<div class="cls-ai-box"><p class="cls-hint">Class AI keys aren\'t switched on yet. Run supabase/add-class-ai.sql (SUPABASE_SETUP.md, step 12).</p></div>' : '';
+        }
+        if (!ai) return '';
+        if (!ai.has_key) {
+            return admin ? `
+                <div class="cls-ai-box">
+                    <p><strong>Class AI key</strong></p>
+                    <p class="cls-hint">Add a Groq key for ${escapeHTML(cls.name)} and everyone in the class can use the AI helper without their own key, up to a daily allowance each. Nobody can see the key after it's saved, not even you.</p>
+                    <button type="button" class="btn primary-btn btn-sm" data-act="ai-key-set">Add a Groq key</button>
+                </div>` : '';
+        }
+        const left = Math.max(0, ai.daily_limit - ai.used_today);
+        let html = `
+            <div class="cls-ai-box">
+                <p><strong>Class AI key is on</strong>${admin ? ` <span class="cls-hint">(ends in ••••${escapeHTML(ai.key_hint)})</span>` : ''}</p>
+                <p class="cls-hint">Everyone without their own key can ask the AI helper ${pluralise(ai.daily_limit, 'question')} a day. You have <strong>${left} left today</strong>${left < ai.daily_limit ? ` (used ${ai.used_today})` : ''}. Bigger jobs, like flashcards, count as more than one.</p>`;
+        if (admin) {
+            html += `
+                <div class="cls-actions">
+                    <button type="button" class="btn secondary-btn btn-sm" data-act="ai-limit">Change allowance</button>
+                    <button type="button" class="btn secondary-btn btn-sm" data-act="ai-key-set">Replace key</button>
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove">Remove key</button>
+                </div>`;
+        }
+        return html + '</div>';
+    }
+
+    function aiKeyDialog(cls) {
+        const current = state.ai[cls.id];
+        openDialog({
+            title: current?.has_key ? 'Replace the class AI key' : 'Add a class AI key',
+            submitLabel: 'Save key',
+            body: `
+                <p class="cls-hint">Make a key at console.groq.com (API Keys), copy it and paste it here. It's best if a parent or teacher owns the Groq account.</p>
+                <label for="cls-ai-key">Groq key</label>
+                <input type="password" id="cls-ai-key" name="key" autocomplete="off" spellcheck="false" placeholder="gsk_..." required>
+                <label for="cls-ai-limit">Questions per person per day</label>
+                <input type="number" id="cls-ai-limit" name="limit" min="1" max="100" value="${current?.daily_limit || 15}" required>`,
+            onSubmit: async form => {
+                const key = form.elements.key.value.trim();
+                const limit = parseInt(form.elements.limit.value, 10);
+                if (!key.startsWith('gsk_')) throw new Error('That doesn\'t look like a Groq key. It starts with gsk_.');
+                await call(cloud.rpc('set_class_ai_key', { p_class: cls.id, p_key: key, p_daily_limit: limit }));
+                form.elements.key.value = ''; // don't keep it in the page
+                await loadAiStatus();
+                renderDetail();
+            }
+        });
+    }
+
+    function aiLimitDialog(cls) {
+        openDialog({
+            title: 'Daily AI allowance',
+            submitLabel: 'Save',
+            body: `
+                <p class="cls-hint">How many AI questions each person in ${escapeHTML(cls.name)} can ask a day with the class key. With Groq's free plan, about 15 works well for a class of 30.</p>
+                <label for="cls-ai-limit2">Questions per person per day</label>
+                <input type="number" id="cls-ai-limit2" name="limit" min="1" max="100" value="${state.ai[cls.id]?.daily_limit || 15}" required>`,
+            onSubmit: async form => {
+                await call(cloud.rpc('set_class_ai_limit', { p_class: cls.id, p_daily_limit: parseInt(form.elements.limit.value, 10) }));
+                await loadAiStatus();
+                renderDetail();
+            }
+        });
+    }
+
     function peopleHtml(kind, group) {
         const members = memberList(kind, group.id);
         const me = myId();
@@ -1274,7 +1377,7 @@
         const requests = kind === 'class' ? (state.requests[group.id] || []) : [];
         // The site owner can do what a class owner does, in any class they're in
         const boss = myRole === 'owner' || (kind === 'class' && isSiteOwner());
-        let html = '';
+        let html = kind === 'class' ? classAiHtml(group) : '';
         if (requests.length) {
             html += '<p class="cls-section-title">Waiting for approval</p><ul class="cls-people">';
             requests.forEach(r => {
@@ -1984,6 +2087,20 @@
                     else onHomework({ eventType: 'DELETE', old: { id: Number(el.dataset.hw) } });
                 });
                 break;
+            case 'ai-key-set':
+                aiKeyDialog(group);
+                break;
+            case 'ai-limit':
+                aiLimitDialog(group);
+                break;
+            case 'ai-key-remove':
+                showConfirm('Remove the class AI key? Classmates without their own key won\'t be able to use the AI helper.', async () => {
+                    const { error } = await cloud.rpc('remove_class_ai_key', { p_class: group.id });
+                    if (error) alert(friendlyError(error));
+                    await loadAiStatus();
+                    renderDetail();
+                });
+                break;
             case 'occ-delete':
                 showConfirm('Delete this occasion for the whole class?', async () => {
                     const { error } = await cloud.from('class_occasions').delete().eq('id', el.dataset.occ);
@@ -2313,6 +2430,8 @@
         render,
         notificationItems,
         renderNotificationList,
-        occasionsOn
+        occasionsOn,
+        hasAiKey,
+        noteAiUse
     };
 })();

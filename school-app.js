@@ -877,7 +877,7 @@ document.getElementById('exam-tt-file')?.addEventListener('change', async (e) =>
         if (!text.trim()) throw new Error('No writing was found in it. Try a clearer photo.');
         let exams = [];
         let usedAI = false;
-        if ((await getGroqKey()).startsWith('gsk_')) {
+        if (await aiAvailable()) {
             setExamTimetableStatus('Working out the exams with the AI helper...');
             try {
                 exams = await parseExamTimetableWithAI(text);
@@ -2811,7 +2811,7 @@ async function buildFlashcards(note, fresh) {
     }
     deck.hidden = true;
     let cards = [];
-    if ((await getGroqKey()).startsWith('gsk_')) {
+    if (await aiAvailable()) {
         showFlashcardStatus('Procrastinote AI is writing your cards...');
         try {
             cards = await makeFlashcardsWithAI(note.title || 'Untitled', text);
@@ -4736,7 +4736,7 @@ function renderGroqKeyStatus() {
     const saved = !!(appState.groqKeyEnc || appState.groqKey);
     // The setup guide in the AI chat is only needed until a key is saved
     const guide = document.getElementById('ai-key-guide');
-    if (guide) guide.hidden = saved;
+    if (guide) guide.hidden = saved || !!window.Classes?.hasAiKey?.();
     if (!status) return;
     status.innerText = saved
         ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
@@ -4803,9 +4803,40 @@ async function pickAvailableGroqModel(apiKey) {
     }
 }
 
-async function callGroq(prompt, systemPrompt = null) {
+// --- Class AI key ---
+// Without their own key, a student uses their class's key through the class-ai Edge Function
+// (supabase/add-class-ai.sql), up to a daily allowance. Their own key always comes first, so it
+// doesn't use up the class's share. classId picks that class's key (Procrasti-Bot in a class chat).
+async function aiAvailable(classId) {
+    if ((await getGroqKey()).startsWith('gsk_')) return true;
+    return !!window.Classes?.hasAiKey?.(classId);
+}
+
+async function callClassAi(prompt, systemPrompt, classId) {
+    try {
+        const { data, error } = await cloud.functions.invoke('class-ai', {
+            body: { prompt, system: systemPrompt || undefined, classId: classId || undefined }
+        });
+        if (error) {
+            let body = null;
+            try { body = await error.context?.json(); } catch (e) { /* not JSON */ }
+            return `API Error: ${body?.message || 'The class AI isn\'t switched on yet. Ask your class admin.'}`;
+        }
+        window.Classes?.noteAiUse?.(data?.used, data?.limit);
+        if (data?.reply) return data.reply;
+        return `API Error: ${data?.message || 'The class AI couldn\'t answer just now. Try again.'}`;
+    } catch (e) {
+        console.error('Class AI error:', e);
+        return "I'm having trouble connecting to my brain right now. Please check your internet connection!";
+    }
+}
+
+async function callGroq(prompt, systemPrompt = null, options = {}) {
     const apiKey = await getGroqKey();
-    if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
+    if (!apiKey) {
+        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(prompt, systemPrompt, options.classId);
+        return "I need an API key to think better! You can add one in Settings, or ask your class admin to add one for your class.";
+    }
 
     const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
 
@@ -7237,8 +7268,8 @@ async function sendChatMessage() {
         
         let aiResponse = "";
         
-        // If Groq key is available, let's call API
-        if ((await getGroqKey()).startsWith('gsk_')) {
+        // With an AI key (their own or their class's), ask the AI
+        if (await aiAvailable()) {
             aiResponse = await callGroq(prompt, buddy.systemPrompt);
         }
         

@@ -7,7 +7,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'week-2026-10-19',
         date: '2026-10-25',
         title: 'This week: Exams page, flashcards and more',
-        text: 'New Exams page: upload an exam timetable and the exams fill in by themselves, track your marks with a chart, and see countdowns on the dashboard. Make flashcards from any note, keep a homework streak going, and mark half days (Day Order 7) and occasions like Sports Day in the Calendar.'
+        text: 'New Exams page: upload an exam timetable and the exams fill in by themselves, track your marks with a chart, and see countdowns on the dashboard. Make flashcards from any note, keep a homework streak going, and mark half days and occasions in the Calendar. Class admins can now add one AI key for the whole class, so you don\'t need your own.'
     },
     {
         id: 'phone-notifications',

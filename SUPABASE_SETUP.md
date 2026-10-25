@@ -269,6 +269,24 @@ in the class sees them in their Calendar and dashboard and gets a reminder the d
 
 Until step 1 is done, the Occasions tab says "Class occasions aren't switched on yet".
 
+## 12. Turn on class AI keys
+
+A class admin can add one Groq key for the whole class (class page → **People** → **Add a Groq
+key**). Everyone in the class without their own key can then use the AI helper, up to a daily
+allowance each (15 by default). The key is only ever used by the `class-ai` Edge Function: it's
+never sent to anyone's browser, and nobody can read it back from the website.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-class-ai.sql` and press **Run**.
+2. **Edge Functions** → **Deploy a new function** → **Via Editor**. Name it exactly `class-ai`,
+   delete the example code, paste all of `supabase/functions/class-ai/index.ts`, and press
+   **Deploy function**. Leave **"Enforce JWT verification" ON** for this one (it only answers
+   logged-in students). It needs no secrets.
+3. Test it: as a class admin, add a key on the People tab. Log in as a classmate with no key of
+   their own and ask Procrastinote AI something.
+
+The site owner can still see keys in **Table Editor** → `class_ai_keys` (Supabase admins can see
+everything), so tell class admins that.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
