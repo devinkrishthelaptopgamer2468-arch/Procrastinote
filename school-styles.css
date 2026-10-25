@@ -3077,6 +3077,150 @@ button.notif-item:hover {
     margin: 0;
 }
 
+/* Timetable page: numbered steps that save by themselves */
+.setup-step-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin-bottom: 1.1rem;
+}
+
+.setup-step-head h3 {
+    margin: 0;
+}
+
+.setup-step-num {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 800;
+}
+
+.setup-step-hint {
+    margin-top: 0.2rem;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+}
+
+.setup-school-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 280px));
+    gap: 0 1.25rem;
+}
+
+#uniform-setup-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0 1rem;
+}
+
+.autosave-note {
+    color: var(--text-3, var(--text-secondary));
+    font-size: 0.8rem;
+    transition: color 0.3s;
+}
+
+.autosave-note::before {
+    content: "✓ ";
+}
+
+.autosave-note.just-saved {
+    color: var(--teal);
+    font-weight: 700;
+}
+
+.autosave-note.just-saved::after {
+    content: " · saved";
+}
+
+/* Dashboard: Get started checklist */
+.onboarding-card {
+    grid-column: 1 / -1;
+}
+
+.onboarding-card[hidden] {
+    display: none;
+}
+
+.onboarding-progress {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.onboarding-hide {
+    margin-left: auto;
+}
+
+.onboarding-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.6rem;
+}
+
+.onboarding-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: 14px;
+    background: var(--inset);
+}
+
+.onboarding-step.done {
+    opacity: 0.6;
+}
+
+.onboarding-check {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 2px solid var(--inset-hover);
+    color: #FFFFFF;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.onboarding-step.done .onboarding-check {
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+.onboarding-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.onboarding-text small {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.onboarding-done {
+    color: var(--teal);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.dash-empty-action {
+    margin-top: 0.6rem;
+}
+
+.dash-empty-action[hidden] {
+    display: none;
+}
+
 /* Home study plan */
 .home-schedule-layout {
     display: grid;

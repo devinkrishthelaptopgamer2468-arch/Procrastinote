@@ -467,6 +467,18 @@
                 </header>
 
                 <div class="dashboard-grid">
+                    <!-- Get started: the first things to set up, ticked off by themselves. Hidden when
+                         everything is done, or when "Hide" is pressed. -->
+                    <div class="card tile onboarding-card" id="onboarding-card" hidden>
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></span>
+                            <h3>Get started</h3>
+                            <span id="onboarding-progress" class="onboarding-progress"></span>
+                            <button type="button" id="onboarding-hide" class="study-halfday-btn onboarding-hide">Hide</button>
+                        </div>
+                        <ol id="onboarding-list" class="onboarding-list"></ol>
+                    </div>
+
                     <div class="card tile uniform-card">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.5 4 6l1.8 4.2L8 9.5V20h8V9.5l2.2.7L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/></svg></span>
@@ -474,6 +486,7 @@
                         </div>
                         <p id="dash-uniform" class="primary-text">Regular Uniform</p>
                         <p class="tile-foot">For your next school day</p>
+                        <button type="button" id="dash-uniform-setup" class="btn secondary-btn btn-sm dash-empty-action" hidden>Set your uniforms</button>
                     </div>
 
                     <div class="card tile homework-card">
@@ -546,36 +559,55 @@
                     </button>
                 </div>
 
+                <!-- Three steps, in the order you need them. Everything saves as soon as it's picked. -->
                 <div id="school-timetable-view">
-                    <div class="card">
-                        <h3>Day order schedule</h3>
+                        <div class="card setup-step" id="setup-step-school">
+                            <div class="setup-step-head">
+                                <span class="setup-step-num">1</span>
+                                <div>
+                                    <h3>School setup</h3>
+                                    <p class="setup-step-hint">Your school counts days as Day 1, Day 2... Pick how many there are, and which one today is.</p>
+                                </div>
+                            </div>
+                            <div class="setup-school-fields">
+                                <div class="form-group" style="position: relative;">
+                                    <label>How many day orders</label>
+                                    <div id="total-days-display" class="custom-select-display">Select total days</div>
+                                    <div id="total-days-options" class="custom-select-options"></div>
+                                    <input type="hidden" id="total-days" value="6">
+                                </div>
+                                <div class="form-group" style="position: relative;">
+                                    <label>Today is day order</label>
+                                    <div id="current-day-display" class="custom-select-display">Select day order</div>
+                                    <div id="current-day-options" class="custom-select-options"></div>
+                                    <input type="hidden" id="current-day-order" value="1">
+                                </div>
+                            </div>
+                            <p class="autosave-note">Saves by itself</p>
+                        </div>
+
+                    <div class="card setup-step" id="setup-step-timetable">
+                        <div class="setup-step-head">
+                            <span class="setup-step-num">2</span>
+                            <div>
+                                <h3>Day order schedule</h3>
+                                <p class="setup-step-hint">Pick the subjects for each day order, in period order. Your backpack list on the dashboard comes from this.</p>
+                            </div>
+                        </div>
                         <div class="timetable-grid" id="timetable-container"></div>
-                        <button class="btn primary-btn" id="save-timetable-btn">Save timetable</button>
+                        <p class="autosave-note">Saves by itself</p>
                     </div>
 
-                    <div class="settings-grid">
-                        <div class="card">
-                            <h3>School setup</h3>
-                            <div class="form-group" style="position: relative;">
-                                <label>Total day orders</label>
-                                <div id="total-days-display" class="custom-select-display">Select total days</div>
-                                <div id="total-days-options" class="custom-select-options"></div>
-                                <input type="hidden" id="total-days" value="6">
+                    <div class="card setup-step" id="setup-step-uniforms">
+                        <div class="setup-step-head">
+                            <span class="setup-step-num">3</span>
+                            <div>
+                                <h3>Uniform rules</h3>
+                                <p class="setup-step-hint">Which uniform to wear on each day order. The dashboard shows it for the next school day.</p>
                             </div>
-                            <div class="form-group" style="position: relative;">
-                                <label>Today is day order</label>
-                                <div id="current-day-display" class="custom-select-display">Select day order</div>
-                                <div id="current-day-options" class="custom-select-options"></div>
-                                <input type="hidden" id="current-day-order" value="1">
-                            </div>
-                            <button class="btn secondary-btn" id="save-school-setup">Update setup</button>
                         </div>
-
-                        <div class="card">
-                            <h3>Uniform rules</h3>
-                            <div id="uniform-setup-container"></div>
-                            <button class="btn secondary-btn" id="save-uniforms-btn">Save uniforms</button>
-                        </div>
+                        <div id="uniform-setup-container"></div>
+                        <p class="autosave-note">Saves by itself</p>
                     </div>
                 </div>
 

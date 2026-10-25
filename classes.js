@@ -2462,6 +2462,7 @@
         renderNotificationList,
         occasionsOn,
         hasAiKey,
-        noteAiUse
+        noteAiUse,
+        classCount: () => state.classes.length
     };
 })();

@@ -1604,21 +1604,37 @@ function updateRobotExpression() {
     });
 }
 
+// Timetable page: everything saves as soon as it's picked (no Save buttons to forget).
+// A small "Saved" note shows next to the step that changed.
+function showSetupSaved(stepId) {
+    const note = document.querySelector(`#${stepId} .autosave-note`);
+    if (!note) return;
+    note.classList.add('just-saved');
+    clearTimeout(note._timer);
+    note._timer = setTimeout(() => note.classList.remove('just-saved'), 1600);
+}
+
 function renderSettings() {
     // Setup Custom Dropdowns for School Setup
-    setupCustomDropdown('total-days-display', 'total-days-options', 'total-days', 
+    setupCustomDropdown('total-days-display', 'total-days-options', 'total-days',
         Array.from({length: 10}, (_, i) => ({label: (i+1).toString(), value: (i+1).toString()})),
         (val) => {
             appState.settings.totalDays = parseInt(val);
-            renderSettings(); // Re-render to update the range of Today's Day Order
+            appState.settings.setupDone = true;
+            saveState(); // also redraws the timetable and Today's Day Order for the new number
+            showSetupSaved('setup-step-school');
         }
     );
 
     const total = parseInt(appState.settings.totalDays);
-    setupCustomDropdown('current-day-display', 'current-day-options', 'current-day-order', 
+    setupCustomDropdown('current-day-display', 'current-day-options', 'current-day-order',
         Array.from({length: total}, (_, i) => ({label: (i+1).toString(), value: (i+1).toString()})),
         (val) => {
             appState.settings.currentDayOrder = parseInt(val);
+            appState.settings.lastUpdatedDate = new Date().toDateString();
+            appState.settings.setupDone = true;
+            saveState();
+            showSetupSaved('setup-step-school');
         }
     );
 
@@ -1661,7 +1677,15 @@ function renderSettings() {
 
     // Initialize dropdowns after HTML is added
     for (const i of setupDayKeys()) {
-        setupCustomDropdown(`uniform-day-${i}-display`, `uniform-day-${i}-options`, `uniform-day-${i}`, uniformOptions);
+        setupCustomDropdown(`uniform-day-${i}-display`, `uniform-day-${i}-options`, `uniform-day-${i}`, uniformOptions, () => {
+            // Save every day as shown (the ones not picked yet show Regular Uniform)
+            for (const key of setupDayKeys()) {
+                const input = document.getElementById(`uniform-day-${key}`);
+                if (input) appState.uniforms[key] = input.value;
+            }
+            saveState();
+            showSetupSaved('setup-step-uniforms');
+        });
         const display = document.getElementById(`uniform-day-${i}-display`);
         if (display && appState.uniforms[i]) {
             display.classList.add('has-value');
@@ -1683,7 +1707,8 @@ function renderTimetable() {
     const container = document.getElementById('timetable-container');
     container.innerHTML = '';
 
-    const subOptions = SUBJECT_LIST.map(s => ({label: s, value: s}));
+    // "(empty)" clears a period that was filled by mistake
+    const subOptions = [{ label: '(empty)', value: '' }, ...SUBJECT_LIST.map(s => ({ label: s, value: s }))];
 
     for (const i of setupDayKeys()) {
         const daySubjects = appState.timetable[i] || ['', '', '', '', '', '', '', ''];
@@ -1712,8 +1737,10 @@ function renderTimetable() {
     // Initialize all timetable dropdowns
     for (const i of setupDayKeys()) {
         for (let j = 0; j < 8; j++) {
-            setupCustomDropdown(`day-${i}-sub-${j}-display`, `day-${i}-sub-${j}-options`, `day-${i}-sub-${j}`, subOptions, (val) => {
-                // Optional: handle immediate save or feedback
+            setupCustomDropdown(`day-${i}-sub-${j}-display`, `day-${i}-sub-${j}-options`, `day-${i}-sub-${j}`, subOptions, () => {
+                appState.timetable[i] = [...document.querySelectorAll(`.day-${i}-sub`)].map(input => input.value);
+                saveState();
+                showSetupSaved('setup-step-timetable');
             });
         }
     }
@@ -1803,6 +1830,7 @@ function renderDashboard() {
     // Uniform
     const unif = appState.uniforms[dayKey(tmrwDay)];
     document.getElementById('dash-uniform').innerText = unif ? unif : "Not set yet";
+    document.getElementById('dash-uniform-setup').hidden = !!unif;
 
     // Subjects & Books
     // Get ALL unique subjects to know our master list
@@ -1826,7 +1854,8 @@ function renderDashboard() {
     const packListEl = document.getElementById('dash-pack-list');
     packListEl.innerHTML = '';
     if (tmrwSubjects.size === 0) {
-        packListEl.innerHTML = '<li class="empty-state">No subjects set for tomorrow.</li>';
+        packListEl.innerHTML = '<li class="empty-state">No subjects set for this day order yet.</li>' +
+            '<li><button type="button" class="btn secondary-btn btn-sm dash-empty-action" data-goto="timetable">Fill in your timetable</button></li>';
     } else {
         tmrwSubjects.forEach(sub => {
             packListEl.innerHTML += `<li>${escapeHTML(sub)}</li>`;
@@ -1869,10 +1898,87 @@ function renderDashboard() {
     }
 
     renderHomeworkStreak();
+    renderOnboarding();
 
     renderExams();
     renderStudyPlan();
 }
+
+// --- Get started (dashboard) ---
+// The first things a new student should set up, each with a button that goes there. A step ticks
+// itself off once it's done; the card goes away when all are done or "Hide" is pressed.
+function gotoPage(tab, after) {
+    document.querySelector(`.dock-item[data-tab="${tab}"]`)?.click();
+    if (after) setTimeout(after, 50);
+}
+
+function onboardingSteps() {
+    const timetableFilled = Object.entries(appState.timetable || {})
+        .some(([key, list]) => key !== 'half' && (list || []).some(Boolean));
+    const steps = [
+        { id: 'school', label: 'Tell us how your school counts days', hint: 'How many day orders, and which one today is.',
+          done: !!appState.settings.setupDone || timetableFilled, go: () => gotoPage('timetable', () => showTimetableTab('school')) },
+        { id: 'timetable', label: 'Fill in your timetable', hint: 'So the dashboard knows which books to pack.',
+          done: timetableFilled, go: () => gotoPage('timetable', () => {
+              showTimetableTab('school');
+              document.getElementById('setup-step-timetable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }) },
+        { id: 'uniforms', label: 'Pick your uniforms', hint: 'Regular or sports, for each day order.',
+          done: Object.keys(appState.uniforms || {}).length > 0, go: () => gotoPage('timetable', () => {
+              showTimetableTab('school');
+              document.getElementById('setup-step-uniforms')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }) },
+        { id: 'homework', label: 'Add your homework', hint: 'You\'ll see what\'s due soon right here.',
+          done: !!appState.settings.addedHomework || appState.homework.length > 0, go: () => gotoPage('homework') }
+    ];
+    if (typeof isOnlineAccount === 'function' && isOnlineAccount()) {
+        steps.push({ id: 'class', label: 'Join your class', hint: 'Ask your class admin for the class code.',
+            done: (window.Classes?.classCount?.() || 0) > 0, go: () => gotoPage('classes') });
+    }
+    // The notification code is further down the file, so it may not be ready on the very first draw
+    let pushOn = null;
+    try {
+        if ('serviceWorker' in navigator && 'Notification' in window) pushOn = !!getPushPrefs().enabled;
+    } catch (e) { /* not ready yet: skip this step for now */ }
+    if (pushOn !== null) {
+        steps.push({ id: 'push', label: 'Turn on phone notifications', hint: 'For messages, class homework and reminders.',
+            done: pushOn, go: () => gotoPage('settings', () => {
+                document.getElementById('push-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }) });
+    }
+    return steps;
+}
+
+function renderOnboarding() {
+    const card = document.getElementById('onboarding-card');
+    if (!card || !appState.user) return;
+    const steps = onboardingSteps();
+    const doneCount = steps.filter(s => s.done).length;
+    card.hidden = !!appState.settings.onboardingHidden || doneCount === steps.length;
+    if (card.hidden) return;
+    document.getElementById('onboarding-progress').innerText = `${doneCount} of ${steps.length} done`;
+    const list = document.getElementById('onboarding-list');
+    list.innerHTML = steps.map(s => `
+        <li class="onboarding-step${s.done ? ' done' : ''}">
+            <span class="onboarding-check" aria-hidden="true">${s.done ? '✓' : ''}</span>
+            <span class="onboarding-text"><strong>${escapeHTML(s.label)}</strong><small>${escapeHTML(s.hint)}</small></span>
+            ${s.done ? '<span class="onboarding-done">Done</span>' : `<button type="button" class="btn secondary-btn btn-sm" data-step="${s.id}">Go</button>`}
+        </li>`).join('');
+    list.querySelectorAll('[data-step]').forEach(btn => {
+        btn.addEventListener('click', () => steps.find(s => s.id === btn.dataset.step)?.go());
+    });
+}
+
+document.getElementById('onboarding-hide')?.addEventListener('click', () => {
+    appState.settings.onboardingHidden = true;
+    saveState();
+});
+
+// Buttons in empty dashboard boxes ("Set your uniforms", "Fill in your timetable")
+document.getElementById('dash-uniform-setup')?.addEventListener('click', () => onboardingSteps().find(s => s.id === 'uniforms').go());
+document.getElementById('dash-pack-list')?.addEventListener('click', (e) => {
+    if (e.target.closest('[data-goto="timetable"]')) onboardingSteps().find(s => s.id === 'timetable').go();
+});
 
 // --- Homework streak ---
 // Counts the days in a row with no overdue homework. The streak starts the first day nothing is
@@ -1988,37 +2094,8 @@ function renderProfile() {
 
 // --- Action Bindings ---
 
-// Settings setup
-document.getElementById('save-school-setup').addEventListener('click', (e) => {
-    appState.settings.totalDays = document.getElementById('total-days').value;
-    appState.settings.currentDayOrder = document.getElementById('current-day-order').value;
-    saveState();
-    flashFeedback(e.target);
-});
-
-document.getElementById('save-uniforms-btn').addEventListener('click', (e) => {
-    for (const i of setupDayKeys()) {
-        const hiddenInput = document.getElementById(`uniform-day-${i}`);
-        if(hiddenInput) {
-            appState.uniforms[i] = hiddenInput.value;
-        }
-    }
-    saveState();
-    flashFeedback(e.target);
-});
-
-// Timetable setup
-document.getElementById('save-timetable-btn').addEventListener('click', (e) => {
-    for (const i of setupDayKeys()) {
-        let subs = [];
-        document.querySelectorAll(`.day-${i}-sub`).forEach(input => {
-            subs.push(input.value);
-        });
-        appState.timetable[i] = subs;
-    }
-    saveState();
-    flashFeedback(e.target);
-});
+// School setup, uniforms and the timetable save by themselves when something is picked
+// (see renderSettings and renderTimetable)
 
 
 // --- Home Schedule Logic ---
@@ -2201,7 +2278,8 @@ document.getElementById('homework-form').addEventListener('submit', (e) => {
         date: deadlineDate
     };
     appState.homework.push(hw);
-    
+    appState.settings.addedHomework = true; // "Get started" step done
+
     // Clear inputs
     document.getElementById('hw-task').value = '';
     const hiddenSub = document.getElementById('hw-subject');
