@@ -1168,26 +1168,22 @@
                         </div>
                         <div class="notebook-sidebar-head">
                             <h3>My notes</h3>
-                            <button id="btn-new-notebook" class="btn primary-btn icon-btn-small" title="New note" aria-label="New note">
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                            </button>
+                            <button type="button" id="btn-select-notes" class="btn ghost-btn btn-sm">Select</button>
                         </div>
-                        <div id="notebook-bulk-bar" class="bulk-bar" style="display: none;">
-                            <div class="bulk-bar-content">
-                                <label class="bulk-select-label">
-                                    <input type="checkbox" id="nb-select-all">
-                                    <span id="nb-selected-count">0 selected</span>
-                                </label>
-                                <div class="bulk-buttons-container">
-                                    <button id="btn-bulk-download" class="btn bulk-action-btn" title="Export selected">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
-                                        Export
-                                    </button>
-                                    <button id="btn-bulk-delete" class="btn bulk-action-btn" title="Delete selected">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/></svg>
-                                        Delete
-                                    </button>
-                                </div>
+                        <button type="button" id="btn-new-notebook" class="btn primary-btn btn-block nb-new-btn">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                            New note
+                        </button>
+                        <input type="search" id="notebook-search" class="nb-search" placeholder="Search notes" aria-label="Search notes">
+                        <!-- Only while "Select" is on: tick notes to export or delete them together -->
+                        <div id="notebook-bulk-bar" class="bulk-bar" hidden>
+                            <label class="bulk-select-label">
+                                <input type="checkbox" id="nb-select-all">
+                                <span id="nb-selected-count">0 selected</span>
+                            </label>
+                            <div class="bulk-buttons-container">
+                                <button type="button" id="btn-bulk-download" class="btn bulk-action-btn" title="Download the ticked notes as a text file">Download</button>
+                                <button type="button" id="btn-bulk-delete" class="btn bulk-action-btn bulk-danger" title="Delete the ticked notes">Delete</button>
                             </div>
                         </div>
                         <ul id="notebook-list" class="interactive-list notebook-list"></ul>
@@ -1196,18 +1192,15 @@
                     <div id="notebook-editor" class="notebook-editor card">
                         <div id="notebook-empty-state" class="soft-empty notebook-empty">
                             <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V10"/><path d="M18.4 3.6a1.9 1.9 0 0 1 2.7 2.7L13 14.4l-3.5.9.9-3.5z"/></svg>
-                            <p>Pick a note or create a new one to start writing.</p>
+                            <p id="notebook-empty-text">Pick a note on the left, or make a new one.</p>
+                            <button type="button" id="btn-empty-new-note" class="btn primary-btn">New note</button>
                         </div>
 
                         <div id="notebook-active-view" style="display: none;">
                             <div class="notebook-title-row">
-                                <input type="text" id="notebook-title" placeholder="Untitled note">
+                                <input type="text" id="notebook-title" placeholder="Give your note a title" aria-label="Note title">
                                 <div class="notebook-title-actions">
-                                    <button id="btn-fullscreen-notebook" class="btn secondary-btn btn-sm" title="Toggle full screen">
-                                        <svg id="fullscreen-expand-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                                        <svg id="fullscreen-collapse-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="display:none;"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
-                                        Full screen
-                                    </button>
+                                    <span id="notebook-saved" class="nb-saved" aria-live="polite">Saved</span>
                                     <!-- Send a copy of this note to a friend (shared_notes table) -->
                                     <div class="share-wrap">
                                         <button id="btn-share-notebook" class="btn secondary-btn btn-sm" aria-haspopup="true" aria-expanded="false">
@@ -1220,36 +1213,83 @@
                                             <p class="share-panel-hint">They get their own copy. Changes you make later aren't sent.</p>
                                         </div>
                                     </div>
-                                    <button id="btn-delete-notebook" class="btn danger-btn btn-sm">Delete</button>
+                                    <div class="nb-menu-wrap">
+                                        <button type="button" class="btn secondary-btn btn-sm nb-more-btn" data-menu="nb-more-menu" aria-haspopup="true" aria-expanded="false" aria-label="More options" title="More options">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                                        </button>
+                                        <div id="nb-more-menu" class="nb-menu nb-menu-right" role="menu" hidden>
+                                            <button type="button" role="menuitem" id="btn-fullscreen-notebook">
+                                                <svg id="fullscreen-expand-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                                                <svg id="fullscreen-collapse-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="display:none;"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                                                <span id="fullscreen-label">Full screen</span>
+                                            </button>
+                                            <button type="button" role="menuitem" id="btn-download-notebook">
+                                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+                                                Download as a text file
+                                            </button>
+                                            <button type="button" role="menuitem" id="btn-delete-notebook" class="nb-menu-danger">
+                                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/></svg>
+                                                Delete note
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
+                            <!-- One row of tools: AI help, flashcards, pictures, and reading text from a photo/PDF -->
                             <div class="notebook-toolbar">
-                                <button id="btn-ai-continue" class="btn secondary-btn btn-sm">
-                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>
-                                    Continue writing
-                                </button>
-                                <button id="btn-translate-english" class="btn secondary-btn btn-sm">Translate to English</button>
-                                <button id="btn-flashcards" class="btn secondary-btn btn-sm">
+                                <div class="nb-menu-wrap">
+                                    <button type="button" class="btn secondary-btn btn-sm nb-ai-btn" data-menu="nb-ai-menu" aria-haspopup="true" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+                                        AI helper
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                    </button>
+                                    <div id="nb-ai-menu" class="nb-menu" role="menu" hidden>
+                                        <button type="button" role="menuitem" id="btn-ai-continue"><strong>Continue writing</strong><small>Adds more to the end of your note</small></button>
+                                        <button type="button" role="menuitem" id="btn-translate-english"><strong>Translate to English</strong><small>Adds an English version below</small></button>
+                                        <button type="button" role="menuitem" id="btn-ai-ask"><strong>Ask AI to write something</strong><small>e.g. "Explain photosynthesis simply"</small></button>
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-flashcards" class="btn secondary-btn btn-sm">
                                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2.5"/><path d="M7 3.5h11.5A2.5 2.5 0 0 1 21 6v11"/></svg>
                                     Flashcards
                                 </button>
-                                <div class="ai-prompt-box">
-                                    <input type="text" id="notebook-ai-prompt" placeholder="Ask AI to write something...">
-                                    <button id="btn-ai-generate" class="btn primary-btn btn-sm">Generate</button>
+                                <div class="nb-menu-wrap">
+                                    <button type="button" class="btn secondary-btn btn-sm" data-menu="nb-picture-menu" aria-haspopup="true" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-9 9"/></svg>
+                                        Add picture
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                    </button>
+                                    <div id="nb-picture-menu" class="nb-menu" role="menu" hidden>
+                                        <button type="button" role="menuitem" id="btn-upload-image"><strong>From your device</strong><small>A photo or screenshot</small></button>
+                                        <button type="button" role="menuitem" id="btn-image-link"><strong>From a link</strong><small>Paste a picture's web address</small></button>
+                                    </div>
                                 </div>
+                                <button type="button" id="btn-scan-text" class="btn secondary-btn btn-sm" title="Reads the writing in a photo or PDF (Tamil and English) and adds it to your note">
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8 9.5h8M8 12h8M8 14.5h5"/></svg>
+                                    Get text from a photo or PDF
+                                </button>
+                                <input type="file" id="notebook-image-file" accept="image/*" hidden>
+                                <input type="file" id="notebook-scan-file" accept="image/*,application/pdf,.pdf" hidden>
                             </div>
 
-                            <textarea id="notebook-content" placeholder="Start writing here..."></textarea>
+                            <!-- Opened from "Ask AI to write something" or "From a link" -->
+                            <div id="nb-ask-row" class="nb-inline-row" hidden>
+                                <input type="text" id="notebook-ai-prompt" placeholder='What should the AI write? e.g. "Explain photosynthesis simply"'>
+                                <button type="button" id="btn-ai-generate" class="btn primary-btn btn-sm">Write it</button>
+                                <button type="button" class="btn ghost-btn btn-sm nb-row-close" data-close="nb-ask-row">Cancel</button>
+                            </div>
+                            <div id="nb-link-row" class="nb-inline-row" hidden>
+                                <input type="url" id="notebook-image-url" placeholder="Paste the picture's link (https://...)">
+                                <button type="button" id="btn-add-image" class="btn primary-btn btn-sm">Add</button>
+                                <button type="button" class="btn ghost-btn btn-sm nb-row-close" data-close="nb-link-row">Cancel</button>
+                            </div>
+                            <p id="notebook-status" class="nb-status" role="status" hidden></p>
+
+                            <textarea id="notebook-content" placeholder="Start writing here. Everything saves by itself."></textarea>
+                            <p class="nb-footer"><span id="notebook-word-count">0 words</span></p>
 
                             <div class="notebook-images">
-                                <div class="notebook-image-actions">
-                                    <input type="text" id="notebook-image-url" placeholder="Paste an image link (https://...)">
-                                    <button id="btn-add-image" class="btn secondary-btn btn-sm">Add image</button>
-                                    <input type="file" id="notebook-image-file" accept="image/*,application/pdf,.pdf" style="display: none;">
-                                    <button id="btn-upload-image" class="btn secondary-btn btn-sm" onclick="document.getElementById('notebook-image-file').click()">Upload image or PDF</button>
-                                    <button id="btn-ocr-images" class="btn primary-btn btn-sm">Extract text (Tamil / English)</button>
-                                </div>
                                 <!-- Shown after a PDF is picked: choose which pages to read -->
                                 <div id="pdf-ocr-panel" class="pdf-ocr-panel" hidden>
                                     <p class="pdf-ocr-file"><strong id="pdf-ocr-name"></strong> <span id="pdf-ocr-pages"></span></p>
@@ -1266,6 +1306,7 @@
                                         <button id="btn-pdf-ocr-cancel" class="btn secondary-btn btn-sm">Cancel</button>
                                     </div>
                                 </div>
+                                <p id="notebook-pictures-title" class="nb-pictures-title" hidden>Pictures</p>
                                 <div id="notebook-image-gallery" class="image-gallery"></div>
                             </div>
                         </div>

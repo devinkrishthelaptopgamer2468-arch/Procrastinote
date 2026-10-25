@@ -2270,6 +2270,7 @@ window.completeHomework = function(index, button) {
 
 // --- Notebook Logic ---
 let selectedNotebookIds = new Set();
+let notebookSelecting = false; // "Select" mode: tick notes to download or delete them together
 
 function updateBulkActionsBar() {
     const bulkBar = document.getElementById('notebook-bulk-bar');
@@ -2278,9 +2279,14 @@ function updateBulkActionsBar() {
     const bulkButtonsContainer = document.querySelector('.bulk-buttons-container');
 
     if (!bulkBar) return;
+    const selectBtn = document.getElementById('btn-select-notes');
+    if (selectBtn) {
+        selectBtn.innerText = notebookSelecting ? 'Done' : 'Select';
+        selectBtn.hidden = !(appState.notebooks && appState.notebooks.length > 0);
+    }
 
-    if (appState.notebooks && appState.notebooks.length > 0) {
-        bulkBar.style.display = 'block';
+    if (notebookSelecting && appState.notebooks && appState.notebooks.length > 0) {
+        bulkBar.hidden = false;
         if (selectedCountEl) {
             selectedCountEl.innerText = `${selectedNotebookIds.size} selected`;
         }
@@ -2295,13 +2301,173 @@ function updateBulkActionsBar() {
             }
         }
     } else {
-        bulkBar.style.display = 'none';
+        bulkBar.hidden = true;
         selectedNotebookIds.clear();
         if (bulkButtonsContainer) {
             bulkButtonsContainer.classList.remove('visible');
         }
     }
 }
+
+// --- Notebook: small helpers for the tidier page ---
+function activeNote() {
+    return appState.notebooks.find(n => n.id === appState.activeNotebookId);
+}
+
+// One status line under the toolbar for AI and text reading ("Translating...", errors)
+function setNoteStatus(text, isError = false) {
+    const el = document.getElementById('notebook-status');
+    if (!el) return;
+    el.hidden = !text;
+    el.innerText = text || '';
+    el.classList.toggle('error', isError);
+}
+
+function updateNoteWordCount(text) {
+    const el = document.getElementById('notebook-word-count');
+    if (!el) return;
+    const words = (text || '').trim() ? (text || '').trim().split(/\s+/).length : 0;
+    el.innerText = `${words} word${words === 1 ? '' : 's'}`;
+}
+
+// "Saving..." while typing, then "Saved" (notes save by themselves)
+let noteSavedTimer = null;
+function showNoteSaving() {
+    const el = document.getElementById('notebook-saved');
+    if (!el) return;
+    el.innerText = 'Saving...';
+    el.classList.add('saving');
+    clearTimeout(noteSavedTimer);
+    noteSavedTimer = setTimeout(() => {
+        el.innerText = 'Saved';
+        el.classList.remove('saving');
+    }, 700);
+}
+
+// Add text to the end of the open note and show it
+function appendToNote(note, text) {
+    note.content = (note.content || '').trimEnd() + (note.content ? '\n\n' : '') + text.trim() + '\n';
+    const contentInput = document.getElementById('notebook-content');
+    if (contentInput) contentInput.value = note.content;
+    saveState();
+}
+
+// Toolbar menus (AI helper, Add picture, More): open one at a time, close on outside click/Escape
+function closeNoteMenus(except) {
+    document.querySelectorAll('#notebook .nb-menu').forEach(menu => {
+        if (menu === except) return;
+        menu.hidden = true;
+        document.querySelector(`[data-menu="${menu.id}"]`)?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+document.querySelectorAll('#notebook [data-menu]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const menu = document.getElementById(btn.dataset.menu);
+        closeNoteMenus(menu);
+        menu.hidden = !menu.hidden;
+        btn.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+});
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.nb-menu')) closeNoteMenus();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeNoteMenus();
+});
+document.querySelectorAll('#notebook .nb-menu').forEach(menu => {
+    menu.addEventListener('click', (e) => {
+        if (e.target.closest('[role="menuitem"]')) closeNoteMenus();
+    });
+});
+
+document.getElementById('btn-select-notes')?.addEventListener('click', () => {
+    notebookSelecting = !notebookSelecting;
+    selectedNotebookIds.clear();
+    renderNotebooks();
+});
+
+document.getElementById('notebook-search')?.addEventListener('input', () => renderNotebooks());
+
+document.getElementById('btn-empty-new-note')?.addEventListener('click', () => {
+    document.getElementById('btn-new-notebook')?.click();
+});
+
+document.getElementById('btn-ai-ask')?.addEventListener('click', () => {
+    document.getElementById('nb-link-row').hidden = true;
+    document.getElementById('nb-ask-row').hidden = false;
+    document.getElementById('notebook-ai-prompt').focus();
+});
+
+document.getElementById('btn-image-link')?.addEventListener('click', () => {
+    document.getElementById('nb-ask-row').hidden = true;
+    document.getElementById('nb-link-row').hidden = false;
+    document.getElementById('notebook-image-url').focus();
+});
+
+document.querySelectorAll('#notebook .nb-row-close').forEach(btn => {
+    btn.addEventListener('click', () => { document.getElementById(btn.dataset.close).hidden = true; });
+});
+
+document.getElementById('notebook-ai-prompt')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-ai-generate')?.click();
+});
+
+document.getElementById('btn-upload-image')?.addEventListener('click', () => {
+    document.getElementById('notebook-image-file').click();
+});
+
+document.getElementById('btn-scan-text')?.addEventListener('click', () => {
+    document.getElementById('notebook-scan-file').click();
+});
+
+// Read the writing in a photo (Tamil + English) and add it to the note
+async function addTextFromPicture(note, source, label) {
+    setNoteStatus(`Reading the writing in ${label}... (this takes a few seconds)`);
+    try {
+        const { data: { text } } = await Tesseract.recognize(source, 'eng+tam');
+        const cleaned = cleanOcrText(text);
+        if (!cleaned) {
+            setNoteStatus(`No writing was found in ${label}. Try a clearer photo.`, true);
+            return;
+        }
+        appendToNote(note, `[Text from ${label}]\n${cleaned}`);
+        setNoteStatus(`Added the text from ${label} to the end of your note.`);
+    } catch (err) {
+        setNoteStatus(`Couldn't read ${label}: ${err.message}`, true);
+    }
+}
+
+document.getElementById('notebook-scan-file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    const note = activeNote();
+    if (!file || !note) return;
+    if (isPdfFile(file)) openPdfForOcr(file);
+    else if (file.type.startsWith('image/')) addTextFromPicture(note, file, 'the photo');
+    else setNoteStatus('Pick a photo or a PDF.', true);
+});
+
+// "Get text" on a picture already in the note: the picture stays
+document.getElementById('notebook-image-gallery')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.gallery-img-text');
+    const note = activeNote();
+    if (!btn || !note) return;
+    const index = Number(btn.dataset.picture);
+    addTextFromPicture(note, note.images[index], `picture ${index + 1}`);
+});
+
+document.getElementById('btn-download-notebook')?.addEventListener('click', () => {
+    const note = activeNote();
+    if (!note) return;
+    const blob = new Blob([`${note.title || 'Untitled note'}\n\n${note.content || ''}\n`], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(note.title || 'note').replace(/[\\/:*?"<>|]+/g, '').trim() || 'note'}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
 
 function renderNotebooks() {
     const listEl = document.getElementById('notebook-list');
@@ -2322,22 +2488,30 @@ function renderNotebooks() {
         if (!validIds.has(id)) selectedNotebookIds.delete(id);
     });
 
-    appState.notebooks.forEach(nb => {
+    // Search: by title or anything written in the note
+    const search = (document.getElementById('notebook-search')?.value || '').trim().toLowerCase();
+    const shown = search
+        ? appState.notebooks.filter(nb => `${nb.title || ''}\n${nb.content || ''}`.toLowerCase().includes(search))
+        : appState.notebooks;
+    document.querySelector('.notebook-sidebar')?.classList.toggle('selecting', notebookSelecting);
+
+    shown.forEach(nb => {
         const li = document.createElement('li');
         li.className = 'notebook-list-item' + (appState.activeNotebookId === nb.id ? ' active' : '');
-        
+
         const isChecked = selectedNotebookIds.has(nb.id);
-        
+        const preview = (nb.content || '').replace(/\s+/g, ' ').trim();
+
         li.innerHTML = `
-            <input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" ${isChecked ? 'checked' : ''}>
-            <div style="flex: 1; min-width: 0;" class="nb-item-click-target">
-                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${escapeHTML(nb.title || 'Untitled Note')}</h4>
-                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? escapeHTML(nb.content.substring(0, 30)) + '...' : 'No content'}</p>
+            ${notebookSelecting ? `<input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" aria-label="Select ${escapeHTML(nb.title || 'Untitled note')}" ${isChecked ? 'checked' : ''}>` : ''}
+            <div class="nb-item-click-target">
+                <h4>${escapeHTML(nb.title || 'Untitled note')}</h4>
+                <p>${preview ? escapeHTML(preview.substring(0, 60)) : 'Empty note'}</p>
             </div>
         `;
-        
+
         const checkbox = li.querySelector('.nb-item-checkbox');
-        checkbox.addEventListener('click', (e) => {
+        checkbox?.addEventListener('click', (e) => {
             e.stopPropagation();
             if (checkbox.checked) {
                 selectedNotebookIds.add(nb.id);
@@ -2346,15 +2520,24 @@ function renderNotebooks() {
             }
             updateBulkActionsBar();
         });
-        
-        const clickTarget = li.querySelector('.nb-item-click-target');
-        clickTarget.addEventListener('click', () => {
+
+        li.addEventListener('click', () => {
+            if (notebookSelecting) {
+                // While selecting, tapping a note ticks it
+                if (selectedNotebookIds.has(nb.id)) selectedNotebookIds.delete(nb.id);
+                else selectedNotebookIds.add(nb.id);
+                renderNotebooks();
+                return;
+            }
             appState.activeNotebookId = nb.id;
             saveState();
         });
 
         listEl.appendChild(li);
     });
+    if (search && shown.length === 0) {
+        listEl.innerHTML = '<li class="empty-state">No notes match your search.</li>';
+    }
 
     updateBulkActionsBar();
 
@@ -2363,27 +2546,34 @@ function renderNotebooks() {
     if (activeNb) {
         emptyState.style.display = 'none';
         activeView.style.display = 'flex';
-        
+
         if (document.activeElement !== titleInput) titleInput.value = activeNb.title;
         if (document.activeElement !== contentInput) contentInput.value = activeNb.content;
+        updateNoteWordCount(activeNb.content);
 
         galleryEl.innerHTML = '';
-        if (activeNb.images && activeNb.images.length > 0) {
-            activeNb.images.forEach((imgUrl, idx) => {
-                const container = document.createElement('div');
-                container.className = 'gallery-img-container';
-                container.innerHTML = `
-                    <img src="${escapeHTML(imgUrl)}" alt="Notebook Image">
-                    <button class="gallery-img-delete" onclick="deleteNotebookImage(${idx})">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                    </button>
-                `;
-                galleryEl.appendChild(container);
-            });
-        }
+        const pictures = activeNb.images || [];
+        document.getElementById('notebook-pictures-title').hidden = pictures.length === 0;
+        document.getElementById('notebook-pictures-title').innerText = `Pictures (${pictures.length})`;
+        pictures.forEach((imgUrl, idx) => {
+            const container = document.createElement('div');
+            container.className = 'gallery-img-container';
+            container.innerHTML = `
+                <img src="${escapeHTML(imgUrl)}" alt="Picture ${idx + 1} in this note">
+                <button type="button" class="gallery-img-text" data-picture="${idx}" title="Read the writing in this picture and add it to your note">Get text</button>
+                <button type="button" class="gallery-img-delete" onclick="deleteNotebookImage(${idx})" aria-label="Delete this picture" title="Delete this picture">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            `;
+            galleryEl.appendChild(container);
+        });
     } else {
         emptyState.style.display = 'block';
         activeView.style.display = 'none';
+        const none = appState.notebooks.length === 0;
+        document.getElementById('notebook-empty-text').innerText = none
+            ? 'No notes yet. Make your first one: type, add pictures, or get the text from a photo or PDF.'
+            : 'Pick a note on the left, or make a new one.';
     }
     if (typeof renderSharedNotes === 'function') renderSharedNotes();
 }
@@ -2393,12 +2583,16 @@ document.getElementById('btn-new-notebook')?.addEventListener('click', () => {
     const newId = 'nb_' + Date.now();
     appState.notebooks.unshift({
         id: newId,
-        title: 'New Note',
+        title: '',
         content: '',
         images: []
     });
     appState.activeNotebookId = newId;
+    notebookSelecting = false;
+    const search = document.getElementById('notebook-search');
+    if (search) search.value = '';
     saveState();
+    document.getElementById('notebook-title')?.focus(); // type the title straight away
 });
 
 // Fullscreen Notebook toggle
@@ -2418,6 +2612,8 @@ document.getElementById('btn-fullscreen-notebook')?.addEventListener('click', ()
         if (expandIcon) expandIcon.style.display = 'inline-block';
         if (collapseIcon) collapseIcon.style.display = 'none';
     }
+    const label = document.getElementById('fullscreen-label');
+    if (label) label.innerText = isFullscreen ? 'Exit full screen' : 'Full screen';
 });
 
 // Select All notes
@@ -2441,6 +2637,7 @@ document.getElementById('btn-bulk-delete')?.addEventListener('click', () => {
             appState.activeNotebookId = null;
         }
         selectedNotebookIds.clear();
+        notebookSelecting = false;
         saveState();
         renderNotebooks();
     });
@@ -2526,6 +2723,7 @@ document.getElementById('notebook-title')?.addEventListener('input', (e) => {
     const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
     if (activeNb) {
         activeNb.title = e.target.value;
+        showNoteSaving();
         saveState();
     }
 });
@@ -2534,6 +2732,8 @@ document.getElementById('notebook-content')?.addEventListener('input', (e) => {
     const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
     if (activeNb) {
         activeNb.content = e.target.value;
+        showNoteSaving();
+        updateNoteWordCount(activeNb.content);
         saveState();
     }
 });
@@ -2547,6 +2747,7 @@ document.getElementById('btn-add-image')?.addEventListener('click', () => {
             if (!activeNb.images) activeNb.images = [];
             activeNb.images.push(url);
             urlInput.value = '';
+            document.getElementById('nb-link-row').hidden = true;
             saveState();
             renderNotebooks();
         }
@@ -2607,114 +2808,55 @@ window.deleteNotebookImage = function(index) {
     });
 }
 
-// AI Assist Logic
-document.getElementById('btn-ai-continue')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.content) {
-        alert("Write something first so AI has context!");
+// AI Assist Logic: each one adds its answer to the end of the note, with progress in the status line
+async function runNoteAI(busyText, doneText, makePrompt, label) {
+    const note = activeNote();
+    if (!note) return;
+    const prompt = makePrompt(note);
+    if (!prompt) return;
+    setNoteStatus(busyText);
+    const response = await callGroq(prompt);
+    if (/^(API Error|I need an API key|I'm having trouble)/.test(response)) {
+        setNoteStatus(response.replace(/^API Error:\s*/, ''), true);
         return;
     }
-    const btn = document.getElementById('btn-ai-continue');
-    const origText = btn.innerHTML;
-    btn.innerHTML = 'Writing...';
-    btn.disabled = true;
+    appendToNote(note, label ? `${label}\n${response}` : response);
+    setNoteStatus(doneText);
+}
 
-    const prompt = `Continue the following notes. Add new relevant information to extend the ideas organically. IMPORTANT: Do not include any conversational filler, greetings, or acknowledgements. Just output the continuation text directly:\n\n${activeNb.content}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += '\n\n' + response;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
-    saveState();
-
-    btn.innerHTML = origText;
-    btn.disabled = false;
+document.getElementById('btn-ai-continue')?.addEventListener('click', () => {
+    runNoteAI('Procrastinote AI is writing more...', 'Added more to the end of your note.', note => {
+        if (!(note.content || '').trim()) {
+            setNoteStatus('Write something first, so the AI knows what to continue.', true);
+            return null;
+        }
+        return `Continue the following notes. Add new relevant information to extend the ideas organically. IMPORTANT: Do not include any conversational filler, greetings, or acknowledgements. Just output the continuation text directly:\n\n${note.content}`;
+    });
 });
 
-document.getElementById('btn-ai-generate')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb) return;
-    
+document.getElementById('btn-ai-generate')?.addEventListener('click', () => {
     const promptInput = document.getElementById('notebook-ai-prompt');
     const query = promptInput.value.trim();
     if (!query) {
-        alert("Enter a prompt for the AI.");
+        promptInput.focus();
         return;
     }
-
-    const btn = document.getElementById('btn-ai-generate');
-    const origText = btn.innerText;
-    btn.innerText = '...';
-    btn.disabled = true;
-
-    const context = activeNb.content ? ` Context from notes: "${activeNb.content.substring(0, 500)}"` : '';
-    const prompt = `The user is writing notes. They asked: "${query}". Generate a helpful response to insert into their notes.${context}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += `\n\n[AI: ${query}]\n${response}\n`;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
     promptInput.value = '';
-    saveState();
-
-    btn.innerText = origText;
-    btn.disabled = false;
+    document.getElementById('nb-ask-row').hidden = true;
+    runNoteAI('Procrastinote AI is writing...', 'Added the answer to the end of your note.', note => {
+        const context = note.content ? ` Context from notes: "${note.content.substring(0, 500)}"` : '';
+        return `The user is writing notes. They asked: "${query}". Generate a helpful response to insert into their notes.${context}`;
+    }, `[AI: ${query}]`);
 });
 
-document.getElementById('btn-translate-english')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.content) {
-        alert("Write something first to translate!");
-        return;
-    }
-    const btn = document.getElementById('btn-translate-english');
-    const origText = btn.innerText;
-    btn.innerText = 'Translating...';
-    btn.disabled = true;
-
-    const prompt = `Translate the following notes into English. IMPORTANT: Just output the translated text directly, without any conversational filler, greetings, or acknowledgements:\n\n${activeNb.content}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += `\n\n[Translation to English]\n${response}\n`;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
-    saveState();
-
-    btn.innerText = origText;
-    btn.disabled = false;
-});
-
-document.getElementById('btn-ocr-images')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.images || activeNb.images.length === 0) {
-        alert("Add some images to extract text from!");
-        return;
-    }
-    const btn = document.getElementById('btn-ocr-images');
-    const origText = btn.innerText;
-    btn.innerText = 'Extracting...';
-    btn.disabled = true;
-
-    try {
-        let extractedText = '';
-        for (let i = 0; i < activeNb.images.length; i++) {
-            const imgUrl = activeNb.images[i];
-            const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng+tam');
-            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${cleanOcrText(text)}\n`;
+document.getElementById('btn-translate-english')?.addEventListener('click', () => {
+    runNoteAI('Translating your note into English...', 'Added the English version to the end of your note.', note => {
+        if (!(note.content || '').trim()) {
+            setNoteStatus('Write something first, then translate it.', true);
+            return null;
         }
-        
-        activeNb.content += `\n\n[OCR Extraction]\n${extractedText}\n`;
-        activeNb.images = [];
-        const contentInput = document.getElementById('notebook-content');
-        if (contentInput) contentInput.value = activeNb.content;
-        saveState();
-        renderNotebooks();
-    } catch (e) {
-        alert("Error during OCR: " + e.message);
-    }
-
-    btn.innerText = origText;
-    btn.disabled = false;
+        return `Translate the following notes into English. IMPORTANT: Just output the translated text directly, without any conversational filler, greetings, or acknowledgements:\n\n${note.content}`;
+    }, '[Translation to English]');
 });
 
 // --- Flashcards from a note ---
@@ -3113,6 +3255,7 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
         readPdfOcrRange();
     } else {
         closePdfOcrPanel();
+        setNoteStatus(`Added the text from ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} of ${doc.name} to the end of your note.`);
     }
 });
 // --- Theme Toggle Logic ---

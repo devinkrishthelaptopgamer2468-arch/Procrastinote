@@ -4429,6 +4429,11 @@ li.completing .done-check {
 }
 
 .bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     padding: 0.55rem 0.65rem;
     margin-bottom: 0.75rem;
     border-radius: 12px;
@@ -4436,12 +4441,219 @@ li.completing .done-check {
     animation: bubbleIn 0.3s var(--ease-out) both;
 }
 
-.bulk-bar-content {
+.bulk-bar[hidden] {
+    display: none;
+}
+
+/* Sidebar: New note, search, and the notes list */
+.nb-new-btn {
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: 0.65rem;
+}
+
+.nb-search {
+    width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 10px;
+}
+
+.notebook-list-item {
+    cursor: pointer;
+}
+
+.nb-item-click-target {
+    flex: 1;
+    min-width: 0;
+}
+
+.nb-item-click-target h4,
+.nb-item-click-target p {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* "Saved" next to the title (notes save by themselves) */
+.nb-saved {
+    align-self: center;
+    color: var(--text-3, var(--text-secondary));
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.nb-saved::before {
+    content: "✓ ";
+}
+
+.nb-saved.saving::before {
+    content: "";
+}
+
+/* Toolbar menus: AI helper, Add picture, More */
+.nb-menu-wrap {
+    position: relative;
+}
+
+.nb-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 85;
+    display: grid;
+    min-width: 250px;
+    padding: 0.4rem;
+    border-radius: var(--radius-lg, 16px);
+    background: var(--surface-solid);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-lg);
+}
+
+.nb-menu[hidden] {
+    display: none;
+}
+
+.nb-menu-right {
+    left: auto;
+    right: 0;
+}
+
+.nb-menu [role="menuitem"] {
     display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+/* Items with an icon (More menu) sit in one line */
+.nb-menu-right [role="menuitem"] {
+    flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.nb-menu [role="menuitem"]:hover,
+.nb-menu [role="menuitem"]:focus-visible {
+    background: var(--inset-hover);
+}
+
+.nb-menu [role="menuitem"] small {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.nb-menu .nb-menu-danger {
+    color: var(--danger);
+}
+
+.nb-more-btn {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+}
+
+/* Phones: menus open as a sheet above the dock, so they never run off the screen */
+@media (max-width: 820px) {
+    .nb-menu,
+    .nb-menu-right {
+        position: fixed;
+        top: auto;
+        left: 16px;
+        right: 16px;
+        bottom: 96px;
+        min-width: 0;
+    }
+}
+
+/* "Ask AI" and "picture link" rows, opened from the menus */
+.nb-inline-row {
+    display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+}
+
+.nb-inline-row[hidden] {
+    display: none;
+}
+
+.nb-inline-row input {
+    flex: 1 1 240px;
+    min-width: 0;
+    padding: 0.55rem 0.85rem;
+    border-radius: 10px;
+}
+
+.nb-status {
+    padding: 0.6rem 0.85rem;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    font-size: 0.88rem;
+}
+
+.nb-status.error {
+    background: var(--danger-soft);
+}
+
+.nb-status[hidden] {
+    display: none;
+}
+
+.nb-footer {
+    margin: -0.5rem 0 0;
+    color: var(--text-3, var(--text-secondary));
+    font-size: 0.78rem;
+    text-align: right;
+}
+
+.nb-pictures-title {
+    margin-bottom: 0.6rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.nb-pictures-title[hidden] {
+    display: none;
+}
+
+/* "Get text" on each picture: reads it into the note and keeps the picture */
+.gallery-img-text {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    padding: 0.25rem 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #FFFFFF;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.gallery-img-text:hover {
+    background: var(--accent);
+}
+
+/* Phones have no hover: keep the delete button visible */
+@media (hover: none) {
+    .gallery-img-delete {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 .bulk-select-label {
@@ -4692,6 +4904,11 @@ li.completing .done-check {
     margin-top: auto;
     padding-top: 1rem;
     border-top: 1px solid var(--hairline);
+}
+
+/* No pictures and no PDF being read: nothing to show below the writing */
+.notebook-images:not(:has(.gallery-img-container)):not(:has(.pdf-ocr-panel:not([hidden]))) {
+    display: none;
 }
 
 .notebook-image-actions {
