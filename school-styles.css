@@ -5439,6 +5439,60 @@ li.completing .done-check {
     cursor: default;
 }
 
+/* Import a photo/PDF from chat into the Notebook or Exams (for devices that can't pick files) */
+.chat-file-import {
+    align-self: flex-start;
+}
+
+.chat-file-import-btn {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.chat-file-import-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.chat-file-import-menu {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.4rem;
+    padding: 0.35rem;
+    border-radius: 12px;
+    background: var(--surface-solid);
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-lg);
+    color: var(--text);
+}
+
+.chat-file-import-menu[hidden] {
+    display: none;
+}
+
+.chat-file-import-menu button {
+    padding: 0.5rem 0.7rem;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.chat-file-import-menu button:hover,
+.chat-file-import-menu button:focus-visible {
+    background: var(--inset-hover);
+}
+
 .chat-typing-indicator {
     display: flex;
     align-items: center;

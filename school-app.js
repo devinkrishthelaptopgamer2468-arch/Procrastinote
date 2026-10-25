@@ -831,10 +831,14 @@ function setExamTimetableStatus(text, isError = false) {
     el.classList.toggle('error', isError);
 }
 
-document.getElementById('exam-tt-file')?.addEventListener('change', async (e) => {
+document.getElementById('exam-tt-file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
     e.target.value = ''; // the same file can be picked again
-    if (!file) return;
+    if (file) readExamTimetableFile(file);
+});
+
+// Read a timetable photo/PDF into the review table (from the file box, or imported from a chat)
+async function readExamTimetableFile(file) {
     const series = document.getElementById('exam-tt-series').value.trim();
     closeExamReview();
     const label = document.querySelector('.exam-file-btn');
@@ -865,7 +869,7 @@ document.getElementById('exam-tt-file')?.addEventListener('change', async (e) =>
     } finally {
         label.classList.remove('busy');
     }
-});
+}
 
 document.getElementById('exam-review-list')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.er-remove');
@@ -6044,7 +6048,94 @@ function buildChatFile(file) {
         download.disabled = false;
     });
     box.appendChild(download);
+    if (file.type.startsWith('image/') || file.type === 'application/pdf') box.appendChild(buildChatFileImport(file));
     return box;
+}
+
+// --- Import a chat file into the Notebook or Exams ---
+// Some devices (like an Xbox) can't pick files from storage, so a photo or PDF a friend sent
+// can be used straight from the chat: as a picture in a new note, as text read into a new note,
+// or as an exam timetable.
+function buildChatFileImport(file) {
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-file-import';
+    const isImage = file.type.startsWith('image/');
+    const options = [
+        ...(isImage ? [['picture', 'Add picture to a new note']] : []),
+        ['text', 'Get the text into a new note'],
+        ['exams', 'Use as an exam timetable']
+    ];
+    wrap.innerHTML = `
+        <button type="button" class="chat-file-import-btn" aria-expanded="false">Import ▾</button>
+        <div class="chat-file-import-menu" hidden>
+            ${options.map(([act, label]) => `<button type="button" data-import="${act}">${label}</button>`).join('')}
+        </div>`;
+    const toggle = wrap.querySelector('.chat-file-import-btn');
+    const menu = wrap.querySelector('.chat-file-import-menu');
+    toggle.addEventListener('click', () => {
+        menu.hidden = !menu.hidden;
+        toggle.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+    menu.addEventListener('click', async (e) => {
+        const choice = e.target.closest('[data-import]')?.dataset.import;
+        if (!choice) return;
+        menu.hidden = true;
+        toggle.disabled = true;
+        toggle.innerText = 'Opening...';
+        try {
+            await importChatFile(file, choice);
+        } catch (err) {
+            alert(`Couldn't import ${file.name}: ${err.message}`);
+        }
+        toggle.disabled = false;
+        toggle.innerText = 'Import ▾';
+    });
+    return wrap;
+}
+
+// Fetch the shared file (it's private: a short-lived signed link) as a File in the page
+async function fetchChatFile(file) {
+    const res = await fetch(await getFileUrl(file.path));
+    if (!res.ok) throw new Error('the file couldn\'t be opened');
+    const blob = await res.blob();
+    return new File([blob], file.name, { type: file.type });
+}
+
+function newNoteFromImport(title) {
+    const id = 'nb_' + Date.now();
+    appState.notebooks = appState.notebooks || [];
+    appState.notebooks.unshift({ id, title: title.slice(0, 80), content: '', images: [] });
+    appState.activeNotebookId = id;
+    return appState.notebooks[0];
+}
+
+async function importChatFile(file, choice) {
+    const local = await fetchChatFile(file);
+    const title = file.name.replace(/\.[a-z0-9]+$/i, '');
+    if (choice === 'exams') {
+        document.querySelector('.dock-item[data-tab="exams"]')?.click();
+        readExamTimetableFile(local);
+        return;
+    }
+    const note = newNoteFromImport(title);
+    saveState();
+    document.querySelector('.dock-item[data-tab="notebook"]')?.click();
+    if (choice === 'picture') {
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('the picture couldn\'t be read'));
+            reader.readAsDataURL(local);
+        });
+        note.images.push(await shrinkImage(dataUrl));
+        saveState();
+        setNoteStatus(`Added ${file.name} to a new note. Press "Get text" on it to read its writing.`);
+    } else if (isPdfFile(local)) {
+        openPdfForOcr(local); // pick the pages to read
+        setNoteStatus(`Pick which pages of ${file.name} to read, then press "Extract text from these pages".`);
+    } else {
+        await addTextFromPicture(note, local, file.name);
+    }
 }
 
 async function sendChatFile(file) {
