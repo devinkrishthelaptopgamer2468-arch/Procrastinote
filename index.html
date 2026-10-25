@@ -238,6 +238,33 @@
         </div>
     </div>
 
+    <!-- Flashcards made from the open note (Notebook > Flashcards) -->
+    <div id="flashcard-overlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="flashcard-title" style="display: none;">
+        <div class="login-box flashcard-box">
+            <button type="button" class="auth-back" id="flashcard-close" aria-label="Close flashcards">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+            </button>
+            <h2 id="flashcard-title">Flashcards</h2>
+            <p id="flashcard-sub" class="flashcard-sub"></p>
+            <p id="flashcard-status" class="exam-tt-status" role="status" hidden></p>
+            <div id="flashcard-deck" class="flashcard-deck" hidden>
+                <button type="button" id="flashcard-card" class="flashcard" aria-live="polite">
+                    <span class="flashcard-inner">
+                        <span class="flashcard-face flashcard-front"><small>Question</small><span id="flashcard-q"></span></span>
+                        <span class="flashcard-face flashcard-back"><small>Answer</small><span id="flashcard-a"></span></span>
+                    </span>
+                </button>
+                <p class="flashcard-hint">Tap the card to flip it</p>
+                <div class="flashcard-nav">
+                    <button type="button" id="flashcard-prev" class="btn secondary-btn">Previous</button>
+                    <span id="flashcard-count" class="flashcard-count"></span>
+                    <button type="button" id="flashcard-next" class="btn primary-btn">Next</button>
+                </div>
+                <button type="button" id="flashcard-remake" class="btn ghost-btn btn-sm flashcard-remake">Make new cards</button>
+            </div>
+        </div>
+    </div>
+
     <!-- About the creator: opened from "Created by Devin Krish" on the welcome page (not on the dock) -->
     <div id="about-me-overlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="about-me-title" style="display: none;">
         <div class="login-box about-me-box">
@@ -450,6 +477,7 @@
                             <h3>Due soon</h3>
                         </div>
                         <ul id="dash-homework-list"></ul>
+                        <p id="dash-streak" class="homework-streak"></p>
                     </div>
 
                     <div class="card tile study-plan-card">
@@ -933,6 +961,28 @@
                         <datalist id="exam-subject-names"></datalist>
                     </div>
 
+                    <!-- Marks tracker: marks per subject over the term, as a chart -->
+                    <div class="card marks-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5h16"/><path d="m5 15 4.5-4.5 3.5 3L19 7"/><path d="M15 7h4v4"/></svg></span>
+                            <h3>Marks tracker</h3>
+                        </div>
+                        <form id="marks-form" class="marks-form">
+                            <input type="text" id="marks-subject" maxlength="40" placeholder="Subject" aria-label="Subject" list="exam-subject-names">
+                            <input type="text" id="marks-test" maxlength="40" placeholder="Test, e.g. Revision Exam 3" aria-label="Test" list="exam-series-names">
+                            <span class="marks-score">
+                                <input type="number" id="marks-score" min="0" step="0.5" placeholder="Marks" aria-label="Marks you got">
+                                <span aria-hidden="true">/</span>
+                                <input type="number" id="marks-outof" min="1" step="0.5" value="100" aria-label="Out of">
+                            </span>
+                            <input type="date" id="marks-date" aria-label="Date of the test">
+                            <button type="submit" class="btn primary-btn">Add marks</button>
+                        </form>
+                        <div id="marks-filter" class="marks-filter" role="group" aria-label="Show subject"></div>
+                        <div id="marks-chart" class="marks-chart"></div>
+                        <ul id="marks-list" class="exam-rows marks-list"></ul>
+                    </div>
+
                     <div id="exam-series-list" class="exam-series-list"></div>
                 </div>
             </section>
@@ -1180,6 +1230,10 @@
                                     Continue writing
                                 </button>
                                 <button id="btn-translate-english" class="btn secondary-btn btn-sm">Translate to English</button>
+                                <button id="btn-flashcards" class="btn secondary-btn btn-sm">
+                                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="14" rx="2.5"/><path d="M7 3.5h11.5A2.5 2.5 0 0 1 21 6v11"/></svg>
+                                    Flashcards
+                                </button>
                                 <div class="ai-prompt-box">
                                     <input type="text" id="notebook-ai-prompt" placeholder="Ask AI to write something...">
                                     <button id="btn-ai-generate" class="btn primary-btn btn-sm">Generate</button>

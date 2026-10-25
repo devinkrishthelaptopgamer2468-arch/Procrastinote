@@ -82,7 +82,7 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
@@ -113,6 +113,8 @@ let defaultState = {
     halfdayDates: {}, // e.g. { "2026-10-19": true }: a half day (half-day Day Order and study plan)
     occasions: {}, // e.g. { "2026-11-14": "Sports Day" }: reminded the day before
     exams: [], // e.g. [{ id, subject: "Chemistry", name: "test", date: "2026-10-27", addedOn: "2026-10-20" }]
+    streak: { start: null, best: 0 }, // homework streak: since when nothing has been overdue
+    marks: [], // e.g. [{ id, subject: "Physics", test: "Revision Exam 3", score: 42, outOf: 50, date: "2026-11-12" }]
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -158,6 +160,8 @@ function saveState() {
                 halfdayDates: appState.halfdayDates || {},
                 occasions: appState.occasions || {},
                 exams: appState.exams || [],
+                streak: appState.streak || { start: null, best: 0 },
+                marks: appState.marks || [],
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -1023,6 +1027,139 @@ function renderExamsPage() {
     }).join('');
 }
 
+// --- Marks tracker (Exams page) ---
+// Marks per subject over the term. "All subjects" shows each subject's average as a bar;
+// one subject shows a line of its tests in date order. Values are percentages.
+let marksView = 'all';
+
+const markPercent = m => (m.outOf > 0 ? Math.round((m.score / m.outOf) * 1000) / 10 : 0);
+const svgText = text => escapeHTML(String(text));
+
+function marksBarChart(marks) {
+    const bySubject = new Map();
+    marks.forEach(m => {
+        if (!bySubject.has(m.subject)) bySubject.set(m.subject, []);
+        bySubject.get(m.subject).push(markPercent(m));
+    });
+    const rows = [...bySubject.entries()]
+        .map(([subject, list]) => ({ subject, avg: Math.round(list.reduce((a, b) => a + b, 0) / list.length), n: list.length }))
+        .sort((a, b) => b.avg - a.avg);
+    const width = 640, labelW = 130, valueW = 48, rowH = 34, top = 8;
+    const plotW = width - labelW - valueW;
+    const height = top + rows.length * rowH + 20;
+    const x = pct => labelW + (pct / 100) * plotW;
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Average marks by subject">`;
+    [0, 50, 100].forEach(p => {
+        svg += `<line class="marks-grid" x1="${x(p)}" x2="${x(p)}" y1="${top}" y2="${height - 18}"/>` +
+            `<text class="marks-axis" x="${x(p)}" y="${height - 4}" text-anchor="middle">${p}%</text>`;
+    });
+    rows.forEach((r, i) => {
+        const y = top + i * rowH + 7;
+        svg += `<g class="marks-bar-row"><title>${svgText(r.subject)}: average ${r.avg}% over ${r.n} test${r.n === 1 ? '' : 's'}</title>` +
+            `<rect class="marks-hit" x="0" y="${y - 7}" width="${width}" height="${rowH}"/>` +
+            `<text class="marks-label" x="${labelW - 10}" y="${y + 14}" text-anchor="end">${svgText(r.subject.length > 16 ? r.subject.slice(0, 15) + '…' : r.subject)}</text>` +
+            `<rect class="marks-bar" x="${labelW}" y="${y}" width="${Math.max(4, x(r.avg) - labelW)}" height="20" rx="4"/>` +
+            `<text class="marks-value" x="${x(r.avg) + 8}" y="${y + 14}">${r.avg}%</text></g>`;
+    });
+    return svg + '</svg>';
+}
+
+function marksLineChart(marks) {
+    const width = 640, height = 240, left = 44, right = 24, top = 18, bottom = 46;
+    const plotW = width - left - right, plotH = height - top - bottom;
+    const x = i => left + (marks.length === 1 ? plotW / 2 : (i / (marks.length - 1)) * plotW);
+    const y = pct => top + (1 - pct / 100) * plotH;
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Marks over the term">`;
+    [0, 25, 50, 75, 100].forEach(p => {
+        svg += `<line class="marks-grid" x1="${left}" x2="${width - right}" y1="${y(p)}" y2="${y(p)}"/>` +
+            `<text class="marks-axis" x="${left - 8}" y="${y(p) + 4}" text-anchor="end">${p}%</text>`;
+    });
+    if (marks.length > 1) {
+        svg += `<polyline class="marks-line" points="${marks.map((m, i) => `${x(i)},${y(markPercent(m))}`).join(' ')}"/>`;
+    }
+    // Only a few x labels, so they never run into each other
+    const step = Math.ceil(marks.length / 6);
+    marks.forEach((m, i) => {
+        const pct = markPercent(m);
+        const date = parseDay(m.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        svg += `<g class="marks-point"><title>${svgText(m.test || 'Test')} · ${svgText(date)}: ${m.score}/${m.outOf} (${pct}%)</title>` +
+            `<circle class="marks-hit" cx="${x(i)}" cy="${y(pct)}" r="14"/>` +
+            `<circle class="marks-dot" cx="${x(i)}" cy="${y(pct)}" r="5"/></g>`;
+        if (i % step === 0 || i === marks.length - 1) {
+            svg += `<text class="marks-axis" x="${x(i)}" y="${height - 26}" text-anchor="middle">${svgText(date)}</text>`;
+        }
+    });
+    const last = marks[marks.length - 1];
+    svg += `<text class="marks-value" x="${x(marks.length - 1)}" y="${y(markPercent(last)) - 12}" text-anchor="${marks.length === 1 ? 'middle' : 'end'}">${markPercent(last)}%</text>`;
+    return svg + '</svg>';
+}
+
+function renderMarks() {
+    const chart = document.getElementById('marks-chart');
+    if (!chart) return;
+    const all = (appState.marks || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+    const subjects = [...new Set(all.map(m => m.subject))].sort();
+    if (marksView !== 'all' && !subjects.includes(marksView)) marksView = 'all';
+
+    const filter = document.getElementById('marks-filter');
+    filter.innerHTML = subjects.length < 2 ? '' : ['all', ...subjects].map(s =>
+        `<button type="button" class="marks-pill${s === marksView ? ' active' : ''}" data-subject="${escapeHTML(s)}" aria-pressed="${s === marksView}">${s === 'all' ? 'All subjects' : escapeHTML(s)}</button>`).join('');
+
+    const shown = marksView === 'all' ? all : all.filter(m => m.subject === marksView);
+    if (shown.length === 0) {
+        chart.innerHTML = '<p class="empty-state">Add your marks above to see how you\'re doing over the term.</p>';
+    } else if (marksView === 'all' && subjects.length > 1) {
+        chart.innerHTML = `<p class="marks-chart-title">Average by subject</p>${marksBarChart(shown)}`;
+    } else {
+        chart.innerHTML = `<p class="marks-chart-title">${escapeHTML(shown[0].subject)} over the term</p>${marksLineChart(shown)}`;
+    }
+
+    // The table view of the same marks, newest first
+    document.getElementById('marks-list').innerHTML = shown.slice().reverse().map(m => `
+        <li class="exam-row">
+            <span class="exam-row-date">${parseDay(m.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+            <span class="exam-row-main">
+                <strong>${escapeHTML(m.subject)}</strong>
+                ${m.test ? `<span>${escapeHTML(m.test)}</span>` : ''}
+            </span>
+            <span class="exam-row-when">${m.score}/${m.outOf} · ${markPercent(m)}%</span>
+            <button type="button" class="exam-remove" data-mark="${escapeHTML(m.id)}" aria-label="Remove these marks" title="Remove">×</button>
+        </li>`).join('');
+}
+
+document.getElementById('marks-filter')?.addEventListener('click', (e) => {
+    const pill = e.target.closest('.marks-pill');
+    if (!pill) return;
+    marksView = pill.dataset.subject;
+    renderMarks();
+});
+
+document.getElementById('marks-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mark]');
+    if (!btn) return;
+    appState.marks = (appState.marks || []).filter(m => m.id !== btn.dataset.mark);
+    saveState();
+});
+
+document.getElementById('marks-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = normaliseExamSubject(document.getElementById('marks-subject').value);
+    const score = parseFloat(document.getElementById('marks-score').value);
+    const outOf = parseFloat(document.getElementById('marks-outof').value);
+    const date = document.getElementById('marks-date').value || formatDateString(new Date());
+    if (!subject) return alert('Type the subject.');
+    if (!(outOf > 0)) return alert('"Out of" must be more than 0.');
+    if (!(score >= 0) || score > outOf) return alert(`Type the marks you got (0 to ${outOf}).`);
+    if (!Array.isArray(appState.marks)) appState.marks = [];
+    appState.marks.push({
+        id: 'mk_' + Date.now(), subject, score, outOf, date,
+        test: document.getElementById('marks-test').value.trim().slice(0, 40)
+    });
+    marksView = marksView === 'all' ? 'all' : subject;
+    ['marks-subject', 'marks-score', 'marks-test'].forEach(id => { document.getElementById(id).value = ''; });
+    saveState();
+});
+
 document.getElementById('exam-series-list')?.addEventListener('click', (e) => {
     const remove = e.target.closest('.exam-remove');
     if (remove) {
@@ -1452,6 +1589,7 @@ function renderAllViews() {
     updateRobotExpression();
     renderCalendar();
     renderExamsPage();
+    renderMarks();
     renderEmailJSSettings();
     if (typeof renderFriends === 'function') {
         renderFriends();
@@ -1758,9 +1896,44 @@ function renderDashboard() {
         hwList.innerHTML = '<li class="empty-state">Nothing due soon. Nice.</li>';
     }
 
+    renderHomeworkStreak();
+
     setupCustomDropdown('exam-subject-display', 'exam-subject-options', 'exam-subject', SUBJECT_LIST.map(s => ({ label: s, value: s })));
     renderExams();
     renderStudyPlan();
+}
+
+// --- Homework streak ---
+// Counts the days in a row with no overdue homework. The streak starts the first day nothing is
+// overdue and breaks as soon as something is (homework due before today and not ticked done).
+let streakSaveTimer = null;
+
+function renderHomeworkStreak() {
+    const el = document.getElementById('dash-streak');
+    if (!el) return;
+    const today = formatDateString(new Date());
+    const overdue = appState.homework.filter(hw => hw.date && formatDateString(parseDay(hw.date)) < today).length;
+    if (!appState.streak || typeof appState.streak !== 'object') appState.streak = { start: null, best: 0 };
+    const streak = appState.streak;
+    const before = JSON.stringify(streak);
+    if (overdue) streak.start = null;
+    else if (!streak.start || streak.start > today) streak.start = today;
+    const days = streak.start ? Math.round((parseDay(today) - parseDay(streak.start)) / 86400000) + 1 : 0;
+    if (days > (streak.best || 0)) streak.best = days;
+    // Save it after drawing, not while drawing (saving redraws the page)
+    if (JSON.stringify(streak) !== before && appState.user) {
+        clearTimeout(streakSaveTimer);
+        streakSaveTimer = setTimeout(saveState, 0);
+    }
+
+    el.classList.toggle('broken', !!overdue);
+    if (overdue) {
+        el.innerText = `Finish your ${overdue === 1 ? 'overdue homework' : `${overdue} overdue homework`} to start a 🔥 streak`;
+    } else if (days === 1) {
+        el.innerText = '🔥 Day 1 with nothing overdue. Keep it going!';
+    } else {
+        el.innerText = `🔥 ${days} days in a row with nothing overdue${streak.best > days ? ` · best ${streak.best}` : ''}`;
+    }
 }
 
 // --- Dashboard: today's home study blocks ---
@@ -2542,6 +2715,168 @@ document.getElementById('btn-ocr-images')?.addEventListener('click', async () =>
 
     btn.innerText = origText;
     btn.disabled = false;
+});
+
+// --- Flashcards from a note ---
+// Procrastinote AI writes 10 question/answer cards from the open note. Without an AI key, cards
+// are made from "Term: meaning" lines and by hiding a key word in sentences. The cards are kept
+// with the note, so they open straight away next time (until the note changes).
+let flashcards = { note: null, cards: [], index: 0 };
+
+// A short fingerprint of the note's text, to know when the saved cards are out of date
+function noteFingerprint(text) {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    return `${text.length}:${hash}`;
+}
+
+const FLASHCARD_STOPWORDS = new Set(['which', 'there', 'their', 'these', 'those', 'about', 'would', 'could', 'should',
+    'because', 'through', 'between', 'every', 'other', 'where', 'while', 'after', 'before', 'being', 'always']);
+
+function makeFlashcardsLocally(text) {
+    const cards = [];
+    const lines = text.split('\n').map(l => l.replace(/^[\s•*\-–\d.)]+/, '').trim()).filter(Boolean);
+    // "Ohm's law: V = I × R", "Photosynthesis - how plants make food"
+    const otherLines = [];
+    lines.forEach(line => {
+        const m = /^([^:=–-]{2,50}?)\s*[:=–-]\s+(.{3,200})$/.exec(line);
+        if (m && m[1].split(/\s+/).length <= 6) cards.push({ q: `${m[1].trim()}?`, a: m[2].trim() });
+        else otherLines.push(line);
+    });
+    // The other sentences: hide the longest important word
+    const sentences = otherLines.join(' ').split(/(?<=[.!?।])\s+/).map(s => s.trim())
+        .filter(s => s.split(/\s+/).length >= 6 && s.length <= 220);
+    for (const sentence of sentences) {
+        if (cards.length >= 10) break;
+        const words = sentence.match(/[\p{L}\p{M}][\p{L}\p{M}'-]{4,}/gu) || [];
+        const key = words.filter(w => !FLASHCARD_STOPWORDS.has(w.toLowerCase())).sort((a, b) => b.length - a.length)[0];
+        if (!key || cards.some(c => c.a === key)) continue;
+        cards.push({ q: `Fill in the blank: ${sentence.replace(key, '_____')}`, a: key });
+    }
+    return cards.slice(0, 10);
+}
+
+async function makeFlashcardsWithAI(title, text) {
+    const reply = await callGroq(
+        `Make 10 flashcards for a school student revising this note, titled "${title}". ` +
+        'Each card has a short question and a short answer (under 25 words), only using facts from the note. ' +
+        'Write them in the same language as the note. Answer with JSON only, exactly in this shape:\n' +
+        '{"cards":[{"q":"What is the unit of resistance?","a":"The ohm (Ω)"}]}\n\n' +
+        `Note:\n${text.slice(0, 6000)}`,
+        'You make revision flashcards from notes. You only ever answer with valid JSON.'
+    );
+    const start = reply.indexOf('{');
+    const end = reply.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
+    const data = JSON.parse(reply.slice(start, end + 1));
+    return (Array.isArray(data.cards) ? data.cards : [])
+        .filter(c => c && String(c.q || '').trim() && String(c.a || '').trim())
+        .map(c => ({ q: String(c.q).trim().slice(0, 300), a: String(c.a).trim().slice(0, 300) }))
+        .slice(0, 10);
+}
+
+function showFlashcardStatus(text, isError = false) {
+    const el = document.getElementById('flashcard-status');
+    el.hidden = !text;
+    el.innerText = text;
+    el.classList.toggle('error', isError);
+}
+
+function showFlashcard() {
+    const { cards, index } = flashcards;
+    const card = document.getElementById('flashcard-card');
+    card.classList.remove('flipped');
+    document.getElementById('flashcard-q').innerText = cards[index].q;
+    document.getElementById('flashcard-a').innerText = cards[index].a;
+    document.getElementById('flashcard-count').innerText = `${index + 1} / ${cards.length}`;
+    document.getElementById('flashcard-prev').disabled = index === 0;
+    document.getElementById('flashcard-next').innerText = index === cards.length - 1 ? 'Start again' : 'Next';
+}
+
+async function buildFlashcards(note, fresh) {
+    const deck = document.getElementById('flashcard-deck');
+    const text = (note.content || '').trim();
+    const fingerprint = noteFingerprint(text);
+    if (!fresh && note.flashcards?.fingerprint === fingerprint && note.flashcards.cards?.length) {
+        flashcards = { note, cards: note.flashcards.cards, index: 0 };
+        deck.hidden = false;
+        showFlashcardStatus('');
+        showFlashcard();
+        return;
+    }
+    if (text.split(/\s+/).length < 15) {
+        deck.hidden = true;
+        showFlashcardStatus('Write a bit more in this note first (a few sentences), then try again.', true);
+        return;
+    }
+    deck.hidden = true;
+    let cards = [];
+    if ((await getGroqKey()).startsWith('gsk_')) {
+        showFlashcardStatus('Procrastinote AI is writing your cards...');
+        try {
+            cards = await makeFlashcardsWithAI(note.title || 'Untitled', text);
+        } catch (err) {
+            console.warn('AI flashcards failed, making simple ones:', err.message);
+        }
+    }
+    if (cards.length < 3) cards = makeFlashcardsLocally(text);
+    if (cards.length === 0) {
+        showFlashcardStatus('Couldn\'t make cards from this note. Try writing it as "Term: meaning" lines or full sentences.', true);
+        return;
+    }
+    note.flashcards = { fingerprint, cards };
+    saveState();
+    flashcards = { note, cards, index: 0 };
+    showFlashcardStatus('');
+    deck.hidden = false;
+    showFlashcard();
+}
+
+function closeFlashcards() {
+    document.getElementById('flashcard-overlay').style.display = 'none';
+}
+
+document.getElementById('btn-flashcards')?.addEventListener('click', () => {
+    const note = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!note) {
+        alert('Open a note first.');
+        return;
+    }
+    document.getElementById('flashcard-sub').innerText = note.title || 'Untitled note';
+    document.getElementById('flashcard-overlay').style.display = 'flex';
+    document.getElementById('flashcard-close').focus({ preventScroll: true });
+    buildFlashcards(note, false);
+});
+
+document.getElementById('flashcard-card')?.addEventListener('click', (e) => {
+    e.currentTarget.classList.toggle('flipped');
+});
+
+document.getElementById('flashcard-prev')?.addEventListener('click', () => {
+    if (flashcards.index > 0) {
+        flashcards.index--;
+        showFlashcard();
+    }
+});
+
+document.getElementById('flashcard-next')?.addEventListener('click', () => {
+    flashcards.index = (flashcards.index + 1) % flashcards.cards.length;
+    showFlashcard();
+});
+
+document.getElementById('flashcard-remake')?.addEventListener('click', () => {
+    if (flashcards.note) buildFlashcards(flashcards.note, true);
+});
+
+document.getElementById('flashcard-close')?.addEventListener('click', closeFlashcards);
+document.getElementById('flashcard-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'flashcard-overlay') closeFlashcards(); // click outside the card
+});
+document.addEventListener('keydown', (e) => {
+    if (document.getElementById('flashcard-overlay')?.style.display !== 'flex') return;
+    if (e.key === 'Escape') closeFlashcards();
+    else if (e.key === 'ArrowRight') document.getElementById('flashcard-next').click();
+    else if (e.key === 'ArrowLeft') document.getElementById('flashcard-prev').click();
 });
 
 // --- PDF text extraction ---
