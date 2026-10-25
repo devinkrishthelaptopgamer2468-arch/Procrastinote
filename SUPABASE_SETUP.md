@@ -271,21 +271,27 @@ Until step 1 is done, the Occasions tab says "Class occasions aren't switched on
 
 ## 12. Turn on class AI keys
 
-A class admin can add one Groq key for the whole class (class page → **People** → **Add a Groq
-key**). Everyone in the class without their own key can then use the AI helper, up to a daily
-allowance each (15 by default). The key is only ever used by the `class-ai` Edge Function: it's
-never sent to anyone's browser, and nobody can read it back from the website.
+Anyone in a class can share their Groq key with it (class page → **People** → **Share my Groq
+key**): one key each, up to 10 per class, and each key adds about 600 questions a day. Everyone
+without their own key can then use the AI helper, up to a daily allowance each that the class
+admin sets (15 by default). Keys are checked with Groq before they're saved, and only the
+`class-ai` Edge Function uses them: they're never sent to anyone's browser, and nobody can read
+them back from the website. A key Groq stops accepting is switched off and its owner is told.
+People can remove their own key any time; class admins can remove anyone's.
 
 1. In **SQL Editor** → **New query**, paste all of `supabase/add-class-ai.sql` and press **Run**.
 2. **Edge Functions** → **Deploy a new function** → **Via Editor**. Name it exactly `class-ai`,
    delete the example code, paste all of `supabase/functions/class-ai/index.ts`, and press
    **Deploy function**. Leave **"Enforce JWT verification" ON** for this one (it only answers
    logged-in students). It needs no secrets.
-3. Test it: as a class admin, add a key on the People tab. Log in as a classmate with no key of
-   their own and ask Procrastinote AI something.
+3. Test it: share a key on a class's People tab. Log in as a classmate with no key of their own
+   and ask Procrastinote AI something.
 
-The site owner can still see keys in **Table Editor** → `class_ai_keys` (Supabase admins can see
-everything), so tell class admins that.
+**Updating:** if `add-class-ai.sql` or `class-ai/index.ts` changes, run / deploy it again (the
+SQL moves keys from the first version, one key per class, over by itself).
+
+The site owner can still see keys in **Table Editor** → `class_ai_pool` (Supabase admins can see
+everything), so tell people sharing keys that.
 
 ## If something goes wrong
 

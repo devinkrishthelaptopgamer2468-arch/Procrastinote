@@ -54,7 +54,8 @@
         loadedChats: new Set(),
         homework: {},          // class id -> rows
         occasions: {},         // class id -> occasion rows (Sports Day...), by date
-        ai: {},                // class id -> { has_key, key_hint, daily_limit, used_today } (class AI key)
+        ai: {},                // class id -> { has_key, key_count, daily_limit, used_today, my_key_* } (class AI)
+        aiKeys: {},            // class id -> [{ id, owner_id, broken }] who shared a key with the class
         aiMissing: false,      // add-class-ai.sql hasn't been run yet
         files: {},             // group key -> rows, newest first
         requests: {},          // class id -> pending co-admin / hand-over requests
@@ -223,6 +224,12 @@
         state.aiMissing = false;
         state.ai = {};
         (data || []).forEach(row => { state.ai[row.class_id] = row; });
+        // Who shared keys with each class (names only; the keys never leave Supabase)
+        state.aiKeys = {};
+        await Promise.all(Object.keys(state.ai).map(async classId => {
+            const res = await cloud.rpc('class_ai_key_list', { p_class: classId });
+            state.aiKeys[classId] = res.error ? [] : (res.data || []);
+        }));
         if (typeof renderGroqKeyStatus === 'function') renderGroqKeyStatus();
     }
 
@@ -1297,8 +1304,9 @@
         return html + '</ul>';
     }
 
-    // The class AI key box at the top of People: admins add/change/remove it, everyone sees
-    // how much of today's allowance they've used
+    // The class AI box at the top of People: anyone can share their Groq key with the class
+    // (and replace or remove it), admins set the allowance and can remove any key, and everyone
+    // sees how much of today's allowance they've used
     function classAiHtml(cls) {
         const admin = isAdminRole(cls.myRole);
         const ai = state.ai[cls.id];
@@ -1306,47 +1314,65 @@
             return admin ? '<div class="cls-ai-box"><p class="cls-hint">Class AI keys aren\'t switched on yet. Run supabase/add-class-ai.sql (SUPABASE_SETUP.md, step 12).</p></div>' : '';
         }
         if (!ai) return '';
+        const keys = state.aiKeys[cls.id] || [];
+        const working = keys.filter(k => !k.broken);
+        let html = '<div class="cls-ai-box">';
         if (!ai.has_key) {
-            return admin ? `
-                <div class="cls-ai-box">
-                    <p><strong>Class AI key</strong></p>
-                    <p class="cls-hint">Add a Groq key for ${escapeHTML(cls.name)} and everyone in the class can use the AI helper without their own key, up to a daily allowance each. Nobody can see the key after it's saved, not even you.</p>
-                    <button type="button" class="btn primary-btn btn-sm" data-act="ai-key-set">Add a Groq key</button>
-                </div>` : '';
-        }
-        const left = Math.max(0, ai.daily_limit - ai.used_today);
-        let html = `
-            <div class="cls-ai-box">
-                <p><strong>Class AI key is on</strong>${admin ? ` <span class="cls-hint">(ends in ••••${escapeHTML(ai.key_hint)})</span>` : ''}</p>
-                <p class="cls-hint">Everyone without their own key can ask the AI helper ${pluralise(ai.daily_limit, 'question')} a day. You have <strong>${left} left today</strong>${left < ai.daily_limit ? ` (used ${ai.used_today})` : ''}. Bigger jobs, like flashcards, count as more than one.</p>`;
-        if (admin) {
             html += `
-                <div class="cls-actions">
-                    <button type="button" class="btn secondary-btn btn-sm" data-act="ai-limit">Change allowance</button>
-                    <button type="button" class="btn secondary-btn btn-sm" data-act="ai-key-set">Replace key</button>
-                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove">Remove key</button>
-                </div>`;
+                <p><strong>Class AI</strong></p>
+                <p class="cls-hint">Share a Groq key with ${escapeHTML(cls.name)} and everyone in the class can use the AI helper without their own key, up to a daily allowance each. Nobody can see a key after it's shared, not even you.</p>`;
+        } else {
+            const left = Math.max(0, ai.daily_limit - ai.used_today);
+            const names = working.map(k => (k.owner_id === myId() ? 'you' : personName(k.owner_id)));
+            html += `
+                <p><strong>Class AI is on</strong> <span class="cls-hint">· ${pluralise(working.length, 'key')} shared by ${escapeHTML(names.join(', '))}</span></p>
+                <p class="cls-hint">Everyone without their own key can ask the AI helper ${pluralise(ai.daily_limit, 'question')} a day. You have <strong>${left} left today</strong>${left < ai.daily_limit ? ` (used ${ai.used_today})` : ''}. Bigger jobs, like flashcards, count as more than one. Each shared key adds about 600 questions a day for the class.</p>`;
+        }
+        if (ai.my_key_id && ai.my_key_broken) {
+            html += '<p class="cls-banner cls-banner-no">Groq stopped accepting the key you shared (it may have been deleted). Share a new one, or remove it.</p>';
+        }
+        html += '<div class="cls-actions">';
+        if (ai.my_key_id) {
+            html += `<span class="cls-hint">Your key ends in ••••${escapeHTML(ai.my_key_hint)}</span>
+                <button type="button" class="btn secondary-btn btn-sm" data-act="ai-key-set">Replace my key</button>
+                <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove" data-key="${ai.my_key_id}">Remove my key</button>`;
+        } else {
+            html += '<button type="button" class="btn primary-btn btn-sm" data-act="ai-key-set">Share my Groq key</button>';
+        }
+        if (admin && ai.has_key) html += '<button type="button" class="btn secondary-btn btn-sm" data-act="ai-limit">Change allowance</button>';
+        html += '</div>';
+        // Admins can take out anyone's key (for example someone who left a broken one)
+        const others = keys.filter(k => k.owner_id !== myId());
+        if (admin && others.length) {
+            html += `<details class="cls-past"><summary>Shared keys (${keys.length})</summary><ul class="cls-people">${others.map(k => `
+                <li class="cls-person">
+                    <span class="cls-person-info">${escapeHTML(personName(k.owner_id))}${k.broken ? ' <span class="cls-hint">· not working</span>' : ''}</span>
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove" data-key="${k.id}">Remove</button>
+                </li>`).join('')}</ul></details>`;
         }
         return html + '</div>';
     }
 
     function aiKeyDialog(cls) {
-        const current = state.ai[cls.id];
+        const mine = state.ai[cls.id]?.my_key_id;
         openDialog({
-            title: current?.has_key ? 'Replace the class AI key' : 'Add a class AI key',
-            submitLabel: 'Save key',
+            title: mine ? 'Replace your shared key' : `Share a Groq key with ${cls.name}`,
+            submitLabel: 'Check and share',
             body: `
-                <p class="cls-hint">Make a key at console.groq.com (API Keys), copy it and paste it here. It's best if a parent or teacher owns the Groq account.</p>
+                <p class="cls-hint">Make a free key at console.groq.com (API Keys), copy it and paste it here. It's checked with Groq first, then locked away: nobody can see it again, not even you. Your classmates can use the AI helper with it, up to their daily allowance. You can remove it any time.</p>
                 <label for="cls-ai-key">Groq key</label>
-                <input type="password" id="cls-ai-key" name="key" autocomplete="off" spellcheck="false" placeholder="gsk_..." required>
-                <label for="cls-ai-limit">Questions per person per day</label>
-                <input type="number" id="cls-ai-limit" name="limit" min="1" max="100" value="${current?.daily_limit || 15}" required>`,
+                <input type="password" id="cls-ai-key" name="key" autocomplete="off" spellcheck="false" placeholder="gsk_..." required>`,
             onSubmit: async form => {
                 const key = form.elements.key.value.trim();
-                const limit = parseInt(form.elements.limit.value, 10);
-                if (!key.startsWith('gsk_')) throw new Error('That doesn\'t look like a Groq key. It starts with gsk_.');
-                await call(cloud.rpc('set_class_ai_key', { p_class: cls.id, p_key: key, p_daily_limit: limit }));
+                if (!/^gsk_[A-Za-z0-9]{20,200}$/.test(key)) throw new Error('That doesn\'t look like a Groq key. It starts with gsk_.');
+                const { data, error } = await cloud.functions.invoke('class-ai', { body: { action: 'add_key', classId: cls.id, key } });
                 form.elements.key.value = ''; // don't keep it in the page
+                if (error) {
+                    let body = null;
+                    try { body = await error.context?.json(); } catch (e) { /* not JSON */ }
+                    throw new Error(body?.message || 'Couldn\'t reach the class AI. Is the class-ai function set up in Supabase?');
+                }
+                if (!data?.ok) throw new Error(data?.message || 'Couldn\'t share the key. Try again.');
                 await loadAiStatus();
                 renderDetail();
             }
@@ -1358,7 +1384,7 @@
             title: 'Daily AI allowance',
             submitLabel: 'Save',
             body: `
-                <p class="cls-hint">How many AI questions each person in ${escapeHTML(cls.name)} can ask a day with the class key. With Groq's free plan, about 15 works well for a class of 30.</p>
+                <p class="cls-hint">How many AI questions each person in ${escapeHTML(cls.name)} can ask a day with the shared keys. With Groq's free plan, each key gives the class about 600 a day: about 15 each works well for a class of 30 with one key, and more keys allow more.</p>
                 <label for="cls-ai-limit2">Questions per person per day</label>
                 <input type="number" id="cls-ai-limit2" name="limit" min="1" max="100" value="${state.ai[cls.id]?.daily_limit || 15}" required>`,
             onSubmit: async form => {
@@ -2093,14 +2119,18 @@
             case 'ai-limit':
                 aiLimitDialog(group);
                 break;
-            case 'ai-key-remove':
-                showConfirm('Remove the class AI key? Classmates without their own key won\'t be able to use the AI helper.', async () => {
-                    const { error } = await cloud.rpc('remove_class_ai_key', { p_class: group.id });
+            case 'ai-key-remove': {
+                const keyId = Number(el.dataset.key);
+                const mine = keyId === state.ai[group.id]?.my_key_id;
+                showConfirm(mine ? 'Remove your shared key from this class? It\'s deleted from Procrastinote straight away.'
+                    : 'Remove this person\'s shared key from the class?', async () => {
+                    const { error } = await cloud.rpc('remove_class_ai_key', { p_key_id: keyId });
                     if (error) alert(friendlyError(error));
                     await loadAiStatus();
                     renderDetail();
-                });
+                }, { title: 'Remove key', confirmLabel: 'Remove' });
                 break;
+            }
             case 'occ-delete':
                 showConfirm('Delete this occasion for the whole class?', async () => {
                     const { error } = await cloud.from('class_occasions').delete().eq('id', el.dataset.occ);
