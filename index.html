@@ -23,6 +23,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="school-styles.css">
+    <!-- The Xbox browser can't draw the site's picture cursors (pen.svg, hand.svg), so the mouse
+         pointer disappeared there. On Xbox, use the normal system cursors instead. -->
+    <script>
+        if (/Xbox/i.test(navigator.userAgent)) document.documentElement.classList.add('system-cursor');
+    </script>
     <!-- Old browsers (for example old versions of Mi Browser) can't run Procrastinote's code or the
          Supabase library, which used to leave an empty page. This check is written in old-style
          JavaScript on purpose so every browser can run it, and shows what to do instead. -->

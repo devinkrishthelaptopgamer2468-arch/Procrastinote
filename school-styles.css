@@ -181,6 +181,22 @@ input, textarea {
     cursor: url('ibeam.svg') 12 12, text;
 }
 
+/* Xbox (set in index.html): its browser can't draw picture cursors, so the pointer vanished.
+   Use the system's own arrow, hand and text cursors there. */
+html.system-cursor,
+html.system-cursor * {
+    cursor: auto !important;
+}
+
+html.system-cursor :is(a, button, .btn, .dock-item, label[for], .custom-select-display, .custom-option,
+.calendar-day-cell, .notebook-list-item, .friend-item-wrapper, .clickable-card, [type="submit"]) {
+    cursor: pointer !important;
+}
+
+html.system-cursor :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    cursor: text !important;
+}
+
 img, svg {
     display: block;
 }
