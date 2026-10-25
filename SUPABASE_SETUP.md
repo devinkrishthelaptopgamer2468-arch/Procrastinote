@@ -257,6 +257,42 @@ the file, ask for a new key pair (everyone then turns notifications on again).
 **Updating:** if `index.ts` changes, open the function → **Code**, paste the new file and deploy
 again. If `add-push-triggers.sql` changes, run it again.
 
+## 11. Turn on class occasions
+
+Class admins can add occasions (Sports Day, PTM...) on the **Occasions** tab of a class. Everyone
+in the class sees them in their Calendar and dashboard and gets a reminder the day before.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-class-occasions.sql` and press
+   **Run**. If Supabase warns about "destructive operations", press **Run** anyway.
+2. If you set up phone notifications (step 10), deploy the latest
+   `supabase/functions/send-push/index.ts` too, so reminders include class occasions and exams.
+
+Until step 1 is done, the Occasions tab says "Class occasions aren't switched on yet".
+
+## 12. Turn on class AI keys
+
+Anyone in a class can share their Groq key with it (class page → **People** → **Share my Groq
+key**): one key each, up to 10 per class, and each key adds about 600 questions a day. Everyone
+without their own key can then use the AI helper, up to a daily allowance each that the class
+admin sets (15 by default). Keys are checked with Groq before they're saved, and only the
+`class-ai` Edge Function uses them: they're never sent to anyone's browser, and nobody can read
+them back from the website. A key Groq stops accepting is switched off and its owner is told.
+People can remove their own key any time; class admins can remove anyone's.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-class-ai.sql` and press **Run**.
+2. **Edge Functions** → **Deploy a new function** → **Via Editor**. Name it exactly `class-ai`,
+   delete the example code, paste all of `supabase/functions/class-ai/index.ts`, and press
+   **Deploy function**. Leave **"Enforce JWT verification" ON** for this one (it only answers
+   logged-in students). It needs no secrets.
+3. Test it: share a key on a class's People tab. Log in as a classmate with no key of their own
+   and ask Procrastinote AI something.
+
+**Updating:** if `add-class-ai.sql` or `class-ai/index.ts` changes, run / deploy it again (the
+SQL moves keys from the first version, one key per class, over by itself).
+
+The site owner can still see keys in **Table Editor** → `class_ai_pool` (Supabase admins can see
+everything), so tell people sharing keys that.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

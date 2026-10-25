@@ -53,6 +53,10 @@
         messages: {},          // chat id -> rows, oldest first
         loadedChats: new Set(),
         homework: {},          // class id -> rows
+        occasions: {},         // class id -> occasion rows (Sports Day...), by date
+        ai: {},                // class id -> { has_key, key_count, daily_limit, used_today, my_key_* } (class AI)
+        aiKeys: {},            // class id -> [{ id, owner_id, broken }] who shared a key with the class
+        aiMissing: false,      // add-class-ai.sql hasn't been run yet
         files: {},             // group key -> rows, newest first
         requests: {},          // class id -> pending co-admin / hand-over requests
         inbox: null,           // site owner: waiting classes, requests, reports, every group
@@ -187,6 +191,65 @@
         syncHomework(classId);
     }
 
+    // Class occasions show in every member's Calendar and dashboard (school-app.js asks occasionsOn)
+    async function loadOccasions(classId) {
+        const { data, error } = await cloud.from('class_occasions')
+            .select('*')
+            .eq('class_id', classId)
+            .order('occasion_date', { ascending: true })
+            .limit(300);
+        if (error) {
+            // Not set up yet (add-class-occasions.sql not run): the rest of Classes still works
+            if (!isMissingSetup(error)) console.error('Could not load class occasions:', error.message);
+            return;
+        }
+        state.occasions[classId] = data || [];
+    }
+
+    function occasionsOn(dateKey) {
+        return state.classes.flatMap(cls => (state.occasions[cls.id] || [])
+            .filter(o => o.occasion_date === dateKey)
+            .map(o => ({ name: o.name, className: cls.name })));
+    }
+
+    // Class AI keys: which of my classes have one, and how much of today's allowance I've used
+    async function loadAiStatus() {
+        const { data, error } = await cloud.rpc('class_ai_status');
+        if (error) {
+            state.aiMissing = isMissingSetup(error) || /class_ai_status/.test(error.message || '');
+            if (!state.aiMissing) console.error('Could not load class AI keys:', error.message);
+            state.ai = {};
+            return;
+        }
+        state.aiMissing = false;
+        state.ai = {};
+        (data || []).forEach(row => { state.ai[row.class_id] = row; });
+        // Who shared keys with each class (names only; the keys never leave Supabase)
+        state.aiKeys = {};
+        await Promise.all(Object.keys(state.ai).map(async classId => {
+            const res = await cloud.rpc('class_ai_key_list', { p_class: classId });
+            state.aiKeys[classId] = res.error ? [] : (res.data || []);
+        }));
+        if (typeof renderGroqKeyStatus === 'function') renderGroqKeyStatus();
+    }
+
+    // Is there a class key the AI helper can use? (classId's own, or any of my classes')
+    function hasAiKey(classId) {
+        if (classId && state.ai[classId]?.has_key) return true;
+        return Object.values(state.ai).some(row => row.has_key);
+    }
+
+    // After a question to the class AI: refresh "used x of y today"
+    function noteAiUse() {
+        loadAiStatus().then(renderDetail);
+    }
+
+    // The Calendar and dashboard show class occasions, so redraw them when they change
+    function refreshPlannerViews() {
+        if (typeof renderCalendar === 'function') renderCalendar();
+        if (typeof renderDashboard === 'function') renderDashboard();
+    }
+
     async function loadChats() {
         const { data, error } = await cloud.from('chats').select('*').order('created_at');
         if (error) {
@@ -292,8 +355,10 @@
             ...state.classes.map(c => loadMembers('class', c.id)),
             ...state.activities.map(a => loadMembers('activity', a.id)),
             ...state.classes.filter(c => c.status === 'approved').map(c => loadHomework(c.id)),
+            ...state.classes.filter(c => c.status === 'approved').map(c => loadOccasions(c.id)),
             ...state.classes.filter(c => c.myRole === 'owner' || c.myRole === 'admin').map(c => loadRequests(c.id)),
             loadChats(),
+            loadAiStatus(),
             loadRecentMessages(),
             loadInbox()
         ]);
@@ -303,6 +368,7 @@
         if (group && state.selected.kind !== 'inbox') await loadFiles(state.selected.kind, group.id);
         render();
         renderNotifications();
+        refreshPlannerViews();
     }
 
     // Many live changes can arrive at once; reload a moment later, once
@@ -376,6 +442,32 @@
         renderNotifications();
     }
 
+    function onOccasion(payload) {
+        if (payload.eventType === 'DELETE') {
+            const id = payload.old?.id;
+            Object.keys(state.occasions).forEach(classId => {
+                state.occasions[classId] = state.occasions[classId].filter(o => o.id !== id);
+            });
+        } else if (payload.eventType === 'INSERT') {
+            const row = payload.new;
+            const list = state.occasions[row.class_id] = state.occasions[row.class_id] || [];
+            if (!list.some(o => o.id === row.id)) {
+                list.push(row);
+                list.sort((a, b) => a.occasion_date.localeCompare(b.occasion_date));
+                if (row.created_by !== myId()) {
+                    showPhoneNotification('classes', {
+                        title: `New occasion · ${findClass(row.class_id)?.name || 'Class'}`,
+                        body: `${row.name} on ${dueText(row.occasion_date)}`,
+                        url: '/#open=calendar',
+                        tag: `class-occasion-${row.class_id}`
+                    });
+                }
+            }
+        }
+        renderDetail();
+        refreshPlannerViews();
+    }
+
     function onFile(payload) {
         if (payload.eventType === 'DELETE') {
             const id = payload.old?.id;
@@ -410,6 +502,7 @@
         state.channel = cloud.channel('classes-live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, onMessage)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'class_homework' }, onHomework)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'class_occasions' }, onOccasion)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_files' }, onFile)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, onClassChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, scheduleReload)
@@ -724,12 +817,13 @@
             return html;
         }
 
-        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
+        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['occasions', 'Occasions'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
         const tab = state.tabs[key] || 'chats';
         html += tabsHtml(key, tabs, tab);
         let pane = '';
         if (tab === 'chats') pane = classChatsHtml(cls);
         else if (tab === 'homework') pane = homeworkHtml(cls);
+        else if (tab === 'occasions') pane = occasionsHtml(cls);
         else if (tab === 'timetable') pane = timetableHtml(cls);
         else if (tab === 'files') pane = filesHtml('class', cls, admin);
         else if (tab === 'people') pane = peopleHtml('class', cls);
@@ -899,19 +993,21 @@
     }
 
     // Procrasti-Bot answers in the chat. The reply is written on the device of the person who
-    // pinged it, with their AI key (only their message is sent to the AI, not the rest of the chat).
-    // Without a key it answers with one of its built-in study tips.
+    // pinged it, with their AI key, or the class's key if they have none (only their message is
+    // sent to the AI, not the rest of the chat). Without a key it answers with a built-in study tip.
     async function askBot(chatId, text) {
         const buddy = typeof AI_BUDDIES !== 'undefined' ? AI_BUDDIES.find(b => b.id === 'procrasti-bot') : null;
         const question = text.replace(BOT_PING, '').trim() || 'Hi!';
+        const classId = state.chats.find(c => c.id === chatId)?.class_id;
         state.botTyping = chatId;
         renderMessages(chatId);
         let reply = '';
         try {
-            if (typeof getGroqKey === 'function' && (await getGroqKey()).startsWith('gsk_')) {
+            if (typeof aiAvailable === 'function' && await aiAvailable(classId)) {
                 reply = await callGroq(
                     `${(appState.user?.name || 'A student').split(' ')[0]} asked in their class group chat: "${question}"`,
-                    `${buddy?.systemPrompt || 'You are Procrasti-Bot, a friendly study helper.'} You are answering in a class group chat at ${SCHOOL_NAME}, so classmates read your reply too. You may help with study questions. Keep it to 1-3 short sentences, kind and suitable for school.`
+                    `${buddy?.systemPrompt || 'You are Procrasti-Bot, a friendly study helper.'} You are answering in a class group chat at ${SCHOOL_NAME}, so classmates read your reply too. You may help with study questions. Keep it to 1-3 short sentences, kind and suitable for school.`,
+                    { classId }
                 );
             }
         } catch (e) {
@@ -1074,6 +1170,69 @@
         return html;
     }
 
+    function occasionsHtml(cls) {
+        const admin = isAdminRole(cls.myRole);
+        const list = state.occasions[cls.id];
+        const today = todayString();
+        let html = `<p class="cls-hint">Occasions like Sports Day or a PTM show up in everyone's Calendar and dashboard, with a reminder the day before.</p>`;
+        if (!list) {
+            return html + '<p class="cls-banner">Class occasions aren\'t switched on yet. Run supabase/add-class-occasions.sql (SUPABASE_SETUP.md, step 11).</p>';
+        }
+        if (admin) {
+            html += `
+                <form class="cls-hw-form" data-form="occ-add" data-id="${cls.id}">
+                    <input type="text" id="cls-occ-name" data-keep maxlength="60" placeholder="e.g. Sports Day, PTM" aria-label="Occasion" required>
+                    <input type="date" id="cls-occ-date" data-keep aria-label="Date" min="${today}" required>
+                    <button type="submit" class="btn primary-btn btn-sm">Add</button>
+                </form>`;
+        }
+        const upcoming = list.filter(o => o.occasion_date >= today);
+        const past = list.filter(o => o.occasion_date < today).reverse();
+        const item = o => `
+            <li class="cls-hw-item">
+                <div class="hw-info">
+                    <strong>${escapeHTML(o.name)}</strong>
+                    <span>${escapeHTML(dueText(o.occasion_date))} · added by ${escapeHTML(personName(o.created_by))}</span>
+                </div>
+                ${admin ? `<span class="cls-row-actions">
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="occ-delete" data-occ="${o.id}">Delete</button>
+                </span>` : ''}
+            </li>`;
+        html += '<p class="cls-section-title">Coming up</p>';
+        html += upcoming.length ? `<ul class="cls-hw-list">${upcoming.map(item).join('')}</ul>` :
+            `<p class="cls-hint">${admin ? 'No occasions yet. Add one above.' : 'No occasions yet.'}</p>`;
+        if (past.length) {
+            html += `<details class="cls-past"><summary>Past occasions (${past.length})</summary><ul class="cls-hw-list">${past.map(item).join('')}</ul></details>`;
+        }
+        return html;
+    }
+
+    async function postOccasion(form) {
+        const name = form.querySelector('#cls-occ-name').value.trim();
+        const date = form.querySelector('#cls-occ-date').value;
+        if (!name) return;
+        if (!date) { // date boxes are read-only (pickers.js), so the browser doesn't check "required"
+            const box = form.querySelector('#cls-occ-date');
+            box.classList.add('shake-error');
+            setTimeout(() => box.classList.remove('shake-error'), 600);
+            alert('Pick the date.');
+            return;
+        }
+        const button = form.querySelector('button');
+        button.disabled = true;
+        const { error } = await cloud.from('class_occasions')
+            .insert({ class_id: form.dataset.id, name, occasion_date: date, created_by: myId() });
+        button.disabled = false;
+        if (error) {
+            alert(`Occasion not added: ${friendlyError(error)}`);
+            return;
+        }
+        form.reset();
+        await loadOccasions(form.dataset.id);
+        renderDetail();
+        refreshPlannerViews();
+    }
+
     // Day Orders 1..days, plus the half-day Day Order when the timetable has one
     function timetableKeys(days, withHalf) {
         return [...Array.from({ length: days }, (_, i) => i + 1), ...(withHalf ? ['half'] : [])];
@@ -1145,6 +1304,97 @@
         return html + '</ul>';
     }
 
+    // The class AI box at the top of People: anyone can share their Groq key with the class
+    // (and replace or remove it), admins set the allowance and can remove any key, and everyone
+    // sees how much of today's allowance they've used
+    function classAiHtml(cls) {
+        const admin = isAdminRole(cls.myRole);
+        const ai = state.ai[cls.id];
+        if (state.aiMissing) {
+            return admin ? '<div class="cls-ai-box"><p class="cls-hint">Class AI keys aren\'t switched on yet. Run supabase/add-class-ai.sql (SUPABASE_SETUP.md, step 12).</p></div>' : '';
+        }
+        if (!ai) return '';
+        const keys = state.aiKeys[cls.id] || [];
+        const working = keys.filter(k => !k.broken);
+        let html = '<div class="cls-ai-box">';
+        if (!ai.has_key) {
+            html += `
+                <p><strong>Class AI</strong></p>
+                <p class="cls-hint">Share a Groq key with ${escapeHTML(cls.name)} and everyone in the class can use the AI helper without their own key, up to a daily allowance each. Nobody can see a key after it's shared, not even you.</p>`;
+        } else {
+            const left = Math.max(0, ai.daily_limit - ai.used_today);
+            const names = working.map(k => (k.owner_id === myId() ? 'you' : personName(k.owner_id)));
+            html += `
+                <p><strong>Class AI is on</strong> <span class="cls-hint">· ${pluralise(working.length, 'key')} shared by ${escapeHTML(names.join(', '))}</span></p>
+                <p class="cls-hint">Everyone without their own key can ask the AI helper ${pluralise(ai.daily_limit, 'question')} a day. You have <strong>${left} left today</strong>${left < ai.daily_limit ? ` (used ${ai.used_today})` : ''}. Bigger jobs, like flashcards, count as more than one. Each shared key adds about 600 questions a day for the class.</p>`;
+        }
+        if (ai.my_key_id && ai.my_key_broken) {
+            html += '<p class="cls-banner cls-banner-no">Groq stopped accepting the key you shared (it may have been deleted). Share a new one, or remove it.</p>';
+        }
+        html += '<div class="cls-actions">';
+        if (ai.my_key_id) {
+            html += `<span class="cls-hint">Your key ends in ••••${escapeHTML(ai.my_key_hint)}</span>
+                <button type="button" class="btn secondary-btn btn-sm" data-act="ai-key-set">Replace my key</button>
+                <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove" data-key="${ai.my_key_id}">Remove my key</button>`;
+        } else {
+            html += '<button type="button" class="btn primary-btn btn-sm" data-act="ai-key-set">Share my Groq key</button>';
+        }
+        if (admin && ai.has_key) html += '<button type="button" class="btn secondary-btn btn-sm" data-act="ai-limit">Change allowance</button>';
+        html += '</div>';
+        // Admins can take out anyone's key (for example someone who left a broken one)
+        const others = keys.filter(k => k.owner_id !== myId());
+        if (admin && others.length) {
+            html += `<details class="cls-past"><summary>Shared keys (${keys.length})</summary><ul class="cls-people">${others.map(k => `
+                <li class="cls-person">
+                    <span class="cls-person-info">${escapeHTML(personName(k.owner_id))}${k.broken ? ' <span class="cls-hint">· not working</span>' : ''}</span>
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="ai-key-remove" data-key="${k.id}">Remove</button>
+                </li>`).join('')}</ul></details>`;
+        }
+        return html + '</div>';
+    }
+
+    function aiKeyDialog(cls) {
+        const mine = state.ai[cls.id]?.my_key_id;
+        openDialog({
+            title: mine ? 'Replace your shared key' : `Share a Groq key with ${cls.name}`,
+            submitLabel: 'Check and share',
+            body: `
+                <p class="cls-hint">Make a free key at console.groq.com (API Keys), copy it and paste it here. It's checked with Groq first, then locked away: nobody can see it again, not even you. Your classmates can use the AI helper with it, up to their daily allowance. You can remove it any time.</p>
+                <label for="cls-ai-key">Groq key</label>
+                <input type="password" id="cls-ai-key" name="key" autocomplete="off" spellcheck="false" placeholder="gsk_..." required>`,
+            onSubmit: async form => {
+                const key = form.elements.key.value.trim();
+                if (!/^gsk_[A-Za-z0-9]{20,200}$/.test(key)) throw new Error('That doesn\'t look like a Groq key. It starts with gsk_.');
+                const { data, error } = await cloud.functions.invoke('class-ai', { body: { action: 'add_key', classId: cls.id, key } });
+                form.elements.key.value = ''; // don't keep it in the page
+                if (error) {
+                    let body = null;
+                    try { body = await error.context?.json(); } catch (e) { /* not JSON */ }
+                    throw new Error(body?.message || 'Couldn\'t reach the class AI. Is the class-ai function set up in Supabase?');
+                }
+                if (!data?.ok) throw new Error(data?.message || 'Couldn\'t share the key. Try again.');
+                await loadAiStatus();
+                renderDetail();
+            }
+        });
+    }
+
+    function aiLimitDialog(cls) {
+        openDialog({
+            title: 'Daily AI allowance',
+            submitLabel: 'Save',
+            body: `
+                <p class="cls-hint">How many AI questions each person in ${escapeHTML(cls.name)} can ask a day with the shared keys. With Groq's free plan, each key gives the class about 600 a day: about 15 each works well for a class of 30 with one key, and more keys allow more.</p>
+                <label for="cls-ai-limit2">Questions per person per day</label>
+                <input type="number" id="cls-ai-limit2" name="limit" min="1" max="100" value="${state.ai[cls.id]?.daily_limit || 15}" required>`,
+            onSubmit: async form => {
+                await call(cloud.rpc('set_class_ai_limit', { p_class: cls.id, p_daily_limit: parseInt(form.elements.limit.value, 10) }));
+                await loadAiStatus();
+                renderDetail();
+            }
+        });
+    }
+
     function peopleHtml(kind, group) {
         const members = memberList(kind, group.id);
         const me = myId();
@@ -1153,7 +1403,7 @@
         const requests = kind === 'class' ? (state.requests[group.id] || []) : [];
         // The site owner can do what a class owner does, in any class they're in
         const boss = myRole === 'owner' || (kind === 'class' && isSiteOwner());
-        let html = '';
+        let html = kind === 'class' ? classAiHtml(group) : '';
         if (requests.length) {
             html += '<p class="cls-section-title">Waiting for approval</p><ul class="cls-people">';
             requests.forEach(r => {
@@ -1863,6 +2113,31 @@
                     else onHomework({ eventType: 'DELETE', old: { id: Number(el.dataset.hw) } });
                 });
                 break;
+            case 'ai-key-set':
+                aiKeyDialog(group);
+                break;
+            case 'ai-limit':
+                aiLimitDialog(group);
+                break;
+            case 'ai-key-remove': {
+                const keyId = Number(el.dataset.key);
+                const mine = keyId === state.ai[group.id]?.my_key_id;
+                showConfirm(mine ? 'Remove your shared key from this class? It\'s deleted from Procrastinote straight away.'
+                    : 'Remove this person\'s shared key from the class?', async () => {
+                    const { error } = await cloud.rpc('remove_class_ai_key', { p_key_id: keyId });
+                    if (error) alert(friendlyError(error));
+                    await loadAiStatus();
+                    renderDetail();
+                }, { title: 'Remove key', confirmLabel: 'Remove' });
+                break;
+            }
+            case 'occ-delete':
+                showConfirm('Delete this occasion for the whole class?', async () => {
+                    const { error } = await cloud.from('class_occasions').delete().eq('id', el.dataset.occ);
+                    if (error) alert(friendlyError(error));
+                    else onOccasion({ eventType: 'DELETE', old: { id: Number(el.dataset.occ) } });
+                });
+                break;
             case 'tt-import':
                 importTimetable(group);
                 break;
@@ -1954,6 +2229,7 @@
         e.preventDefault();
         if (form.dataset.form === 'send') sendMessage(form);
         else if (form.dataset.form === 'hw-add') postHomework(form);
+        else if (form.dataset.form === 'occ-add') postOccasion(form);
     }
 
     function onChange(e) {
@@ -2183,6 +2459,9 @@
         stop,
         render,
         notificationItems,
-        renderNotificationList
+        renderNotificationList,
+        occasionsOn,
+        hasAiKey,
+        noteAiUse
     };
 })();

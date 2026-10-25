@@ -91,6 +91,17 @@ create trigger push_on_timetable_change after update of timetable_updated_at on 
     for each row when (new.timetable_updated_at is distinct from old.timetable_updated_at)
     execute function public.push_on_change();
 
+-- Class occasions (only once add-class-occasions.sql has made the table)
+do $$
+begin
+    if to_regclass('public.class_occasions') is not null then
+        drop trigger if exists push_on_class_occasion on public.class_occasions;
+        create trigger push_on_class_occasion after insert on public.class_occasions
+            for each row execute function public.push_on_change();
+    end if;
+end;
+$$;
+
 -- Daily homework reminders: every 15 minutes the function checks whose reminder time has come
 select cron.schedule(
     'procrastinote-homework-reminders',

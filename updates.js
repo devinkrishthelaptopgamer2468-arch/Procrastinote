@@ -5,9 +5,9 @@
 window.PROCRASTINOTE_UPDATES = [
     {
         id: 'week-2026-10-19',
-        date: '2026-10-23',
-        title: 'This week: half days and school occasions',
-        text: 'Mark a day as a half day in the Calendar: it gets Day Order 7 and the normal Day Orders carry on after it. You can also add occasions like Sports Day and get a reminder the day before.'
+        date: '2026-10-25',
+        title: 'This week: Exams page, flashcards and more',
+        text: 'New Exams page: upload an exam timetable and the exams fill in by themselves, track your marks with a chart, and see countdowns on the dashboard. Make flashcards from any note, keep a homework streak going, and mark half days and occasions in the Calendar. Class admins can now add one AI key for the whole class, so you don\'t need your own. And the Notebook is simpler: AI tools in one menu, search, and "Get text" on any picture.'
     },
     {
         id: 'phone-notifications',

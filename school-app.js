@@ -82,7 +82,7 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
@@ -112,6 +112,9 @@ let defaultState = {
     holidays: {}, // e.g. { "2026-11-09": "Diwali" } (no Day Order on these dates)
     halfdayDates: {}, // e.g. { "2026-10-19": true }: a half day (half-day Day Order and study plan)
     occasions: {}, // e.g. { "2026-11-14": "Sports Day" }: reminded the day before
+    exams: [], // e.g. [{ id, subject: "Chemistry", name: "test", date: "2026-10-27", addedOn: "2026-10-20" }]
+    streak: { start: null, best: 0 }, // homework streak: since when nothing has been overdue
+    marks: [], // e.g. [{ id, subject: "Physics", test: "Revision Exam 3", score: 42, outOf: 50, date: "2026-11-12" }]
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -156,6 +159,9 @@ function saveState() {
                 holidays: appState.holidays || {},
                 halfdayDates: appState.halfdayDates || {},
                 occasions: appState.occasions || {},
+                exams: appState.exams || [],
+                streak: appState.streak || { start: null, best: 0 },
+                marks: appState.marks || [],
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -487,9 +493,656 @@ function setOccasion(date, name) {
     saveState();
 }
 
-function getOccasion(date) {
+// Your own occasion on this date (the one you can remove)
+function getOwnOccasion(date) {
     return (appState.occasions || {})[formatDateString(date)];
 }
+
+// Every occasion on this date: yours, and your classes' (classes.js), e.g.
+// [{ name: "Sports Day", className: "10 A" }, { name: "Birthday party" }]
+function getOccasions(date) {
+    const list = [];
+    const own = getOwnOccasion(date);
+    if (own) list.push({ name: own });
+    if (window.Classes?.occasionsOn) list.push(...Classes.occasionsOn(formatDateString(date)));
+    return list;
+}
+
+// All of them as one line, e.g. "Sports Day (10 A), Birthday party"
+function getOccasion(date) {
+    const list = getOccasions(date);
+    return list.length ? list.map(o => (o.className ? `${o.name} (${o.className})` : o.name)).join(', ') : undefined;
+}
+
+// --- Exam countdown ---
+// Exams you add show on the dashboard with the days left, and a ring that fills up from the
+// day you added it to the exam day. Exams disappear the day after.
+function upcomingExams() {
+    const today = formatDateString(new Date());
+    return (appState.exams || []).filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// "Chemistry test", or "Chemistry · Revision Exam 3" for exams from a timetable
+function examTitle(exam) {
+    if (exam.name) return `${exam.subject} ${exam.name}`.trim();
+    if (exam.series) return `${exam.subject} · ${exam.series}`;
+    return `${exam.subject} exam`;
+}
+
+function examsOn(date) {
+    const key = formatDateString(date);
+    return (appState.exams || []).filter(e => e.date === key);
+}
+
+// Exams that ended more than a month ago are tidied away; recent ones stay so a finished
+// exam series can still be looked back on
+function keepRecentExams() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const oldest = formatDateString(cutoff);
+    return (appState.exams || []).filter(e => e.date >= oldest);
+}
+
+// exams: [{ subject, date, name?, time?, portions?, series? }]
+function addExams(exams) {
+    const today = formatDateString(new Date());
+    const stamp = Date.now();
+    appState.exams = keepRecentExams();
+    exams.forEach((exam, i) => {
+        appState.exams.push({
+            id: `ex_${stamp}_${i}`,
+            subject: String(exam.subject || '').trim().slice(0, 40),
+            name: String(exam.name || '').trim().slice(0, 40),
+            date: exam.date,
+            time: String(exam.time || '').trim().slice(0, 30),
+            portions: String(exam.portions || '').trim().slice(0, 200),
+            series: String(exam.series || '').trim().slice(0, 40),
+            addedOn: today
+        });
+    });
+    saveState();
+}
+
+function removeExam(id) {
+    appState.exams = (appState.exams || []).filter(e => e.id !== id);
+    saveState();
+}
+
+function renderExams() {
+    const list = document.getElementById('dash-exam-list');
+    if (!list) return;
+    const exams = upcomingExams().slice(0, 4); // the next few; the Exams page has the rest
+    if (exams.length === 0) {
+        list.innerHTML = '<li class="empty-state">No exams coming up. Add them on the Exams page, or upload your exam timetable there.</li>';
+        return;
+    }
+    const today = parseDay(formatDateString(new Date()));
+    const dayMs = 1000 * 60 * 60 * 24;
+    const r = 26;
+    const circumference = 2 * Math.PI * r;
+    list.innerHTML = exams.map(exam => {
+        const daysLeft = Math.round((parseDay(exam.date) - today) / dayMs);
+        const total = Math.max(1, Math.round((parseDay(exam.date) - parseDay(exam.addedOn || exam.date)) / dayMs));
+        const filled = Math.min(1, Math.max(0.04, 1 - daysLeft / total));
+        const when = daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `in ${daysLeft} days`;
+        const soon = daysLeft <= 3 ? ' soon' : '';
+        return `
+            <li class="exam-item${soon}">
+                <span class="exam-ring" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" width="64" height="64">
+                        <circle class="exam-ring-track" cx="32" cy="32" r="${r}"/>
+                        <circle class="exam-ring-fill" cx="32" cy="32" r="${r}" stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${(circumference * (1 - filled)).toFixed(1)}"/>
+                    </svg>
+                    <span class="exam-ring-days">${daysLeft === 0 ? '!' : daysLeft}</span>
+                </span>
+                <span class="exam-text">
+                    <strong>${escapeHTML(examTitle(exam))}</strong>
+                    <span>${when} · ${parseDay(exam.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                </span>
+            </li>`;
+    }).join('');
+}
+
+document.getElementById('dash-exams-open')?.addEventListener('click', () => {
+    document.querySelector('.dock-item[data-tab="exams"]')?.click();
+});
+
+// --- Exams page and exam timetables ---
+// The Exams page groups exams by series ("Revision Exam 3"). A timetable photo or PDF is read
+// (the PDF's own text when it has some, otherwise OCR), turned into exams by the AI helper (or,
+// without an AI key, by a simpler reader that looks for dates and subject names), and shown in
+// a table to check and fix before anything is added.
+const EXAM_SUBJECT_WORDS = [...SUBJECT_LIST.filter(s => !['Sixth Subject', 'Library'].includes(s)),
+    'Maths', 'Math', 'Science', 'Social Studies', 'SST', 'Computer Science', 'Computer Applications',
+    'Information Technology', 'Economics', 'Accountancy', 'Business Studies', 'Geography', 'History',
+    'Civics', 'EVS', 'Physical Education', 'Malayalam', 'Telugu', 'Kannada', 'Urdu', 'German', 'Spanish', 'Art'];
+const EXAM_SUBJECT_ALIASES = { maths: 'Mathematics', math: 'Mathematics', sst: 'Social Science', 'social studies': 'Social Science' };
+const MONTH_INDEX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+
+// "maths" -> "Mathematics", "CHEMISTRY" -> "Chemistry", unknown names keep their own spelling
+function normaliseExamSubject(raw) {
+    const text = String(raw || '').replace(/\s+/g, ' ').trim();
+    const lower = text.toLowerCase();
+    if (EXAM_SUBJECT_ALIASES[lower]) return EXAM_SUBJECT_ALIASES[lower];
+    const known = [...SUBJECT_LIST, ...EXAM_SUBJECT_WORDS].find(s => s.toLowerCase() === lower);
+    if (known) return known;
+    return text.replace(/\b([a-z])/g, c => c.toUpperCase());
+}
+
+// A day and month with no year means the next one from about two months ago on, so a
+// timetable for January read in December lands in the right year
+function examDateFrom(day, month, year) {
+    if (!(day >= 1 && day <= 31 && month >= 0 && month <= 11)) return null;
+    let y = year;
+    if (y && y < 100) y += 2000;
+    if (!y) {
+        const recent = new Date();
+        recent.setDate(recent.getDate() - 60);
+        y = new Date().getFullYear();
+        if (new Date(y, month, day) < recent) y += 1;
+    }
+    const date = new Date(y, month, day);
+    if (date.getMonth() !== month) return null; // 31 Feb and the like
+    return formatDateString(date);
+}
+
+function findDateInLine(line) {
+    // "9 Nov 2026", "10th November", "Nov 9"
+    let m = /\b(\d{1,2})(?:st|nd|rd|th)?[\s-]*(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?,?\s*(\d{4})?/i.exec(line);
+    if (m) return examDateFrom(+m[1], MONTH_INDEX[m[2].toLowerCase()], m[3] ? +m[3] : 0);
+    m = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b,?\s*(\d{4})?/i.exec(line);
+    if (m) return examDateFrom(+m[2], MONTH_INDEX[m[1].toLowerCase()], m[3] ? +m[3] : 0);
+    // "02/11/2026", "06-11-26", "03.11" (Indian timetables put the day first). Without a year
+    // only / and . count, so portions like "Ch 1-4" and times like "9.30 a.m." aren't dates.
+    for (const n of line.matchAll(/\b(\d{1,2})([./-])(\d{1,2})(?:\2(\d{2,4}))?\b(?!\s*(?:am|pm|a\.m|p\.m))/gi)) {
+        if (!n[4] && n[2] === '-') continue;
+        const date = examDateFrom(+n[1], +n[3] - 1, n[4] ? +n[4] : 0);
+        if (date) return date;
+    }
+    return null;
+}
+
+function findSubjectInLine(line) {
+    // Longest names first, so "Computer Science" wins over "Science"
+    const words = [...EXAM_SUBJECT_WORDS].sort((a, b) => b.length - a.length);
+    const hit = words.find(s => new RegExp(`(^|[^a-z])${s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}([^a-z]|$)`, 'i').test(line));
+    return hit ? normaliseExamSubject(hit) : '';
+}
+
+// "9:00", "9.00 a.m.", "9.00 a.m. to 11.30 a.m." (a plain "03.11" is part of a date, not a time)
+function findTimeInLine(line) {
+    const clock = String.raw`\d{1,2}[:.]\d{2}(?![./-]\d)\s*(?:(?:am|pm|a\.m|p\.m)\.?)?`;
+    const range = new RegExp(String.raw`\b${clock}\s*(?:-|–|to)\s*${clock}`, 'i').exec(line);
+    if (range) return range[0].replace(/\s+/g, ' ').trim();
+    const single = /\b\d{1,2}(?::\d{2}(?![./-]\d)\s*(?:am|pm|a\.m\.?|p\.m\.?)?|\.\d{2}\s*(?:am|pm|a\.m\.?|p\.m\.?))/i.exec(line);
+    return single ? single[0].replace(/\s+/g, ' ').trim() : '';
+}
+
+// Without AI: pair each date with the subject on the same line, or on the line next to it
+// (OCR often splits a table row in two)
+function parseExamTimetableLocally(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const exams = [];
+    const used = new Set();
+    // A "Timing: 9.00 a.m. to 11.30 a.m." line above the table is the time of every exam
+    const timingLine = lines.find(l => /timing|time\s*:/i.test(l) && !findDateInLine(l));
+    const sharedTime = timingLine ? findTimeInLine(timingLine) : '';
+    lines.forEach((line, i) => {
+        const date = findDateInLine(line);
+        if (!date) return;
+        let subject = findSubjectInLine(line.replace(/\b\d{1,2}[./-]\d{1,2}([./-]\d{2,4})?\b/, ''));
+        let subjectLine = i;
+        for (const j of [i + 1, i - 1]) {
+            if (subject || j < 0 || j >= lines.length || used.has(j) || findDateInLine(lines[j])) continue;
+            subject = findSubjectInLine(lines[j]);
+            subjectLine = j;
+        }
+        if (!subject) return;
+        used.add(i);
+        used.add(subjectLine);
+        exams.push({ subject, date, time: findTimeInLine(line) || findTimeInLine(lines[subjectLine]) || sharedTime, portions: '' });
+    });
+    return exams;
+}
+
+// With AI: the helper reads the messy text and answers with the exams as JSON
+async function parseExamTimetableWithAI(text) {
+    const today = formatDateString(new Date());
+    const reply = await callGroq(
+        `Today is ${today}. Below is the text of a school exam timetable, read from a photo or PDF, so it may have reading mistakes.\n` +
+        `List every exam in it. Use these subject names when one fits: ${SUBJECT_LIST.join(', ')}. ` +
+        'Dates are usually day first (12/11 is 12 November). If a date has no year, use the next such date from about two months ago on. ' +
+        'Leave out holidays and study leave days. Keep portions/syllabus short (under 150 characters) or empty.\n' +
+        'Answer with JSON only, no other words, in exactly this shape:\n' +
+        '{"exams":[{"subject":"Chemistry","date":"YYYY-MM-DD","time":"9:00-11:30","portions":"Ch 1-3"}]}\n\n' +
+        `Timetable text:\n${text.slice(0, 6000)}`,
+        'You turn school exam timetables into JSON. You only ever answer with valid JSON.'
+    );
+    const start = reply.indexOf('{');
+    const end = reply.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
+    const data = JSON.parse(reply.slice(start, end + 1));
+    return (Array.isArray(data.exams) ? data.exams : [])
+        .filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && String(e.subject || '').trim())
+        .map(e => ({ subject: normaliseExamSubject(e.subject), date: e.date, time: String(e.time || ''), portions: String(e.portions || '') }));
+}
+
+// Timetables are tables: the grid lines confuse the normal OCR layout, so read them enlarged
+// (about 2000 px) in "one column of lines" mode (measured: 7 of 7 exams found, 0 the default way)
+async function createTimetableOcrWorker() {
+    const worker = await Tesseract.createWorker('eng');
+    await worker.setParameters({ tessedit_pageseg_mode: '4', preserve_interword_spaces: '1' });
+    return worker;
+}
+
+async function imageFileToCanvas(file) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(3, Math.max(1, 2000 / Math.max(bitmap.width, bitmap.height)));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas;
+}
+
+async function readExamTimetableText(file, status) {
+    if (isPdfFile(file)) {
+        if (file.size > PDF_MAX_FILE_MB * 1024 * 1024) throw new Error(`That PDF is too big. Pick one under ${PDF_MAX_FILE_MB} MB.`);
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument({
+            data: new Uint8Array(await file.arrayBuffer()),
+            isEvalSupported: false, // never run code from inside a PDF
+            cMapUrl: PDFJS_BASE + 'cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: PDFJS_BASE + 'standard_fonts/'
+        }).promise;
+        const pages = [];
+        let worker = null;
+        try {
+            for (let p = 1; p <= Math.min(pdf.numPages, 5); p++) {
+                status(`Reading page ${p} of ${Math.min(pdf.numPages, 5)}...`);
+                const page = await pdf.getPage(p);
+                const content = await page.getTextContent();
+                // Keep each table row on its own line
+                const rows = new Map();
+                content.items.forEach(item => {
+                    const y = Math.round(item.transform[5] / 4);
+                    rows.set(y, `${rows.get(y) || ''} ${item.str}`);
+                });
+                let text = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(r => r[1].trim()).join('\n');
+                if ((text.match(/[A-Za-z]/g) || []).length < 30) {
+                    // A scanned PDF: no saved words, so read the picture
+                    worker = worker || await createTimetableOcrWorker();
+                    text = cleanOcrText((await worker.recognize(await renderPdfPage(pdf, p))).data.text);
+                }
+                pages.push(text);
+            }
+        } finally {
+            if (worker) await worker.terminate();
+            pdf.destroy();
+        }
+        return pages.join('\n');
+    }
+    if (!file.type.startsWith('image/')) throw new Error('Pick a photo or a PDF of the timetable.');
+    status('Reading the photo... (this takes a few seconds)');
+    const worker = await createTimetableOcrWorker();
+    try {
+        return cleanOcrText((await worker.recognize(await imageFileToCanvas(file))).data.text);
+    } finally {
+        await worker.terminate();
+    }
+}
+
+let examReviewSeries = '';
+
+function examReviewRowHtml(exam = {}) {
+    return `
+        <li class="exam-review-row">
+            <input type="text" class="er-subject" maxlength="40" value="${escapeHTML(exam.subject || '')}" placeholder="Subject" aria-label="Subject" list="exam-subject-names">
+            <input type="date" class="er-date" value="${escapeHTML(exam.date || '')}" aria-label="Date">
+            <input type="text" class="er-time" maxlength="30" value="${escapeHTML(exam.time || '')}" placeholder="Time" aria-label="Time">
+            <input type="text" class="er-portions" maxlength="200" value="${escapeHTML(exam.portions || '')}" placeholder="Portions" aria-label="Portions">
+            <button type="button" class="exam-remove er-remove" aria-label="Remove this row" title="Remove">×</button>
+        </li>`;
+}
+
+function showExamReview(exams, series) {
+    examReviewSeries = series;
+    const list = document.getElementById('exam-review-list');
+    list.innerHTML = exams.map(examReviewRowHtml).join('');
+    if (!exams.length) list.innerHTML = examReviewRowHtml();
+    document.getElementById('exam-review').hidden = false;
+}
+
+function closeExamReview() {
+    document.getElementById('exam-review').hidden = true;
+    document.getElementById('exam-review-list').innerHTML = '';
+}
+
+function setExamTimetableStatus(text, isError = false) {
+    const el = document.getElementById('exam-tt-status');
+    el.hidden = !text;
+    el.innerText = text;
+    el.classList.toggle('error', isError);
+}
+
+document.getElementById('exam-tt-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // the same file can be picked again
+    if (!file) return;
+    const series = document.getElementById('exam-tt-series').value.trim();
+    closeExamReview();
+    const label = document.querySelector('.exam-file-btn');
+    label.classList.add('busy');
+    try {
+        setExamTimetableStatus('Opening the timetable...');
+        const text = await readExamTimetableText(file, setExamTimetableStatus);
+        if (!text.trim()) throw new Error('No writing was found in it. Try a clearer photo.');
+        let exams = [];
+        let usedAI = false;
+        if (await aiAvailable()) {
+            setExamTimetableStatus('Working out the exams with the AI helper...');
+            try {
+                exams = await parseExamTimetableWithAI(text);
+                usedAI = true;
+            } catch (err) {
+                console.warn('AI could not read the timetable, using the simple reader:', err.message);
+            }
+        }
+        if (!usedAI) exams = parseExamTimetableLocally(text);
+        exams.sort((a, b) => a.date.localeCompare(b.date));
+        showExamReview(exams, series);
+        setExamTimetableStatus(exams.length
+            ? `Found ${exams.length} exam${exams.length === 1 ? '' : 's'}. Check the subjects and dates, fix anything wrong, then press "Add these exams".`
+            : `Couldn't find the exams in it${usedAI ? '' : ' (adding an AI key in Settings helps with messy timetables)'}. You can type them in below.`, !exams.length);
+    } catch (err) {
+        setExamTimetableStatus(`Couldn't read that timetable: ${err.message}`, true);
+    } finally {
+        label.classList.remove('busy');
+    }
+});
+
+document.getElementById('exam-review-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.er-remove');
+    if (btn) btn.closest('li').remove();
+});
+
+document.getElementById('exam-review-add-row')?.addEventListener('click', () => {
+    document.getElementById('exam-review-list').insertAdjacentHTML('beforeend', examReviewRowHtml());
+});
+
+document.getElementById('exam-review-cancel')?.addEventListener('click', () => {
+    closeExamReview();
+    setExamTimetableStatus('');
+});
+
+document.getElementById('exam-review-save')?.addEventListener('click', () => {
+    const rows = [...document.querySelectorAll('#exam-review-list .exam-review-row')];
+    const exams = [];
+    let problem = '';
+    rows.forEach(row => {
+        const subject = row.querySelector('.er-subject').value.trim();
+        const date = row.querySelector('.er-date').value;
+        if (!subject && !date) return; // an empty row
+        if (!subject || !date) {
+            problem = 'Every row needs a subject and a date (or remove the row with ×).';
+            row.classList.add('shake-error');
+            setTimeout(() => row.classList.remove('shake-error'), 600);
+            return;
+        }
+        exams.push({
+            subject: normaliseExamSubject(subject), date,
+            time: row.querySelector('.er-time').value, portions: row.querySelector('.er-portions').value,
+            series: examReviewSeries || document.getElementById('exam-tt-series').value.trim()
+        });
+    });
+    if (problem) {
+        alert(problem);
+        return;
+    }
+    if (!exams.length) {
+        alert('There are no exams to add.');
+        return;
+    }
+    addExams(exams);
+    closeExamReview();
+    setExamTimetableStatus(`Added ${exams.length} exam${exams.length === 1 ? '' : 's'}.`);
+});
+
+document.getElementById('exam-page-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = document.getElementById('exam-page-subject').value.trim();
+    const date = document.getElementById('exam-page-date').value;
+    if (!subject || !date) {
+        alert('Type the subject and pick the date.');
+        return;
+    }
+    addExams([{
+        subject: normaliseExamSubject(subject), date,
+        series: document.getElementById('exam-page-series').value,
+        time: document.getElementById('exam-page-time').value,
+        portions: document.getElementById('exam-page-portions').value
+    }]);
+    ['exam-page-subject', 'exam-page-date', 'exam-page-time', 'exam-page-portions'].forEach(id => { document.getElementById(id).value = ''; });
+});
+
+function renderExamsPage() {
+    const container = document.getElementById('exam-series-list');
+    if (!container) return;
+    const seriesNames = [...new Set((appState.exams || []).map(e => e.series).filter(Boolean))];
+    document.getElementById('exam-series-names').innerHTML = seriesNames.map(s => `<option value="${escapeHTML(s)}"></option>`).join('');
+    document.getElementById('exam-subject-names').innerHTML = SUBJECT_LIST.filter(s => s !== 'Sixth Subject')
+        .map(s => `<option value="${escapeHTML(s)}"></option>`).join('');
+
+    const today = formatDateString(new Date());
+    const groups = new Map();
+    keepRecentExams().sort((a, b) => a.date.localeCompare(b.date)).forEach(exam => {
+        const key = exam.series || '';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(exam);
+    });
+    if (groups.size === 0) {
+        container.innerHTML = '<div class="card exam-series-card"><p class="empty-state">No exams yet. Upload a timetable or add an exam above.</p></div>';
+        return;
+    }
+    const dayMs = 1000 * 60 * 60 * 24;
+    const todayDate = parseDay(today);
+    // Series still going first (soonest first), finished ones after
+    const ordered = [...groups.entries()].sort((a, b) => {
+        const aDone = a[1].every(e => e.date < today);
+        const bDone = b[1].every(e => e.date < today);
+        if (aDone !== bDone) return aDone ? 1 : -1;
+        return a[1][0].date.localeCompare(b[1][0].date);
+    });
+    container.innerHTML = ordered.map(([series, exams]) => {
+        const done = exams.every(e => e.date < today);
+        const next = exams.find(e => e.date >= today);
+        const daysToNext = next ? Math.round((parseDay(next.date) - todayDate) / dayMs) : null;
+        const range = `${parseDay(exams[0].date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` +
+            (exams.length > 1 ? ` – ${parseDay(exams[exams.length - 1].date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : '');
+        const summary = done ? 'Finished' : daysToNext === 0 ? `${escapeHTML(next.subject)} today` :
+            daysToNext === 1 ? `${escapeHTML(next.subject)} tomorrow` : `Next: ${escapeHTML(next.subject)} in ${daysToNext} days`;
+        const rows = exams.map(exam => {
+            const left = Math.round((parseDay(exam.date) - todayDate) / dayMs);
+            const when = left < 0 ? 'Done' : left === 0 ? 'Today' : left === 1 ? 'Tomorrow' : `${left} days`;
+            return `
+                <li class="exam-row${left < 0 ? ' past' : left <= 3 ? ' soon' : ''}">
+                    <span class="exam-row-date">${parseDay(exam.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    <span class="exam-row-main">
+                        <strong>${escapeHTML(exam.name ? `${exam.subject} ${exam.name}` : exam.subject)}</strong>
+                        ${exam.time || exam.portions ? `<span>${escapeHTML([exam.time, exam.portions].filter(Boolean).join(' · '))}</span>` : ''}
+                    </span>
+                    <span class="exam-row-when">${when}</span>
+                    <button type="button" class="exam-remove" data-exam="${escapeHTML(exam.id)}" aria-label="Remove ${escapeHTML(examTitle(exam))}" title="Remove">×</button>
+                </li>`;
+        }).join('');
+        return `
+            <div class="card exam-series-card${done ? ' finished' : ''}">
+                <div class="exam-series-head">
+                    <div>
+                        <h3>${escapeHTML(series || 'Other exams')}</h3>
+                        <p class="exam-series-sub">${exams.length} exam${exams.length === 1 ? '' : 's'} · ${range} · ${summary}</p>
+                    </div>
+                    <button type="button" class="btn ghost-btn btn-sm cls-danger-text exam-series-delete" data-series="${escapeHTML(series)}">Delete all</button>
+                </div>
+                <ul class="exam-rows">${rows}</ul>
+            </div>`;
+    }).join('');
+}
+
+// --- Marks tracker (Exams page) ---
+// Marks per subject over the term. "All subjects" shows each subject's average as a bar;
+// one subject shows a line of its tests in date order. Values are percentages.
+let marksView = 'all';
+
+const markPercent = m => (m.outOf > 0 ? Math.round((m.score / m.outOf) * 1000) / 10 : 0);
+const svgText = text => escapeHTML(String(text));
+
+function marksBarChart(marks) {
+    const bySubject = new Map();
+    marks.forEach(m => {
+        if (!bySubject.has(m.subject)) bySubject.set(m.subject, []);
+        bySubject.get(m.subject).push(markPercent(m));
+    });
+    const rows = [...bySubject.entries()]
+        .map(([subject, list]) => ({ subject, avg: Math.round(list.reduce((a, b) => a + b, 0) / list.length), n: list.length }))
+        .sort((a, b) => b.avg - a.avg);
+    const width = 640, labelW = 130, valueW = 48, rowH = 34, top = 8;
+    const plotW = width - labelW - valueW;
+    const height = top + rows.length * rowH + 20;
+    const x = pct => labelW + (pct / 100) * plotW;
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Average marks by subject">`;
+    [0, 50, 100].forEach(p => {
+        svg += `<line class="marks-grid" x1="${x(p)}" x2="${x(p)}" y1="${top}" y2="${height - 18}"/>` +
+            `<text class="marks-axis" x="${x(p)}" y="${height - 4}" text-anchor="middle">${p}%</text>`;
+    });
+    rows.forEach((r, i) => {
+        const y = top + i * rowH + 7;
+        svg += `<g class="marks-bar-row"><title>${svgText(r.subject)}: average ${r.avg}% over ${r.n} test${r.n === 1 ? '' : 's'}</title>` +
+            `<rect class="marks-hit" x="0" y="${y - 7}" width="${width}" height="${rowH}"/>` +
+            `<text class="marks-label" x="${labelW - 10}" y="${y + 14}" text-anchor="end">${svgText(r.subject.length > 16 ? r.subject.slice(0, 15) + '…' : r.subject)}</text>` +
+            `<rect class="marks-bar" x="${labelW}" y="${y}" width="${Math.max(4, x(r.avg) - labelW)}" height="20" rx="4"/>` +
+            `<text class="marks-value" x="${x(r.avg) + 8}" y="${y + 14}">${r.avg}%</text></g>`;
+    });
+    return svg + '</svg>';
+}
+
+function marksLineChart(marks) {
+    const width = 640, height = 240, left = 44, right = 24, top = 18, bottom = 46;
+    const plotW = width - left - right, plotH = height - top - bottom;
+    const x = i => left + (marks.length === 1 ? plotW / 2 : (i / (marks.length - 1)) * plotW);
+    const y = pct => top + (1 - pct / 100) * plotH;
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Marks over the term">`;
+    [0, 25, 50, 75, 100].forEach(p => {
+        svg += `<line class="marks-grid" x1="${left}" x2="${width - right}" y1="${y(p)}" y2="${y(p)}"/>` +
+            `<text class="marks-axis" x="${left - 8}" y="${y(p) + 4}" text-anchor="end">${p}%</text>`;
+    });
+    if (marks.length > 1) {
+        svg += `<polyline class="marks-line" points="${marks.map((m, i) => `${x(i)},${y(markPercent(m))}`).join(' ')}"/>`;
+    }
+    // Only a few x labels, so they never run into each other
+    const step = Math.ceil(marks.length / 6);
+    marks.forEach((m, i) => {
+        const pct = markPercent(m);
+        const date = parseDay(m.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        svg += `<g class="marks-point"><title>${svgText(m.test || 'Test')} · ${svgText(date)}: ${m.score}/${m.outOf} (${pct}%)</title>` +
+            `<circle class="marks-hit" cx="${x(i)}" cy="${y(pct)}" r="14"/>` +
+            `<circle class="marks-dot" cx="${x(i)}" cy="${y(pct)}" r="5"/></g>`;
+        if (i % step === 0 || i === marks.length - 1) {
+            svg += `<text class="marks-axis" x="${x(i)}" y="${height - 26}" text-anchor="middle">${svgText(date)}</text>`;
+        }
+    });
+    const last = marks[marks.length - 1];
+    svg += `<text class="marks-value" x="${x(marks.length - 1)}" y="${y(markPercent(last)) - 12}" text-anchor="${marks.length === 1 ? 'middle' : 'end'}">${markPercent(last)}%</text>`;
+    return svg + '</svg>';
+}
+
+function renderMarks() {
+    const chart = document.getElementById('marks-chart');
+    if (!chart) return;
+    const all = (appState.marks || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+    const subjects = [...new Set(all.map(m => m.subject))].sort();
+    if (marksView !== 'all' && !subjects.includes(marksView)) marksView = 'all';
+
+    const filter = document.getElementById('marks-filter');
+    filter.innerHTML = subjects.length < 2 ? '' : ['all', ...subjects].map(s =>
+        `<button type="button" class="marks-pill${s === marksView ? ' active' : ''}" data-subject="${escapeHTML(s)}" aria-pressed="${s === marksView}">${s === 'all' ? 'All subjects' : escapeHTML(s)}</button>`).join('');
+
+    const shown = marksView === 'all' ? all : all.filter(m => m.subject === marksView);
+    if (shown.length === 0) {
+        chart.innerHTML = '<p class="empty-state">Add your marks above to see how you\'re doing over the term.</p>';
+    } else if (marksView === 'all' && subjects.length > 1) {
+        chart.innerHTML = `<p class="marks-chart-title">Average by subject</p>${marksBarChart(shown)}`;
+    } else {
+        chart.innerHTML = `<p class="marks-chart-title">${escapeHTML(shown[0].subject)} over the term</p>${marksLineChart(shown)}`;
+    }
+
+    // The table view of the same marks, newest first
+    document.getElementById('marks-list').innerHTML = shown.slice().reverse().map(m => `
+        <li class="exam-row">
+            <span class="exam-row-date">${parseDay(m.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+            <span class="exam-row-main">
+                <strong>${escapeHTML(m.subject)}</strong>
+                ${m.test ? `<span>${escapeHTML(m.test)}</span>` : ''}
+            </span>
+            <span class="exam-row-when">${m.score}/${m.outOf} · ${markPercent(m)}%</span>
+            <button type="button" class="exam-remove" data-mark="${escapeHTML(m.id)}" aria-label="Remove these marks" title="Remove">×</button>
+        </li>`).join('');
+}
+
+document.getElementById('marks-filter')?.addEventListener('click', (e) => {
+    const pill = e.target.closest('.marks-pill');
+    if (!pill) return;
+    marksView = pill.dataset.subject;
+    renderMarks();
+});
+
+document.getElementById('marks-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-mark]');
+    if (!btn) return;
+    appState.marks = (appState.marks || []).filter(m => m.id !== btn.dataset.mark);
+    saveState();
+});
+
+document.getElementById('marks-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = normaliseExamSubject(document.getElementById('marks-subject').value);
+    const score = parseFloat(document.getElementById('marks-score').value);
+    const outOf = parseFloat(document.getElementById('marks-outof').value);
+    const date = document.getElementById('marks-date').value || formatDateString(new Date());
+    if (!subject) return alert('Type the subject.');
+    if (!(outOf > 0)) return alert('"Out of" must be more than 0.');
+    if (!(score >= 0) || score > outOf) return alert(`Type the marks you got (0 to ${outOf}).`);
+    if (!Array.isArray(appState.marks)) appState.marks = [];
+    appState.marks.push({
+        id: 'mk_' + Date.now(), subject, score, outOf, date,
+        test: document.getElementById('marks-test').value.trim().slice(0, 40)
+    });
+    marksView = marksView === 'all' ? 'all' : subject;
+    ['marks-subject', 'marks-score', 'marks-test'].forEach(id => { document.getElementById(id).value = ''; });
+    saveState();
+});
+
+document.getElementById('exam-series-list')?.addEventListener('click', (e) => {
+    const remove = e.target.closest('.exam-remove');
+    if (remove) {
+        removeExam(remove.dataset.exam);
+        return;
+    }
+    const del = e.target.closest('.exam-series-delete');
+    if (del) {
+        const series = del.dataset.series;
+        showConfirm(`Delete all ${series ? `"${series}"` : 'these'} exams?`, () => {
+            appState.exams = (appState.exams || []).filter(ex => (ex.series || '') !== series);
+            saveState();
+        }, { title: 'Delete exams', confirmLabel: 'Delete', danger: true });
+    }
+});
 
 // --- Calendar Logic ---
 let currentCalendarDate = new Date();
@@ -565,13 +1218,24 @@ function showCalendarDayDetails(date) {
     
     let html = '';
     
-    const occasion = getOccasion(date);
-    if (occasion) {
+    const occasions = getOccasions(date);
+    const ownOccasion = getOwnOccasion(date);
+    if (occasions.length) {
         html += `
             <div class="calendar-detail-section occasion-section">
-                <h4>Occasion</h4>
-                <p>${escapeHTML(occasion)}</p>
+                <h4>${occasions.length > 1 ? 'Occasions' : 'Occasion'}</h4>
+                ${occasions.map(o => `<p>${escapeHTML(o.name)}${o.className ? ` <span class="occasion-from">· ${escapeHTML(o.className)}</span>` : ''}</p>`).join('')}
                 <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">You'll get a reminder the day before.</p>
+            </div>
+        `;
+    }
+
+    const exams = examsOn(date);
+    if (exams.length) {
+        html += `
+            <div class="calendar-detail-section exam-section">
+                <h4>${exams.length > 1 ? 'Exams' : 'Exam'}</h4>
+                ${exams.map(e => `<p>${escapeHTML(examTitle(e))}</p>`).join('')}
             </div>
         `;
     }
@@ -654,8 +1318,8 @@ function showCalendarDayDetails(date) {
         }
     }
 
-    // School occasions can be on any day, weekends too
-    if (occasion) {
+    // School occasions can be on any day, weekends too. Class occasions are managed by class admins.
+    if (ownOccasion) {
         html += `
             <div class="calendar-detail-section">
                 <button type="button" id="cal-remove-occasion" class="btn secondary-btn holiday-btn">Remove occasion</button>
@@ -787,6 +1451,14 @@ function createDayCell(date, isCurrentMonth) {
         infoDiv.appendChild(holidayBadge);
     }
     
+    if (examsOn(date).length) {
+        const examBadge = document.createElement('span');
+        examBadge.className = 'calendar-mini-badge exam-badge';
+        examBadge.innerText = examsOn(date).map(examTitle).join(', ');
+        examBadge.title = examBadge.innerText;
+        infoDiv.appendChild(examBadge);
+    }
+
     const occasion = getOccasion(date);
     if (occasion) {
         cell.classList.add('has-occasion');
@@ -884,6 +1556,8 @@ function renderAllViews() {
     renderNotebooks();
     updateRobotExpression();
     renderCalendar();
+    renderExamsPage();
+    renderMarks();
     renderEmailJSSettings();
     if (typeof renderFriends === 'function') {
         renderFriends();
@@ -1190,7 +1864,43 @@ function renderDashboard() {
         hwList.innerHTML = '<li class="empty-state">Nothing due soon. Nice.</li>';
     }
 
+    renderHomeworkStreak();
+
+    renderExams();
     renderStudyPlan();
+}
+
+// --- Homework streak ---
+// Counts the days in a row with no overdue homework. The streak starts the first day nothing is
+// overdue and breaks as soon as something is (homework due before today and not ticked done).
+let streakSaveTimer = null;
+
+function renderHomeworkStreak() {
+    const el = document.getElementById('dash-streak');
+    if (!el) return;
+    const today = formatDateString(new Date());
+    const overdue = appState.homework.filter(hw => hw.date && formatDateString(parseDay(hw.date)) < today).length;
+    if (!appState.streak || typeof appState.streak !== 'object') appState.streak = { start: null, best: 0 };
+    const streak = appState.streak;
+    const before = JSON.stringify(streak);
+    if (overdue) streak.start = null;
+    else if (!streak.start || streak.start > today) streak.start = today;
+    const days = streak.start ? Math.round((parseDay(today) - parseDay(streak.start)) / 86400000) + 1 : 0;
+    if (days > (streak.best || 0)) streak.best = days;
+    // Save it after drawing, not while drawing (saving redraws the page)
+    if (JSON.stringify(streak) !== before && appState.user) {
+        clearTimeout(streakSaveTimer);
+        streakSaveTimer = setTimeout(saveState, 0);
+    }
+
+    el.classList.toggle('broken', !!overdue);
+    if (overdue) {
+        el.innerText = `Finish your ${overdue === 1 ? 'overdue homework' : `${overdue} overdue homework`} to start a 🔥 streak`;
+    } else if (days === 1) {
+        el.innerText = '🔥 Day 1 with nothing overdue. Keep it going!';
+    } else {
+        el.innerText = `🔥 ${days} days in a row with nothing overdue${streak.best > days ? ` · best ${streak.best}` : ''}`;
+    }
 }
 
 // --- Dashboard: today's home study blocks ---
@@ -1527,6 +2237,7 @@ window.completeHomework = function(index, button) {
 
 // --- Notebook Logic ---
 let selectedNotebookIds = new Set();
+let notebookSelecting = false; // "Select" mode: tick notes to download or delete them together
 
 function updateBulkActionsBar() {
     const bulkBar = document.getElementById('notebook-bulk-bar');
@@ -1535,9 +2246,14 @@ function updateBulkActionsBar() {
     const bulkButtonsContainer = document.querySelector('.bulk-buttons-container');
 
     if (!bulkBar) return;
+    const selectBtn = document.getElementById('btn-select-notes');
+    if (selectBtn) {
+        selectBtn.innerText = notebookSelecting ? 'Done' : 'Select';
+        selectBtn.hidden = !(appState.notebooks && appState.notebooks.length > 0);
+    }
 
-    if (appState.notebooks && appState.notebooks.length > 0) {
-        bulkBar.style.display = 'block';
+    if (notebookSelecting && appState.notebooks && appState.notebooks.length > 0) {
+        bulkBar.hidden = false;
         if (selectedCountEl) {
             selectedCountEl.innerText = `${selectedNotebookIds.size} selected`;
         }
@@ -1552,13 +2268,173 @@ function updateBulkActionsBar() {
             }
         }
     } else {
-        bulkBar.style.display = 'none';
+        bulkBar.hidden = true;
         selectedNotebookIds.clear();
         if (bulkButtonsContainer) {
             bulkButtonsContainer.classList.remove('visible');
         }
     }
 }
+
+// --- Notebook: small helpers for the tidier page ---
+function activeNote() {
+    return appState.notebooks.find(n => n.id === appState.activeNotebookId);
+}
+
+// One status line under the toolbar for AI and text reading ("Translating...", errors)
+function setNoteStatus(text, isError = false) {
+    const el = document.getElementById('notebook-status');
+    if (!el) return;
+    el.hidden = !text;
+    el.innerText = text || '';
+    el.classList.toggle('error', isError);
+}
+
+function updateNoteWordCount(text) {
+    const el = document.getElementById('notebook-word-count');
+    if (!el) return;
+    const words = (text || '').trim() ? (text || '').trim().split(/\s+/).length : 0;
+    el.innerText = `${words} word${words === 1 ? '' : 's'}`;
+}
+
+// "Saving..." while typing, then "Saved" (notes save by themselves)
+let noteSavedTimer = null;
+function showNoteSaving() {
+    const el = document.getElementById('notebook-saved');
+    if (!el) return;
+    el.innerText = 'Saving...';
+    el.classList.add('saving');
+    clearTimeout(noteSavedTimer);
+    noteSavedTimer = setTimeout(() => {
+        el.innerText = 'Saved';
+        el.classList.remove('saving');
+    }, 700);
+}
+
+// Add text to the end of the open note and show it
+function appendToNote(note, text) {
+    note.content = (note.content || '').trimEnd() + (note.content ? '\n\n' : '') + text.trim() + '\n';
+    const contentInput = document.getElementById('notebook-content');
+    if (contentInput) contentInput.value = note.content;
+    saveState();
+}
+
+// Toolbar menus (AI helper, Add picture, More): open one at a time, close on outside click/Escape
+function closeNoteMenus(except) {
+    document.querySelectorAll('#notebook .nb-menu').forEach(menu => {
+        if (menu === except) return;
+        menu.hidden = true;
+        document.querySelector(`[data-menu="${menu.id}"]`)?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+document.querySelectorAll('#notebook [data-menu]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const menu = document.getElementById(btn.dataset.menu);
+        closeNoteMenus(menu);
+        menu.hidden = !menu.hidden;
+        btn.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+});
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.nb-menu')) closeNoteMenus();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeNoteMenus();
+});
+document.querySelectorAll('#notebook .nb-menu').forEach(menu => {
+    menu.addEventListener('click', (e) => {
+        if (e.target.closest('[role="menuitem"]')) closeNoteMenus();
+    });
+});
+
+document.getElementById('btn-select-notes')?.addEventListener('click', () => {
+    notebookSelecting = !notebookSelecting;
+    selectedNotebookIds.clear();
+    renderNotebooks();
+});
+
+document.getElementById('notebook-search')?.addEventListener('input', () => renderNotebooks());
+
+document.getElementById('btn-empty-new-note')?.addEventListener('click', () => {
+    document.getElementById('btn-new-notebook')?.click();
+});
+
+document.getElementById('btn-ai-ask')?.addEventListener('click', () => {
+    document.getElementById('nb-link-row').hidden = true;
+    document.getElementById('nb-ask-row').hidden = false;
+    document.getElementById('notebook-ai-prompt').focus();
+});
+
+document.getElementById('btn-image-link')?.addEventListener('click', () => {
+    document.getElementById('nb-ask-row').hidden = true;
+    document.getElementById('nb-link-row').hidden = false;
+    document.getElementById('notebook-image-url').focus();
+});
+
+document.querySelectorAll('#notebook .nb-row-close').forEach(btn => {
+    btn.addEventListener('click', () => { document.getElementById(btn.dataset.close).hidden = true; });
+});
+
+document.getElementById('notebook-ai-prompt')?.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-ai-generate')?.click();
+});
+
+document.getElementById('btn-upload-image')?.addEventListener('click', () => {
+    document.getElementById('notebook-image-file').click();
+});
+
+document.getElementById('btn-scan-text')?.addEventListener('click', () => {
+    document.getElementById('notebook-scan-file').click();
+});
+
+// Read the writing in a photo (Tamil + English) and add it to the note
+async function addTextFromPicture(note, source, label) {
+    setNoteStatus(`Reading the writing in ${label}... (this takes a few seconds)`);
+    try {
+        const { data: { text } } = await Tesseract.recognize(source, 'eng+tam');
+        const cleaned = cleanOcrText(text);
+        if (!cleaned) {
+            setNoteStatus(`No writing was found in ${label}. Try a clearer photo.`, true);
+            return;
+        }
+        appendToNote(note, `[Text from ${label}]\n${cleaned}`);
+        setNoteStatus(`Added the text from ${label} to the end of your note.`);
+    } catch (err) {
+        setNoteStatus(`Couldn't read ${label}: ${err.message}`, true);
+    }
+}
+
+document.getElementById('notebook-scan-file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    const note = activeNote();
+    if (!file || !note) return;
+    if (isPdfFile(file)) openPdfForOcr(file);
+    else if (file.type.startsWith('image/')) addTextFromPicture(note, file, 'the photo');
+    else setNoteStatus('Pick a photo or a PDF.', true);
+});
+
+// "Get text" on a picture already in the note: the picture stays
+document.getElementById('notebook-image-gallery')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.gallery-img-text');
+    const note = activeNote();
+    if (!btn || !note) return;
+    const index = Number(btn.dataset.picture);
+    addTextFromPicture(note, note.images[index], `picture ${index + 1}`);
+});
+
+document.getElementById('btn-download-notebook')?.addEventListener('click', () => {
+    const note = activeNote();
+    if (!note) return;
+    const blob = new Blob([`${note.title || 'Untitled note'}\n\n${note.content || ''}\n`], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(note.title || 'note').replace(/[\\/:*?"<>|]+/g, '').trim() || 'note'}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
 
 function renderNotebooks() {
     const listEl = document.getElementById('notebook-list');
@@ -1579,22 +2455,30 @@ function renderNotebooks() {
         if (!validIds.has(id)) selectedNotebookIds.delete(id);
     });
 
-    appState.notebooks.forEach(nb => {
+    // Search: by title or anything written in the note
+    const search = (document.getElementById('notebook-search')?.value || '').trim().toLowerCase();
+    const shown = search
+        ? appState.notebooks.filter(nb => `${nb.title || ''}\n${nb.content || ''}`.toLowerCase().includes(search))
+        : appState.notebooks;
+    document.querySelector('.notebook-sidebar')?.classList.toggle('selecting', notebookSelecting);
+
+    shown.forEach(nb => {
         const li = document.createElement('li');
         li.className = 'notebook-list-item' + (appState.activeNotebookId === nb.id ? ' active' : '');
-        
+
         const isChecked = selectedNotebookIds.has(nb.id);
-        
+        const preview = (nb.content || '').replace(/\s+/g, ' ').trim();
+
         li.innerHTML = `
-            <input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" ${isChecked ? 'checked' : ''}>
-            <div style="flex: 1; min-width: 0;" class="nb-item-click-target">
-                <h4 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">${escapeHTML(nb.title || 'Untitled Note')}</h4>
-                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nb.content ? escapeHTML(nb.content.substring(0, 30)) + '...' : 'No content'}</p>
+            ${notebookSelecting ? `<input type="checkbox" class="nb-item-checkbox" data-id="${nb.id}" aria-label="Select ${escapeHTML(nb.title || 'Untitled note')}" ${isChecked ? 'checked' : ''}>` : ''}
+            <div class="nb-item-click-target">
+                <h4>${escapeHTML(nb.title || 'Untitled note')}</h4>
+                <p>${preview ? escapeHTML(preview.substring(0, 60)) : 'Empty note'}</p>
             </div>
         `;
-        
+
         const checkbox = li.querySelector('.nb-item-checkbox');
-        checkbox.addEventListener('click', (e) => {
+        checkbox?.addEventListener('click', (e) => {
             e.stopPropagation();
             if (checkbox.checked) {
                 selectedNotebookIds.add(nb.id);
@@ -1603,15 +2487,24 @@ function renderNotebooks() {
             }
             updateBulkActionsBar();
         });
-        
-        const clickTarget = li.querySelector('.nb-item-click-target');
-        clickTarget.addEventListener('click', () => {
+
+        li.addEventListener('click', () => {
+            if (notebookSelecting) {
+                // While selecting, tapping a note ticks it
+                if (selectedNotebookIds.has(nb.id)) selectedNotebookIds.delete(nb.id);
+                else selectedNotebookIds.add(nb.id);
+                renderNotebooks();
+                return;
+            }
             appState.activeNotebookId = nb.id;
             saveState();
         });
 
         listEl.appendChild(li);
     });
+    if (search && shown.length === 0) {
+        listEl.innerHTML = '<li class="empty-state">No notes match your search.</li>';
+    }
 
     updateBulkActionsBar();
 
@@ -1620,27 +2513,34 @@ function renderNotebooks() {
     if (activeNb) {
         emptyState.style.display = 'none';
         activeView.style.display = 'flex';
-        
+
         if (document.activeElement !== titleInput) titleInput.value = activeNb.title;
         if (document.activeElement !== contentInput) contentInput.value = activeNb.content;
+        updateNoteWordCount(activeNb.content);
 
         galleryEl.innerHTML = '';
-        if (activeNb.images && activeNb.images.length > 0) {
-            activeNb.images.forEach((imgUrl, idx) => {
-                const container = document.createElement('div');
-                container.className = 'gallery-img-container';
-                container.innerHTML = `
-                    <img src="${escapeHTML(imgUrl)}" alt="Notebook Image">
-                    <button class="gallery-img-delete" onclick="deleteNotebookImage(${idx})">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                    </button>
-                `;
-                galleryEl.appendChild(container);
-            });
-        }
+        const pictures = activeNb.images || [];
+        document.getElementById('notebook-pictures-title').hidden = pictures.length === 0;
+        document.getElementById('notebook-pictures-title').innerText = `Pictures (${pictures.length})`;
+        pictures.forEach((imgUrl, idx) => {
+            const container = document.createElement('div');
+            container.className = 'gallery-img-container';
+            container.innerHTML = `
+                <img src="${escapeHTML(imgUrl)}" alt="Picture ${idx + 1} in this note">
+                <button type="button" class="gallery-img-text" data-picture="${idx}" title="Read the writing in this picture and add it to your note">Get text</button>
+                <button type="button" class="gallery-img-delete" onclick="deleteNotebookImage(${idx})" aria-label="Delete this picture" title="Delete this picture">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            `;
+            galleryEl.appendChild(container);
+        });
     } else {
         emptyState.style.display = 'block';
         activeView.style.display = 'none';
+        const none = appState.notebooks.length === 0;
+        document.getElementById('notebook-empty-text').innerText = none
+            ? 'No notes yet. Make your first one: type, add pictures, or get the text from a photo or PDF.'
+            : 'Pick a note on the left, or make a new one.';
     }
     if (typeof renderSharedNotes === 'function') renderSharedNotes();
 }
@@ -1650,12 +2550,16 @@ document.getElementById('btn-new-notebook')?.addEventListener('click', () => {
     const newId = 'nb_' + Date.now();
     appState.notebooks.unshift({
         id: newId,
-        title: 'New Note',
+        title: '',
         content: '',
         images: []
     });
     appState.activeNotebookId = newId;
+    notebookSelecting = false;
+    const search = document.getElementById('notebook-search');
+    if (search) search.value = '';
     saveState();
+    document.getElementById('notebook-title')?.focus(); // type the title straight away
 });
 
 // Fullscreen Notebook toggle
@@ -1675,6 +2579,8 @@ document.getElementById('btn-fullscreen-notebook')?.addEventListener('click', ()
         if (expandIcon) expandIcon.style.display = 'inline-block';
         if (collapseIcon) collapseIcon.style.display = 'none';
     }
+    const label = document.getElementById('fullscreen-label');
+    if (label) label.innerText = isFullscreen ? 'Exit full screen' : 'Full screen';
 });
 
 // Select All notes
@@ -1698,6 +2604,7 @@ document.getElementById('btn-bulk-delete')?.addEventListener('click', () => {
             appState.activeNotebookId = null;
         }
         selectedNotebookIds.clear();
+        notebookSelecting = false;
         saveState();
         renderNotebooks();
     });
@@ -1783,6 +2690,7 @@ document.getElementById('notebook-title')?.addEventListener('input', (e) => {
     const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
     if (activeNb) {
         activeNb.title = e.target.value;
+        showNoteSaving();
         saveState();
     }
 });
@@ -1791,6 +2699,8 @@ document.getElementById('notebook-content')?.addEventListener('input', (e) => {
     const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
     if (activeNb) {
         activeNb.content = e.target.value;
+        showNoteSaving();
+        updateNoteWordCount(activeNb.content);
         saveState();
     }
 });
@@ -1804,6 +2714,7 @@ document.getElementById('btn-add-image')?.addEventListener('click', () => {
             if (!activeNb.images) activeNb.images = [];
             activeNb.images.push(url);
             urlInput.value = '';
+            document.getElementById('nb-link-row').hidden = true;
             saveState();
             renderNotebooks();
         }
@@ -1864,114 +2775,217 @@ window.deleteNotebookImage = function(index) {
     });
 }
 
-// AI Assist Logic
-document.getElementById('btn-ai-continue')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.content) {
-        alert("Write something first so AI has context!");
+// AI Assist Logic: each one adds its answer to the end of the note, with progress in the status line
+async function runNoteAI(busyText, doneText, makePrompt, label) {
+    const note = activeNote();
+    if (!note) return;
+    const prompt = makePrompt(note);
+    if (!prompt) return;
+    setNoteStatus(busyText);
+    const response = await callGroq(prompt);
+    if (/^(API Error|I need an API key|I'm having trouble)/.test(response)) {
+        setNoteStatus(response.replace(/^API Error:\s*/, ''), true);
         return;
     }
-    const btn = document.getElementById('btn-ai-continue');
-    const origText = btn.innerHTML;
-    btn.innerHTML = 'Writing...';
-    btn.disabled = true;
+    appendToNote(note, label ? `${label}\n${response}` : response);
+    setNoteStatus(doneText);
+}
 
-    const prompt = `Continue the following notes. Add new relevant information to extend the ideas organically. IMPORTANT: Do not include any conversational filler, greetings, or acknowledgements. Just output the continuation text directly:\n\n${activeNb.content}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += '\n\n' + response;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
-    saveState();
-
-    btn.innerHTML = origText;
-    btn.disabled = false;
+document.getElementById('btn-ai-continue')?.addEventListener('click', () => {
+    runNoteAI('Procrastinote AI is writing more...', 'Added more to the end of your note.', note => {
+        if (!(note.content || '').trim()) {
+            setNoteStatus('Write something first, so the AI knows what to continue.', true);
+            return null;
+        }
+        return `Continue the following notes. Add new relevant information to extend the ideas organically. IMPORTANT: Do not include any conversational filler, greetings, or acknowledgements. Just output the continuation text directly:\n\n${note.content}`;
+    });
 });
 
-document.getElementById('btn-ai-generate')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb) return;
-    
+document.getElementById('btn-ai-generate')?.addEventListener('click', () => {
     const promptInput = document.getElementById('notebook-ai-prompt');
     const query = promptInput.value.trim();
     if (!query) {
-        alert("Enter a prompt for the AI.");
+        promptInput.focus();
         return;
     }
-
-    const btn = document.getElementById('btn-ai-generate');
-    const origText = btn.innerText;
-    btn.innerText = '...';
-    btn.disabled = true;
-
-    const context = activeNb.content ? ` Context from notes: "${activeNb.content.substring(0, 500)}"` : '';
-    const prompt = `The user is writing notes. They asked: "${query}". Generate a helpful response to insert into their notes.${context}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += `\n\n[AI: ${query}]\n${response}\n`;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
     promptInput.value = '';
-    saveState();
-
-    btn.innerText = origText;
-    btn.disabled = false;
+    document.getElementById('nb-ask-row').hidden = true;
+    runNoteAI('Procrastinote AI is writing...', 'Added the answer to the end of your note.', note => {
+        const context = note.content ? ` Context from notes: "${note.content.substring(0, 500)}"` : '';
+        return `The user is writing notes. They asked: "${query}". Generate a helpful response to insert into their notes.${context}`;
+    }, `[AI: ${query}]`);
 });
 
-document.getElementById('btn-translate-english')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.content) {
-        alert("Write something first to translate!");
-        return;
-    }
-    const btn = document.getElementById('btn-translate-english');
-    const origText = btn.innerText;
-    btn.innerText = 'Translating...';
-    btn.disabled = true;
-
-    const prompt = `Translate the following notes into English. IMPORTANT: Just output the translated text directly, without any conversational filler, greetings, or acknowledgements:\n\n${activeNb.content}`;
-    const response = await callGroq(prompt);
-    
-    activeNb.content += `\n\n[Translation to English]\n${response}\n`;
-    const contentInput = document.getElementById('notebook-content');
-    if (contentInput) contentInput.value = activeNb.content;
-    saveState();
-
-    btn.innerText = origText;
-    btn.disabled = false;
-});
-
-document.getElementById('btn-ocr-images')?.addEventListener('click', async () => {
-    const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
-    if (!activeNb || !activeNb.images || activeNb.images.length === 0) {
-        alert("Add some images to extract text from!");
-        return;
-    }
-    const btn = document.getElementById('btn-ocr-images');
-    const origText = btn.innerText;
-    btn.innerText = 'Extracting...';
-    btn.disabled = true;
-
-    try {
-        let extractedText = '';
-        for (let i = 0; i < activeNb.images.length; i++) {
-            const imgUrl = activeNb.images[i];
-            const { data: { text } } = await Tesseract.recognize(imgUrl, 'eng+tam');
-            extractedText += `\n[Image ${i + 1} Extracted Text]:\n${cleanOcrText(text)}\n`;
+document.getElementById('btn-translate-english')?.addEventListener('click', () => {
+    runNoteAI('Translating your note into English...', 'Added the English version to the end of your note.', note => {
+        if (!(note.content || '').trim()) {
+            setNoteStatus('Write something first, then translate it.', true);
+            return null;
         }
-        
-        activeNb.content += `\n\n[OCR Extraction]\n${extractedText}\n`;
-        activeNb.images = [];
-        const contentInput = document.getElementById('notebook-content');
-        if (contentInput) contentInput.value = activeNb.content;
-        saveState();
-        renderNotebooks();
-    } catch (e) {
-        alert("Error during OCR: " + e.message);
-    }
+        return `Translate the following notes into English. IMPORTANT: Just output the translated text directly, without any conversational filler, greetings, or acknowledgements:\n\n${note.content}`;
+    }, '[Translation to English]');
+});
 
-    btn.innerText = origText;
-    btn.disabled = false;
+// --- Flashcards from a note ---
+// Procrastinote AI writes 10 question/answer cards from the open note. Without an AI key, cards
+// are made from "Term: meaning" lines and by hiding a key word in sentences. The cards are kept
+// with the note, so they open straight away next time (until the note changes).
+let flashcards = { note: null, cards: [], index: 0 };
+
+// A short fingerprint of the note's text, to know when the saved cards are out of date
+function noteFingerprint(text) {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    return `${text.length}:${hash}`;
+}
+
+const FLASHCARD_STOPWORDS = new Set(['which', 'there', 'their', 'these', 'those', 'about', 'would', 'could', 'should',
+    'because', 'through', 'between', 'every', 'other', 'where', 'while', 'after', 'before', 'being', 'always']);
+
+function makeFlashcardsLocally(text) {
+    const cards = [];
+    const lines = text.split('\n').map(l => l.replace(/^[\s•*\-–\d.)]+/, '').trim()).filter(Boolean);
+    // "Ohm's law: V = I × R", "Photosynthesis - how plants make food"
+    const otherLines = [];
+    lines.forEach(line => {
+        const m = /^([^:=–-]{2,50}?)\s*[:=–-]\s+(.{3,200})$/.exec(line);
+        if (m && m[1].split(/\s+/).length <= 6) cards.push({ q: `${m[1].trim()}?`, a: m[2].trim() });
+        else otherLines.push(line);
+    });
+    // The other sentences: hide the longest important word
+    const sentences = otherLines.join(' ').split(/(?<=[.!?।])\s+/).map(s => s.trim())
+        .filter(s => s.split(/\s+/).length >= 6 && s.length <= 220);
+    for (const sentence of sentences) {
+        if (cards.length >= 10) break;
+        const words = sentence.match(/[\p{L}\p{M}][\p{L}\p{M}'-]{4,}/gu) || [];
+        const key = words.filter(w => !FLASHCARD_STOPWORDS.has(w.toLowerCase())).sort((a, b) => b.length - a.length)[0];
+        if (!key || cards.some(c => c.a === key)) continue;
+        cards.push({ q: `Fill in the blank: ${sentence.replace(key, '_____')}`, a: key });
+    }
+    return cards.slice(0, 10);
+}
+
+async function makeFlashcardsWithAI(title, text) {
+    const reply = await callGroq(
+        `Make 10 flashcards for a school student revising this note, titled "${title}". ` +
+        'Each card has a short question and a short answer (under 25 words), only using facts from the note. ' +
+        'Write them in the same language as the note. Answer with JSON only, exactly in this shape:\n' +
+        '{"cards":[{"q":"What is the unit of resistance?","a":"The ohm (Ω)"}]}\n\n' +
+        `Note:\n${text.slice(0, 6000)}`,
+        'You make revision flashcards from notes. You only ever answer with valid JSON.'
+    );
+    const start = reply.indexOf('{');
+    const end = reply.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
+    const data = JSON.parse(reply.slice(start, end + 1));
+    return (Array.isArray(data.cards) ? data.cards : [])
+        .filter(c => c && String(c.q || '').trim() && String(c.a || '').trim())
+        .map(c => ({ q: String(c.q).trim().slice(0, 300), a: String(c.a).trim().slice(0, 300) }))
+        .slice(0, 10);
+}
+
+function showFlashcardStatus(text, isError = false) {
+    const el = document.getElementById('flashcard-status');
+    el.hidden = !text;
+    el.innerText = text;
+    el.classList.toggle('error', isError);
+}
+
+function showFlashcard() {
+    const { cards, index } = flashcards;
+    const card = document.getElementById('flashcard-card');
+    card.classList.remove('flipped');
+    document.getElementById('flashcard-q').innerText = cards[index].q;
+    document.getElementById('flashcard-a').innerText = cards[index].a;
+    document.getElementById('flashcard-count').innerText = `${index + 1} / ${cards.length}`;
+    document.getElementById('flashcard-prev').disabled = index === 0;
+    document.getElementById('flashcard-next').innerText = index === cards.length - 1 ? 'Start again' : 'Next';
+}
+
+async function buildFlashcards(note, fresh) {
+    const deck = document.getElementById('flashcard-deck');
+    const text = (note.content || '').trim();
+    const fingerprint = noteFingerprint(text);
+    if (!fresh && note.flashcards?.fingerprint === fingerprint && note.flashcards.cards?.length) {
+        flashcards = { note, cards: note.flashcards.cards, index: 0 };
+        deck.hidden = false;
+        showFlashcardStatus('');
+        showFlashcard();
+        return;
+    }
+    if (text.split(/\s+/).length < 15) {
+        deck.hidden = true;
+        showFlashcardStatus('Write a bit more in this note first (a few sentences), then try again.', true);
+        return;
+    }
+    deck.hidden = true;
+    let cards = [];
+    if (await aiAvailable()) {
+        showFlashcardStatus('Procrastinote AI is writing your cards...');
+        try {
+            cards = await makeFlashcardsWithAI(note.title || 'Untitled', text);
+        } catch (err) {
+            console.warn('AI flashcards failed, making simple ones:', err.message);
+        }
+    }
+    if (cards.length < 3) cards = makeFlashcardsLocally(text);
+    if (cards.length === 0) {
+        showFlashcardStatus('Couldn\'t make cards from this note. Try writing it as "Term: meaning" lines or full sentences.', true);
+        return;
+    }
+    note.flashcards = { fingerprint, cards };
+    saveState();
+    flashcards = { note, cards, index: 0 };
+    showFlashcardStatus('');
+    deck.hidden = false;
+    showFlashcard();
+}
+
+function closeFlashcards() {
+    document.getElementById('flashcard-overlay').style.display = 'none';
+}
+
+document.getElementById('btn-flashcards')?.addEventListener('click', () => {
+    const note = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    if (!note) {
+        alert('Open a note first.');
+        return;
+    }
+    document.getElementById('flashcard-sub').innerText = note.title || 'Untitled note';
+    document.getElementById('flashcard-overlay').style.display = 'flex';
+    document.getElementById('flashcard-close').focus({ preventScroll: true });
+    buildFlashcards(note, false);
+});
+
+document.getElementById('flashcard-card')?.addEventListener('click', (e) => {
+    e.currentTarget.classList.toggle('flipped');
+});
+
+document.getElementById('flashcard-prev')?.addEventListener('click', () => {
+    if (flashcards.index > 0) {
+        flashcards.index--;
+        showFlashcard();
+    }
+});
+
+document.getElementById('flashcard-next')?.addEventListener('click', () => {
+    flashcards.index = (flashcards.index + 1) % flashcards.cards.length;
+    showFlashcard();
+});
+
+document.getElementById('flashcard-remake')?.addEventListener('click', () => {
+    if (flashcards.note) buildFlashcards(flashcards.note, true);
+});
+
+document.getElementById('flashcard-close')?.addEventListener('click', closeFlashcards);
+document.getElementById('flashcard-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'flashcard-overlay') closeFlashcards(); // click outside the card
+});
+document.addEventListener('keydown', (e) => {
+    if (document.getElementById('flashcard-overlay')?.style.display !== 'flex') return;
+    if (e.key === 'Escape') closeFlashcards();
+    else if (e.key === 'ArrowRight') document.getElementById('flashcard-next').click();
+    else if (e.key === 'ArrowLeft') document.getElementById('flashcard-prev').click();
 });
 
 // --- PDF text extraction ---
@@ -2208,6 +3222,7 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
         readPdfOcrRange();
     } else {
         closePdfOcrPanel();
+        setNoteStatus(`Added the text from ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} of ${doc.name} to the end of your note.`);
     }
 });
 // --- Theme Toggle Logic ---
@@ -3705,12 +4720,15 @@ updateClock(); // Initial call
 // Groq retires models from time to time (llama-3.1-8b-instant was shut down on 16 Aug 2026).
 // The first model is used normally; if Groq says it's gone, the app asks Groq which models
 // this key can use and switches to the first one from this list (or any other chat model).
+// Each model has its own free limits (about 1,000 questions and 200,000 tokens a day), so when
+// one is used up (Groq answers 429), the next model in the list answers instead.
 const AI_CONFIG = {
     models: ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
     baseUrl: "https://api.groq.com/openai/v1/chat/completions",
     modelsUrl: "https://api.groq.com/openai/v1/models"
 };
 let activeGroqModel = AI_CONFIG.models[0];
+const groqBusyUntil = {}; // model -> time (ms) until which Groq said its limit is used up
 
 function addMessage(text, isBot = true) {
     const chatMessages = document.getElementById('ai-chat-messages');
@@ -3828,7 +4846,7 @@ function renderGroqKeyStatus() {
     const saved = !!(appState.groqKeyEnc || appState.groqKey);
     // The setup guide in the AI chat is only needed until a key is saved
     const guide = document.getElementById('ai-key-guide');
-    if (guide) guide.hidden = saved;
+    if (guide) guide.hidden = saved || !!window.Classes?.hasAiKey?.();
     if (!status) return;
     status.innerText = saved
         ? `A key is saved on this device${appState.groqKeyHint ? ` (ends in ••••${appState.groqKeyHint})` : ''}. It's encrypted and won't be shown again.`
@@ -3855,7 +4873,20 @@ async function requestGroqChat(apiKey, model, sys, prompt) {
     });
     const data = await response.json();
     console.log("[Groq API Response]", data);
+    if (response.status === 429) {
+        // This model's per-minute or per-day limit is used up; Groq says how long to wait
+        const wait = parseFloat(response.headers.get('retry-after'));
+        groqBusyUntil[model] = Date.now() + (wait > 0 ? wait * 1000 : 60000);
+        data.rateLimited = true;
+    }
     return data;
+}
+
+// The models to try, in order: the current one first, then the others that aren't resting
+function groqModelsToTry() {
+    const now = Date.now();
+    const order = [activeGroqModel, ...AI_CONFIG.models.filter(m => m !== activeGroqModel)];
+    return order.filter(m => !(groqBusyUntil[m] > now));
 }
 
 function isModelUnavailableError(error) {
@@ -3882,14 +4913,60 @@ async function pickAvailableGroqModel(apiKey) {
     }
 }
 
-async function callGroq(prompt, systemPrompt = null) {
+// --- Class AI key ---
+// Without their own key, a student uses their class's key through the class-ai Edge Function
+// (supabase/add-class-ai.sql), up to a daily allowance. Their own key always comes first, so it
+// doesn't use up the class's share. classId picks that class's key (Procrasti-Bot in a class chat).
+async function aiAvailable(classId) {
+    if ((await getGroqKey()).startsWith('gsk_')) return true;
+    return !!window.Classes?.hasAiKey?.(classId);
+}
+
+async function callClassAi(prompt, systemPrompt, classId) {
+    try {
+        const { data, error } = await cloud.functions.invoke('class-ai', {
+            body: { prompt, system: systemPrompt || undefined, classId: classId || undefined }
+        });
+        if (error) {
+            let body = null;
+            try { body = await error.context?.json(); } catch (e) { /* not JSON */ }
+            return `API Error: ${body?.message || 'The class AI isn\'t switched on yet. Ask your class admin.'}`;
+        }
+        window.Classes?.noteAiUse?.(data?.used, data?.limit);
+        if (data?.reply) return data.reply;
+        return `API Error: ${data?.message || 'The class AI couldn\'t answer just now. Try again.'}`;
+    } catch (e) {
+        console.error('Class AI error:', e);
+        return "I'm having trouble connecting to my brain right now. Please check your internet connection!";
+    }
+}
+
+async function callGroq(prompt, systemPrompt = null, options = {}) {
     const apiKey = await getGroqKey();
-    if (!apiKey) return "I need an API key to think better! You can add one in Settings.";
+    if (!apiKey) {
+        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(prompt, systemPrompt, options.classId);
+        return "I need an API key to think better! You can add one in Settings, or ask your class admin to add one for your class.";
+    }
 
     const sys = systemPrompt || "You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.";
 
     try {
-        let data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+        const models = groqModelsToTry();
+        if (models.length === 0) {
+            return "API Error: The AI is busy right now (its free limit is used up for a bit). Try again in a minute.";
+        }
+        let data;
+        for (const model of models) {
+            data = await requestGroqChat(apiKey, model, sys, prompt);
+            if (!data.rateLimited) {
+                activeGroqModel = model; // keep using the model that answered
+                break;
+            }
+            console.warn(`[Groq] ${model} hit its limit, trying the next model`);
+        }
+        if (data.rateLimited) {
+            return "API Error: The AI is busy right now (its free limit is used up for a bit). Try again in a minute.";
+        }
 
         // The model was retired or isn't available to this key: pick another one and retry once
         if (data.error && isModelUnavailableError(data.error)) {
@@ -6301,8 +7378,8 @@ async function sendChatMessage() {
         
         let aiResponse = "";
         
-        // If Groq key is available, let's call API
-        if ((await getGroqKey()).startsWith('gsk_')) {
+        // With an AI key (their own or their class's), ask the AI
+        if (await aiAvailable()) {
             aiResponse = await callGroq(prompt, buddy.systemPrompt);
         }
         

@@ -8,10 +8,11 @@
 //      messages / shared_files / shared_notes  -> the friend it was sent to
 //      group_messages                          -> everyone in that class / activity / private chat
 //      class_homework (new)                    -> everyone in the class
+//      class_occasions (new)                   -> everyone in the class
 //      classes (timetable changed)             -> everyone in the class
 //   2. Every 15 minutes by a schedule: { job: 'homework-reminders' }
-//      -> each phone that wants it, once a day at its chosen time, if homework is due tomorrow
-//         or a school occasion (Sports Day...) is marked for tomorrow in the calendar
+//      -> each phone that wants it, once a day at its chosen time, if homework is due tomorrow,
+//         or an exam or school occasion (Sports Day...) is tomorrow: their own or their class's
 //
 // Secrets (Supabase > Edge Functions > Secrets): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY,
 // PUSH_WEBHOOK_SECRET, and optionally VAPID_SUBJECT. SUPABASE_URL and
@@ -151,6 +152,17 @@ export async function onDatabaseChange(db, send, { type, table, record, old_reco
         });
     }
 
+    if (table === 'class_occasions' && type === 'INSERT') {
+        const { data: cls } = await db.from('classes').select('name').eq('id', record.class_id).maybeSingle();
+        const members = await classMemberIds(db, record.class_id);
+        return sendToPhones(db, send, await phonesFor(db, members.filter(id => id !== record.created_by), 'classes'), {
+            title: `New occasion · ${cls?.name || 'Class'}`,
+            body: `${short(record.name, 60)} on ${record.occasion_date}`,
+            url: '/#open=calendar',
+            tag: `class-occasion-${record.class_id}`
+        });
+    }
+
     if (table === 'classes' && type === 'UPDATE' && record.status === 'approved' &&
         record.timetable_updated_at && record.timetable_updated_at !== old_record?.timetable_updated_at) {
         return sendToPhones(db, send, await phonesFor(db, await classMemberIds(db, record.id), 'classes'), {
@@ -198,25 +210,41 @@ export async function sendHomeworkReminders(db, send, now = new Date()) {
 
         if (!planners.has(phone.user_id)) {
             const { data } = await db.from('planner_data').select('data').eq('user_id', phone.user_id).maybeSingle();
+            const { data: memberships } = await db.from('class_members').select('class_id').eq('user_id', phone.user_id);
+            const classIds = (memberships || []).map(m => m.class_id);
+            let classOccasions = [];
+            if (classIds.length) {
+                // Missing table (add-class-occasions.sql not run yet) just means no class occasions
+                const res = await db.from('class_occasions').select('class_id, occasion_date, name').in('class_id', classIds);
+                classOccasions = res.error ? [] : (res.data || []);
+            }
             planners.set(phone.user_id, {
                 homework: Array.isArray(data?.data?.homework) ? data.data.homework : [],
-                occasions: data?.data?.occasions && typeof data.data.occasions === 'object' ? data.data.occasions : {}
+                occasions: data?.data?.occasions && typeof data.data.occasions === 'object' ? data.data.occasions : {},
+                exams: Array.isArray(data?.data?.exams) ? data.data.exams : [],
+                classOccasions
             });
         }
         await db.from('push_subscriptions').update({ last_reminded_on: clock.date }).eq('id', phone.id);
         const planner = planners.get(phone.user_id);
         const tomorrow = nextDay(clock.date);
         const due = planner.homework.filter(hw => hw?.date === tomorrow);
-        const occasion = typeof planner.occasions[tomorrow] === 'string' ? short(planner.occasions[tomorrow], 60) : '';
-        if (!due.length && !occasion) continue;
+        // Exams and occasions tomorrow: "Chemistry test", "Sports Day"...
+        const events = [
+            ...planner.exams.filter(e => e?.date === tomorrow).map(e => `${e.subject || ''} ${e.name || 'exam'}`.trim()),
+            ...(typeof planner.occasions[tomorrow] === 'string' ? [planner.occasions[tomorrow]] : []),
+            ...planner.classOccasions.filter(o => o.occasion_date === tomorrow).map(o => o.name)
+        ].map(name => short(name, 40)).filter((name, i, all) => name && all.indexOf(name) === i);
+        const hasExam = planner.exams.some(e => e?.date === tomorrow);
+        if (!due.length && !events.length) continue;
         const names = due.slice(0, 3).map(hw => short(`${hw.subject ? `${hw.subject}: ` : ''}${hw.task}`, 60));
         const homeworkText = names.join(', ') + (due.length > 3 ? ', …' : '');
         let message;
-        if (occasion) {
+        if (events.length) {
             message = {
-                title: `Tomorrow: ${occasion}`,
-                body: due.length ? `Also due: ${homeworkText}` : 'A school occasion from your calendar.',
-                url: due.length ? '/#open=homework' : '/#open=calendar',
+                title: `Tomorrow: ${short(events.join(', '), 80)}`,
+                body: due.length ? `Also due: ${homeworkText}` : hasExam ? 'Good luck! A little revision tonight helps.' : 'A school occasion from your calendar.',
+                url: due.length ? '/#open=homework' : hasExam ? '/#open=dashboard' : '/#open=calendar',
                 tag: 'homework-reminder'
             };
         } else {
