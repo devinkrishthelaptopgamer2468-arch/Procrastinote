@@ -509,24 +509,15 @@
                         </div>
                     </div>
 
-                    <!-- Exam countdown: each exam has a ring that fills up as the day gets closer -->
+                    <!-- Upcoming exams: just the next few, each with a ring that fills up as the day
+                         gets closer. Exams are added and changed on the Exams page. -->
                     <div class="card tile exams-card">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-rose"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v4.5L5.5 17A2.5 2.5 0 0 0 7.7 20.5h8.6a2.5 2.5 0 0 0 2.2-3.5L14 7.5V3"/><path d="M7.5 14h9"/></svg></span>
-                            <h3>Exam countdown</h3>
-                            <button type="button" id="dash-exams-open" class="study-halfday-btn exams-see-all">See all exams</button>
+                            <h3>Upcoming exams</h3>
+                            <button type="button" id="dash-exams-open" class="study-halfday-btn exams-see-all">Open Exams page</button>
                         </div>
                         <ul id="dash-exam-list" class="exam-list"></ul>
-                        <form id="exam-form" class="exam-form">
-                            <div class="form-group exam-subject-group">
-                                <div id="exam-subject-display" class="custom-select-display">Subject</div>
-                                <div id="exam-subject-options" class="custom-select-options"></div>
-                                <input type="hidden" id="exam-subject">
-                            </div>
-                            <input type="text" id="exam-name" maxlength="40" placeholder="Test, unit test, mid-term..." aria-label="What kind of exam">
-                            <input type="date" id="exam-date" aria-label="Exam date">
-                            <button type="submit" class="btn primary-btn">Add exam</button>
-                        </form>
                     </div>
                 </div>
             </section>

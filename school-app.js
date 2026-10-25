@@ -563,10 +563,6 @@ function addExams(exams) {
     saveState();
 }
 
-function addExam(subject, name, date) {
-    addExams([{ subject, name, date }]);
-}
-
 function removeExam(id) {
     appState.exams = (appState.exams || []).filter(e => e.id !== id);
     saveState();
@@ -577,7 +573,7 @@ function renderExams() {
     if (!list) return;
     const exams = upcomingExams().slice(0, 4); // the next few; the Exams page has the rest
     if (exams.length === 0) {
-        list.innerHTML = '<li class="empty-state">No exams coming up. Add one below, or upload an exam timetable on the Exams page.</li>';
+        list.innerHTML = '<li class="empty-state">No exams coming up. Add them on the Exams page, or upload your exam timetable there.</li>';
         return;
     }
     const today = parseDay(formatDateString(new Date()));
@@ -603,40 +599,12 @@ function renderExams() {
                     <strong>${escapeHTML(examTitle(exam))}</strong>
                     <span>${when} · ${parseDay(exam.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </span>
-                <button type="button" class="exam-remove" data-exam="${escapeHTML(exam.id)}" aria-label="Remove ${escapeHTML(examTitle(exam))}" title="Remove">×</button>
             </li>`;
     }).join('');
 }
 
 document.getElementById('dash-exams-open')?.addEventListener('click', () => {
     document.querySelector('.dock-item[data-tab="exams"]')?.click();
-});
-
-document.getElementById('dash-exam-list')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.exam-remove');
-    if (btn) removeExam(btn.dataset.exam);
-});
-
-document.getElementById('exam-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const subject = document.getElementById('exam-subject').value;
-    const date = document.getElementById('exam-date').value;
-    const name = document.getElementById('exam-name').value.trim();
-    if (!subject) {
-        alert('Pick the subject of the exam.');
-        return;
-    }
-    if (!date || date < formatDateString(new Date())) {
-        alert('Pick the exam date (today or later).');
-        return;
-    }
-    addExam(subject, name, date);
-    document.getElementById('exam-name').value = '';
-    document.getElementById('exam-date').value = '';
-    document.getElementById('exam-subject').value = '';
-    const subjectDisplay = document.getElementById('exam-subject-display');
-    subjectDisplay.innerText = 'Subject';
-    subjectDisplay.classList.remove('has-value');
 });
 
 // --- Exams page and exam timetables ---
@@ -1898,7 +1866,6 @@ function renderDashboard() {
 
     renderHomeworkStreak();
 
-    setupCustomDropdown('exam-subject-display', 'exam-subject-options', 'exam-subject', SUBJECT_LIST.map(s => ({ label: s, value: s })));
     renderExams();
     renderStudyPlan();
 }

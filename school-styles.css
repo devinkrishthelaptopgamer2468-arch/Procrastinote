@@ -2640,7 +2640,6 @@ button.notif-item:hover {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
-    margin-bottom: 1rem;
 }
 
 .exam-list .empty-state {
@@ -2655,7 +2654,7 @@ button.notif-item:hover {
     min-width: 230px;
     flex: 1 1 230px;
     max-width: 340px;
-    padding: 0.7rem 2rem 0.7rem 0.7rem;
+    padding: 0.7rem 0.9rem 0.7rem 0.7rem;
     border-radius: 16px;
     background: var(--inset);
 }
@@ -2742,23 +2741,7 @@ button.notif-item:hover {
     color: var(--text-primary);
 }
 
-.exam-form {
-    display: grid;
-    grid-template-columns: minmax(150px, 1fr) minmax(150px, 1.3fr) minmax(140px, 1fr) auto;
-    gap: 0.6rem;
-    align-items: center;
-}
-
-.exam-form .form-group {
-    position: relative;
-    margin: 0;
-}
-
 @media (max-width: 700px) {
-    .exam-form {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .exam-item {
         max-width: none;
     }
