@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'week-2026-10-26',
+        date: '2026-10-27',
+        title: 'This week: focus stats and revision notes',
+        text: 'Zen mode now counts your study minutes: pick what you\'re studying and see a chart of your week. In the Notebook, AI helper > Make revision notes turns a note or PDF (Tamil too) into short notes.'
+    },
+    {
         id: 'week-2026-10-19',
         date: '2026-10-25',
         title: 'This week: Exams page, flashcards and more',

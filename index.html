@@ -1056,6 +1056,13 @@
                             </button>
                         </div>
                         <div class="timer-settings">
+                            <!-- Study minutes are counted for this subject (Focus this week, below) -->
+                            <div class="form-group timer-subject" style="position: relative;">
+                                <label>Studying</label>
+                                <div id="focus-subject-display" class="custom-select-display has-value">General</div>
+                                <div id="focus-subject-options" class="custom-select-options"></div>
+                                <input type="hidden" id="focus-subject" value="General">
+                            </div>
                             <div class="form-group" style="position: relative;">
                                 <label>Study time</label>
                                 <div id="study-min-display" class="custom-select-display has-value">25 Minutes</div>
@@ -1128,6 +1135,25 @@
                             <div class="volume-control">
                                 <label for="music-volume">Volume</label>
                                 <input type="range" id="music-volume" min="0" max="100" value="50">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Focus stats: study minutes from the timer, per day and per subject, this week -->
+                    <div class="card zen-card focus-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+                            <h3>Focus this week</h3>
+                        </div>
+                        <p id="focus-summary" class="focus-summary"></p>
+                        <div class="focus-charts">
+                            <div>
+                                <p class="marks-chart-title">Minutes each day</p>
+                                <div id="focus-days-chart" class="marks-chart"></div>
+                            </div>
+                            <div>
+                                <p class="marks-chart-title">Minutes per subject</p>
+                                <div id="focus-subjects-chart" class="marks-chart"></div>
                             </div>
                         </div>
                     </div>
@@ -1276,6 +1302,7 @@
                                         <button type="button" role="menuitem" id="btn-ai-continue"><strong>Continue writing</strong><small>Adds more to the end of your note</small></button>
                                         <button type="button" role="menuitem" id="btn-translate-english"><strong>Translate to English</strong><small>Adds an English version below</small></button>
                                         <button type="button" role="menuitem" id="btn-ai-ask"><strong>Ask AI to write something</strong><small>e.g. "Explain photosynthesis simply"</small></button>
+                                        <button type="button" role="menuitem" id="btn-revision-notes"><strong>Make revision notes</strong><small>Short notes from this note or PDF, in a new note</small></button>
                                     </div>
                                 </div>
                                 <button type="button" id="btn-flashcards" class="btn secondary-btn btn-sm">

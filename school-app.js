@@ -82,7 +82,7 @@ const cloud = (function createCloudClient() {
 
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
-    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks',
+    'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks', 'focusLog',
     'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
@@ -115,6 +115,7 @@ let defaultState = {
     exams: [], // e.g. [{ id, subject: "Chemistry", name: "test", date: "2026-10-27", addedOn: "2026-10-20" }]
     streak: { start: null, best: 0 }, // homework streak: since when nothing has been overdue
     marks: [], // e.g. [{ id, subject: "Physics", test: "Revision Exam 3", score: 42, outOf: 50, date: "2026-11-12" }]
+    focusLog: {}, // study minutes from the Zen timer: { "2026-10-27": { "Physics": 50, "General": 25 } }
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -162,6 +163,7 @@ function saveState() {
                 exams: appState.exams || [],
                 streak: appState.streak || { start: null, best: 0 },
                 marks: appState.marks || [],
+                focusLog: appState.focusLog || {},
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -1562,6 +1564,7 @@ function renderAllViews() {
     renderCalendar();
     renderExamsPage();
     renderMarks();
+    renderFocusStats();
     renderEmailJSSettings();
     if (typeof renderFriends === 'function') {
         renderFriends();
@@ -2364,12 +2367,21 @@ function activeNote() {
 }
 
 // One status line under the toolbar for AI and text reading ("Translating...", errors)
-function setNoteStatus(text, isError = false) {
+// action (optional): { label, onClick } shows a button after the text
+function setNoteStatus(text, isError = false, action = null) {
     const el = document.getElementById('notebook-status');
     if (!el) return;
     el.hidden = !text;
     el.innerText = text || '';
     el.classList.toggle('error', isError);
+    if (action) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn secondary-btn btn-sm nb-status-action';
+        btn.innerText = action.label;
+        btn.addEventListener('click', action.onClick);
+        el.appendChild(btn);
+    }
 }
 
 function updateNoteWordCount(text) {
@@ -2908,6 +2920,112 @@ document.getElementById('btn-translate-english')?.addEventListener('click', () =
     }, '[Translation to English]');
 });
 
+// --- Revision notes from a note (or the text read from a PDF) ---
+// Procrastinote AI turns the note into short revision notes, in the same language (Tamil stays
+// Tamil), and saves them as a new note so the original stays as it was. A long note is done in
+// up to 3 parts, then joined. Without an AI key, the key lines (definitions, formulas, the first
+// sentence of each paragraph) are picked out instead.
+const REVISION_PART_CHARS = 7000;
+const REVISION_MAX_PARTS = 3;
+
+function splitForRevision(text) {
+    const parts = [];
+    let current = '';
+    for (const para of text.split(/\n\s*\n/)) {
+        if (current && (current.length + para.length) > REVISION_PART_CHARS) {
+            parts.push(current);
+            current = '';
+        }
+        current += (current ? '\n\n' : '') + para.slice(0, REVISION_PART_CHARS);
+    }
+    if (current.trim()) parts.push(current);
+    return parts;
+}
+
+function makeRevisionNotesLocally(text) {
+    const picked = [];
+    const add = line => {
+        const clean = line.replace(/^[\s•*\-–\d.)]+/, '').replace(/\s+/g, ' ').trim();
+        if (clean.length >= 12 && clean.length <= 220 && !picked.includes(clean)) picked.push(clean);
+    };
+    text.split(/\n\s*\n/).forEach(para => {
+        const lines = para.split('\n').map(l => l.trim()).filter(l => l && !/^\[(Page|Text from|PDF text|AI|Translation)/.test(l));
+        if (!lines.length) return;
+        // A short line before a paragraph is usually a heading
+        const heading = lines[0].length < 50 && lines.length > 1;
+        if (heading) picked.push(`## ${lines[0].replace(/[:.]$/, '')}`);
+        const body = (heading ? lines.slice(1) : lines).join(' ');
+        const firstSentence = body.split(/(?<=[.!?।])\s+/)[0];
+        add(firstSentence);
+        body.split(/(?<=[.!?।])\s+/).forEach(s => {
+            if (/\b(is called|are called|means|is defined as|refers to|formula|=)\b|:/i.test(s)) add(s);
+        });
+    });
+    return picked.slice(0, 25).map(l => (l.startsWith('## ') ? `\n${l.slice(3)}` : `• ${l}`)).join('\n').trim();
+}
+
+async function makeRevisionNotes(note) {
+    if (!note) return;
+    const text = (note.content || '').trim();
+    if (text.split(/\s+/).length < 40) {
+        setNoteStatus('This note is too short for revision notes. Add more first, for example the text from a PDF (Get text from a photo or PDF).', true);
+        return;
+    }
+    let parts = splitForRevision(text);
+    const cut = parts.length > REVISION_MAX_PARTS;
+    parts = parts.slice(0, REVISION_MAX_PARTS);
+    let notes = '';
+    let usedAI = false;
+    if (await aiAvailable()) {
+        const pieces = [];
+        for (let i = 0; i < parts.length; i++) {
+            setNoteStatus(parts.length > 1 ? `Making revision notes (part ${i + 1} of ${parts.length})...` : 'Making revision notes...');
+            const reply = await callGroq(
+                'Turn this text from a school student\'s study material into short revision notes: a few headings, ' +
+                'bullet points, key terms with one-line meanings, and any important formulas, dates or numbers. ' +
+                'At most about 250 words. Write in the same language as the text (if it is Tamil, write in Tamil). ' +
+                'No greetings or comments, just the notes. Use plain text: "•" for bullets, headings on their own line.\n\n' +
+                `Text:\n${parts[i]}`,
+                'You write clear, short revision notes for school students.'
+            );
+            if (/^(API Error|I need an API key|I'm having trouble)/.test(reply)) {
+                setNoteStatus(reply.replace(/^API Error:\s*/, ''), true);
+                return;
+            }
+            pieces.push(reply.trim());
+        }
+        notes = pieces.join('\n\n');
+        if (pieces.length > 1 && notes.length < REVISION_PART_CHARS) {
+            setNoteStatus('Putting the parts together...');
+            const joined = await callGroq(
+                'Combine these revision notes into one short, well-organised set of notes. Remove repeats. ' +
+                'Keep the same language. Plain text, "•" for bullets, headings on their own line. No greetings.\n\n' + notes,
+                'You write clear, short revision notes for school students.'
+            );
+            if (!/^(API Error|I need an API key|I'm having trouble)/.test(joined)) notes = joined.trim();
+        }
+        usedAI = true;
+    } else {
+        notes = makeRevisionNotesLocally(text);
+        if (!notes) {
+            setNoteStatus('Couldn\'t find key lines in this note. Adding an AI key in Settings makes much better revision notes.', true);
+            return;
+        }
+    }
+    const title = `Revision notes: ${note.title || 'Untitled note'}`;
+    const footer = [
+        cut ? '(Only the first part of a long note was used.)' : '',
+        usedAI ? '' : '(Made without AI, by picking key lines. Add an AI key in Settings for better notes.)'
+    ].filter(Boolean).join('\n');
+    const id = 'nb_' + Date.now();
+    appState.notebooks.unshift({ id, title: title.slice(0, 80), content: `${notes}${footer ? `\n\n${footer}` : ''}\n`, images: [] });
+    appState.activeNotebookId = id;
+    saveState();
+    setNoteStatus(`Made "${title}" as a new note. Your original note is still there.`);
+}
+
+document.getElementById('btn-revision-notes')?.addEventListener('click', () => makeRevisionNotes(activeNote()));
+
 // --- Flashcards from a note ---
 // Procrastinote AI writes 10 question/answer cards from the open note. Without an AI key, cards
 // are made from "Term: meaning" lines and by hiding a key word in sentences. The cards are kept
@@ -3304,7 +3422,8 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
         readPdfOcrRange();
     } else {
         closePdfOcrPanel();
-        setNoteStatus(`Added the text from ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} of ${doc.name} to the end of your note.`);
+        setNoteStatus(`Added the text from ${pagesText.length} page${pagesText.length === 1 ? '' : 's'} of ${doc.name} to the end of your note.`, false,
+            { label: 'Make revision notes', onClick: () => makeRevisionNotes(activeNb) });
     }
 });
 // --- Theme Toggle Logic ---
@@ -4286,10 +4405,136 @@ function saveTimerState() {
         timerSeconds,
         isTimerRunning,
         timerMode,
-        timerEndTime
+        timerEndTime,
+        focusLastTick
     };
     localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
 }
+
+// --- Focus stats: study minutes from the timer ---
+// While a study session runs, the time since the last check is added up and saved as whole
+// minutes, for the subject picked under "Studying" (breaks don't count). It's measured with the
+// clock, so it stays right when the tab is in the background or closed and opened again.
+let focusLastTick = null;   // when study time was last counted (ms), or null when not studying
+let focusPendingMs = 0;     // counted but not yet a whole minute
+
+function focusSubject() {
+    return appState.settings?.focusSubject || 'General';
+}
+
+function countFocusTime(now = Date.now()) {
+    if (focusLastTick && timerMode === 'study') {
+        const until = timerEndTime ? Math.min(now, timerEndTime) : now;
+        focusPendingMs += Math.max(0, until - focusLastTick);
+    }
+    focusLastTick = isTimerRunning && timerMode === 'study' ? now : null;
+    const minutes = Math.floor(focusPendingMs / 60000);
+    if (minutes > 0) {
+        focusPendingMs -= minutes * 60000;
+        addFocusMinutes(minutes);
+    }
+}
+
+function addFocusMinutes(minutes) {
+    if (!appState.user) return;
+    const day = formatDateString(new Date());
+    const log = appState.focusLog && typeof appState.focusLog === 'object' ? appState.focusLog : (appState.focusLog = {});
+    log[day] = log[day] || {};
+    log[day][focusSubject()] = (log[day][focusSubject()] || 0) + minutes;
+    // Keep about four months, so it never grows forever
+    const cutoff = formatDateString(new Date(Date.now() - 120 * 86400000));
+    Object.keys(log).forEach(d => { if (d < cutoff) delete log[d]; });
+    saveState();
+}
+
+const formatMinutes = m => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`);
+
+// Monday to Sunday of this week, as "YYYY-MM-DD"
+function thisWeekDays() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return formatDateString(d);
+    });
+}
+
+function renderFocusStats() {
+    const daysEl = document.getElementById('focus-days-chart');
+    if (!daysEl) return;
+    const subjectDisplay = document.getElementById('focus-subject-display');
+    if (subjectDisplay) {
+        subjectDisplay.innerText = focusSubject();
+        document.getElementById('focus-subject').value = focusSubject();
+    }
+
+    const log = appState.focusLog || {};
+    const days = thisWeekDays();
+    const today = formatDateString(new Date());
+    const perDay = days.map(d => Object.values(log[d] || {}).reduce((a, b) => a + b, 0));
+    const perSubject = {};
+    days.forEach(d => Object.entries(log[d] || {}).forEach(([s, m]) => { perSubject[s] = (perSubject[s] || 0) + m; }));
+    const total = perDay.reduce((a, b) => a + b, 0);
+    const summary = document.getElementById('focus-summary');
+    const subjectsEl = document.getElementById('focus-subjects-chart');
+
+    if (total === 0) {
+        summary.innerText = 'Pick what you\'re studying and start the timer. Your study minutes show up here (breaks don\'t count).';
+        daysEl.innerHTML = '';
+        subjectsEl.innerHTML = '';
+        document.querySelector('.focus-charts').hidden = true;
+        return;
+    }
+    document.querySelector('.focus-charts').hidden = false;
+    const best = perDay.indexOf(Math.max(...perDay));
+    const weekday = d => parseDay(d).toLocaleDateString(undefined, { weekday: 'short' });
+    summary.innerHTML = `<strong>${formatMinutes(total)}</strong> this week · today ${formatMinutes(perDay[days.indexOf(today)] || 0)} · best day ${escapeHTML(parseDay(days[best]).toLocaleDateString(undefined, { weekday: 'long' }))}`;
+
+    // Minutes each day: one column per day, today highlighted
+    const width = 420, height = 170, top = 18, bottom = 24, gap = 14;
+    const colW = (width - gap * 8) / 7;
+    const max = Math.max(...perDay, 30);
+    let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Study minutes each day this week">`;
+    svg += `<line class="marks-grid" x1="0" x2="${width}" y1="${height - bottom}" y2="${height - bottom}"/>`;
+    days.forEach((d, i) => {
+        const h = Math.round((perDay[i] / max) * (height - top - bottom));
+        const x = gap + i * (colW + gap);
+        const y = height - bottom - h;
+        svg += `<g class="marks-bar-row"><title>${escapeHTML(parseDay(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }))}: ${formatMinutes(perDay[i])}</title>`;
+        svg += `<rect class="marks-hit" x="${x}" y="0" width="${colW}" height="${height}"/>`;
+        if (h > 0) svg += `<rect class="focus-bar${d === today ? ' today' : ''}" x="${x}" y="${y}" width="${colW}" height="${h}" rx="4"/>`;
+        if (perDay[i] > 0) svg += `<text class="marks-value" x="${x + colW / 2}" y="${y - 5}" text-anchor="middle">${perDay[i]}</text>`;
+        svg += `<text class="marks-axis${d === today ? ' focus-today-label' : ''}" x="${x + colW / 2}" y="${height - 6}" text-anchor="middle">${escapeHTML(weekday(d))}</text></g>`;
+    });
+    daysEl.innerHTML = svg + '</svg>';
+
+    // Minutes per subject: one bar each, most first
+    const rows = Object.entries(perSubject).sort((a, b) => b[1] - a[1]);
+    const sw = 420, labelW = 120, valueW = 80, rowH = 30;
+    const sh = rows.length * rowH + 6;
+    const smax = rows[0][1];
+    let sub = `<svg viewBox="0 0 ${sw} ${sh}" role="img" aria-label="Study minutes per subject this week">`;
+    rows.forEach(([s, m], i) => {
+        const y = i * rowH + 4;
+        const w = Math.max(4, (m / smax) * (sw - labelW - valueW));
+        sub += `<g class="marks-bar-row"><title>${escapeHTML(s)}: ${formatMinutes(m)} this week</title>` +
+            `<text class="marks-label" x="${labelW - 10}" y="${y + 14}" text-anchor="end">${escapeHTML(s.length > 15 ? s.slice(0, 14) + '…' : s)}</text>` +
+            `<rect class="marks-bar" x="${labelW}" y="${y}" width="${w}" height="19" rx="4"/>` +
+            `<text class="marks-value" x="${labelW + w + 8}" y="${y + 14}">${formatMinutes(m)}</text></g>`;
+    });
+    subjectsEl.innerHTML = sub + '</svg>';
+}
+
+setupCustomDropdown('focus-subject-display', 'focus-subject-options', 'focus-subject',
+    ['General', ...SUBJECT_LIST.filter(s => !['Sixth Subject', 'Library'].includes(s))].map(s => ({ label: s, value: s })),
+    (val) => {
+        countFocusTime(); // time so far goes to the subject it was spent on
+        appState.settings.focusSubject = val;
+        saveState();
+    });
 
 function loadTimerState() {
     const saved = localStorage.getItem(TIMER_STATE_KEY);
@@ -4302,6 +4547,11 @@ function loadTimerState() {
         if (state.isTimerRunning && state.timerEndTime) {
             const now = Date.now();
             const remaining = Math.round((state.timerEndTime - now) / 1000);
+            // Study time while the page was closed still counts (up to when the session ended)
+            focusLastTick = state.focusLastTick || null;
+            timerEndTime = state.timerEndTime;
+            isTimerRunning = true;
+            countFocusTime(now);
             if (remaining > 0) {
                 timerSeconds = remaining;
                 timerEndTime = state.timerEndTime;
@@ -4312,6 +4562,7 @@ function loadTimerState() {
                 timerSeconds = 0;
                 isTimerRunning = false;
                 timerEndTime = null;
+                focusLastTick = null;
                 // We'll let the user see it finished or auto-switch on next tick
                 updateTimerDisplay();
             }
@@ -4373,7 +4624,8 @@ function startTimer(isResume = false) {
     if (!resume) {
         timerEndTime = Date.now() + (timerSeconds * 1000);
     }
-    
+    if (timerMode === 'study' && !focusLastTick) focusLastTick = Date.now();
+
     timerStartBtn.style.display = 'none';
     timerPauseBtn.style.display = 'flex';
     
@@ -4385,11 +4637,18 @@ function startTimer(isResume = false) {
     timerInterval = setInterval(() => {
         const now = Date.now();
         const remaining = Math.round((timerEndTime - now) / 1000);
-        
+        if (timerMode === 'study') countFocusTime(now);
+
         if (remaining <= 0) {
             clearInterval(timerInterval);
+            // A finished study session counts its last part too (a few seconds round up to a minute)
+            if (timerMode === 'study' && focusPendingMs >= 30000) {
+                focusPendingMs = 0;
+                addFocusMinutes(1);
+            }
             isTimerRunning = false;
             timerEndTime = null;
+            focusLastTick = null;
             
             // Switch mode
             if (timerMode === 'study') {
@@ -4430,7 +4689,9 @@ function startTimer(isResume = false) {
 
 function pauseTimer() {
     clearInterval(timerInterval);
+    if (isTimerRunning) countFocusTime(); // count up to the pause
     isTimerRunning = false;
+    focusLastTick = null;
     timerEndTime = null;
     timerStartBtn.style.display = 'flex';
     timerPauseBtn.style.display = 'none';
