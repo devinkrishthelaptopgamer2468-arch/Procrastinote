@@ -293,6 +293,26 @@ SQL moves keys from the first version, one key per class, over by itself).
 The site owner can still see keys in **Table Editor** → `class_ai_pool` (Supabase admins can see
 everything), so tell people sharing keys that.
 
+## 13. Turn on polls and the Lost & found board
+
+**Polls:** anyone in a class or activity chat can press the chart button next to the message box
+to start a poll (2 to 6 choices). It's posted as a message, so people get notified like any
+message. Everyone in the chat can vote, change their vote, and see who voted for what. The person
+who started it, or an admin, can close it. Up to 10 polls a day each.
+
+**Lost & found:** each grade has one board (class page → **Lost & found**), shared by every class
+whose name starts with the same number ("10 A", "10 B", "Grade 10 C"). Post something lost, found,
+or a book to swap or give away, with an optional photo (shrunk before upload, kept in a private
+bucket). Posters mark it sorted or delete it; admins of the grade's classes can delete any post.
+Up to 10 posts a day each, and 10 that aren't sorted yet.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-polls-and-board.sql` and press
+   **Run**. If Supabase warns about "destructive operations", press **Run** anyway.
+
+That's all: it makes the `board-photos` storage bucket by itself, and polls use the phone
+notifications you already have. Until it's run, the Lost & found tab says it isn't switched on
+yet, and the poll button says so too.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and

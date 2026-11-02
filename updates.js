@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'week-2026-11-02',
+        date: '2026-11-02',
+        title: 'This week: class polls and Lost & found',
+        text: 'Press the chart button in a class chat to start a poll, like "Which day for the project meeting?", and everyone can vote. Lost something, found something, or have a book to swap? Each grade now has a Lost & found board on the class page, with photos.'
+    },
+    {
         id: 'week-2026-10-26',
         date: '2026-10-27',
         title: 'This week: focus stats and revision notes',

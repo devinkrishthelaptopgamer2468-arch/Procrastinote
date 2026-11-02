@@ -36,8 +36,16 @@
         send: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14M21 3l-6.5 18-4-8-8-4z"/></svg>',
         copy: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
         upload: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
-        shield: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>'
+        shield: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+        poll: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>'
     };
+    const POLL_PREFIX = '📊 Poll: '; // add-polls-and-board.sql posts each poll as a message starting with this
+    const BOARD_KINDS = {
+        lost: { label: 'Lost', verb: 'Lost' },
+        found: { label: 'Found', verb: 'Found' },
+        swap: { label: 'Book swap', verb: 'To swap or give away' }
+    };
+    const BOARD_PHOTO_MAX = 1600; // longest side in pixels; phone photos are shrunk to this before upload
 
     const freshState = () => ({
         started: false,
@@ -57,6 +65,14 @@
         ai: {},                // class id -> { has_key, key_count, daily_limit, used_today, my_key_* } (class AI)
         aiKeys: {},            // class id -> [{ id, owner_id, broken }] who shared a key with the class
         aiMissing: false,      // add-class-ai.sql hasn't been run yet
+        polls: {},             // poll message id -> class_polls row
+        pollVotes: {},         // poll id -> [{ user_id, choice }]
+        pollsMissing: false,   // add-polls-and-board.sql hasn't been run yet
+        boards: {},            // board ('grade-10', or 'class-<id>' for a class without a number) -> posts
+        boardMissing: false,
+        boardPhotos: {},       // photo path -> link that works for an hour
+        boardFilter: 'all',
+        boardLoading: false,
         files: {},             // group key -> rows, newest first
         requests: {},          // class id -> pending co-admin / hand-over requests
         inbox: null,           // site owner: waiting classes, requests, reports, every group
@@ -322,6 +338,69 @@
         }
         state.messages[chatId] = (data || []).reverse();
         renderMessages(chatId);
+        if (state.messages[chatId].some(isPollMessage)) loadPolls(chatId);
+    }
+
+    // ---------- Polls ----------
+    const isPollMessage = m => !m.bot && typeof m.text === 'string' && m.text.startsWith(POLL_PREFIX);
+
+    async function loadPolls(chatId) {
+        const { data, error } = await cloud.from('class_polls').select('*').eq('chat_id', chatId).limit(300);
+        if (error) {
+            state.pollsMissing = isMissingSetup(error);
+            if (!state.pollsMissing) console.error('Could not load polls:', error.message);
+            return;
+        }
+        state.pollsMissing = false;
+        (data || []).forEach(p => { state.polls[p.message_id] = p; });
+        await loadVotes((data || []).map(p => p.id));
+        renderMessages(chatId);
+    }
+
+    async function loadVotes(pollIds) {
+        if (!pollIds.length) return;
+        const { data, error } = await cloud.from('class_poll_votes').select('poll_id, user_id, choice').in('poll_id', pollIds);
+        if (error) return;
+        pollIds.forEach(id => { state.pollVotes[id] = []; });
+        (data || []).forEach(v => state.pollVotes[v.poll_id].push(v));
+    }
+
+    const findPoll = id => Object.values(state.polls).find(p => String(p.id) === String(id));
+
+    // ---------- Lost & found / book swap board (one per grade) ----------
+    // Same rule as board_of_class() in add-polls-and-board.sql: "10 A" and "Grade 10 B" share 'grade-10'
+    function boardOf(cls) {
+        const grade = /(\d{1,2})/.exec(cls.name || '');
+        return grade ? `grade-${parseInt(grade[1], 10)}` : `class-${cls.id}`;
+    }
+
+    const boardName = cls => (boardOf(cls).startsWith('grade-') ? `Grade ${boardOf(cls).slice(6)}` : cls.name);
+
+    // Admins of any of my classes on this board can delete posts there
+    const canModerateBoard = board => isSiteOwner() ||
+        state.classes.some(c => c.status === 'approved' && isAdminRole(c.myRole) && boardOf(c) === board);
+
+    async function loadBoard(board) {
+        const { data, error } = await cloud.rpc('get_board', { p_board: board });
+        if (error) {
+            state.boardMissing = isMissingSetup(error) || /get_board/.test(error.message || '');
+            if (!state.boardMissing) {
+                console.error('Could not load the board:', error.message);
+                if (!state.boards[board]) state.boards[board] = []; // show it empty rather than retrying forever
+            }
+            renderDetail();
+            return;
+        }
+        state.boardMissing = false;
+        state.boards[board] = data || [];
+        // Photos are private, so each needs a link (they work for an hour)
+        const stale = path => !state.boardPhotos[path] || Date.now() - state.boardPhotos[path].at > 50 * 60000;
+        const paths = state.boards[board].map(p => p.photo_path).filter(p => p && stale(p));
+        await Promise.all(paths.map(async path => {
+            const res = await cloud.storage.from('board-photos').createSignedUrl(path, 3600);
+            if (!res.error) state.boardPhotos[path] = { url: res.data.signedUrl, at: Date.now() };
+        }));
+        renderDetail();
     }
 
     // Everything about my classes and activity groups
@@ -357,6 +436,7 @@
             ...state.classes.filter(c => c.status === 'approved').map(c => loadHomework(c.id)),
             ...state.classes.filter(c => c.status === 'approved').map(c => loadOccasions(c.id)),
             ...state.classes.filter(c => c.myRole === 'owner' || c.myRole === 'admin').map(c => loadRequests(c.id)),
+            ...Object.keys(state.boards).map(loadBoard),
             loadChats(),
             loadAiStatus(),
             loadRecentMessages(),
@@ -392,7 +472,10 @@
         }
         if (payload.eventType !== 'INSERT') return;
         const row = payload.new;
-        if (state.loadedChats.has(row.chat_id)) addMessage(row);
+        if (state.loadedChats.has(row.chat_id)) {
+            addMessage(row);
+            if (isPollMessage(row) && !state.polls[row.id]) loadPolls(row.chat_id);
+        }
         if (row.sender_id !== myId()) {
             if (!state.recentMessages.some(m => m.id === row.id)) state.recentMessages.unshift(row);
             state.recentMessages = state.recentMessages.slice(0, 20);
@@ -468,6 +551,55 @@
         refreshPlannerViews();
     }
 
+    function onPoll(payload) {
+        if (payload.eventType === 'DELETE') {
+            const id = payload.old?.id;
+            Object.keys(state.polls).forEach(msgId => { if (state.polls[msgId].id === id) delete state.polls[msgId]; });
+            return;
+        }
+        const row = payload.new;
+        if (!state.loadedChats.has(row.chat_id)) return;
+        state.polls[row.message_id] = row;
+        if (!state.pollVotes[row.id]) state.pollVotes[row.id] = [];
+        renderMessages(row.chat_id);
+    }
+
+    // A vote taken back only says which row went, so reload the votes of the polls on screen
+    let votesTimer = null;
+    function onPollVote(payload) {
+        const row = payload.new;
+        if (payload.eventType !== 'DELETE' && row?.poll_id && state.pollVotes[row.poll_id]) {
+            const list = state.pollVotes[row.poll_id].filter(v => v.user_id !== row.user_id);
+            list.push({ poll_id: row.poll_id, user_id: row.user_id, choice: row.choice });
+            state.pollVotes[row.poll_id] = list;
+            const poll = findPoll(row.poll_id);
+            if (poll) renderMessages(poll.chat_id);
+            return;
+        }
+        clearTimeout(votesTimer);
+        votesTimer = setTimeout(async () => {
+            const chatId = currentChatId();
+            const ids = Object.values(state.polls).filter(p => p.chat_id === chatId).map(p => p.id);
+            await loadVotes(ids);
+            if (chatId) renderMessages(chatId);
+        }, 300);
+    }
+
+    // Someone posted, sorted or deleted something: reload the board that's on screen
+    let boardTimer = null;
+    function onBoardPost(payload) {
+        if (payload.eventType === 'DELETE') {
+            const id = payload.old?.id;
+            Object.keys(state.boards).forEach(b => { state.boards[b] = state.boards[b].filter(p => p.id !== id); });
+            renderDetail();
+            return;
+        }
+        const board = payload.new?.board;
+        if (!board || !state.boards[board]) return;
+        clearTimeout(boardTimer);
+        boardTimer = setTimeout(() => loadBoard(board), 300);
+    }
+
     function onFile(payload) {
         if (payload.eventType === 'DELETE') {
             const id = payload.old?.id;
@@ -503,6 +635,9 @@
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, onMessage)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'class_homework' }, onHomework)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'class_occasions' }, onOccasion)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'class_polls' }, onPoll)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'class_poll_votes' }, onPollVote)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'board_posts' }, onBoardPost)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'group_files' }, onFile)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, onClassChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, scheduleReload)
@@ -817,7 +952,7 @@
             return html;
         }
 
-        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['occasions', 'Occasions'], ['timetable', 'Timetable'], ['files', 'Files'], ['people', 'People'], ['activities', 'Activities']];
+        const tabs = [['chats', 'Chats'], ['homework', 'Homework'], ['occasions', 'Occasions'], ['timetable', 'Timetable'], ['files', 'Files'], ['board', 'Lost & found'], ['people', 'People'], ['activities', 'Activities']];
         const tab = state.tabs[key] || 'chats';
         html += tabsHtml(key, tabs, tab);
         let pane = '';
@@ -826,6 +961,7 @@
         else if (tab === 'occasions') pane = occasionsHtml(cls);
         else if (tab === 'timetable') pane = timetableHtml(cls);
         else if (tab === 'files') pane = filesHtml('class', cls, admin);
+        else if (tab === 'board') pane = boardHtml(cls);
         else if (tab === 'people') pane = peopleHtml('class', cls);
         else if (tab === 'activities') pane = classActivitiesHtml(cls);
         return `${html}<div class="cls-pane">${pane}</div>`;
@@ -1058,6 +1194,7 @@
                 <div class="cls-messages chat-messages-container" id="cls-messages" data-moderator="${moderator ? 1 : 0}">${messagesHtml(chat.id, moderator)}</div>
                 <form class="chat-input-wrapper cls-chat-form" data-form="send" data-chat="${chat.id}">
                     <div id="cls-ping-list" class="cls-ping-list" role="listbox" aria-label="People to ping" ${state.ping ? '' : 'hidden'}>${pingListHtml()}</div>
+                    <button type="button" class="btn secondary-btn chat-attach-btn" data-act="poll-new" data-chat="${chat.id}" title="Start a poll" aria-label="Start a poll">${ICONS.poll}</button>
                     <input type="text" id="cls-chat-input" data-keep maxlength="2000" placeholder="Message ${escapeHTML(chat.kind === 'activity' ? 'the group' : chat.name)} · @ to ping" autocomplete="off" aria-label="Message">
                     <button type="submit" class="btn primary-btn icon-btn-large" aria-label="Send message">${ICONS.send}</button>
                 </form>
@@ -1086,13 +1223,14 @@
                 sentByMe ? '' : `<button type="button" data-act="msg-report" data-msg="${m.id}">Report</button>`
             ].join('');
             const label = m.bot ? `${BOT_NAME} <small>· asked by ${escapeHTML(sentByMe ? 'you' : personName(m.sender_id))}</small>` : escapeHTML(name);
+            const poll = isPollMessage(m) ? state.polls[m.id] : null;
             return `
-                <div class="chat-msg-bubble-wrapper ${mine ? 'outgoing' : 'incoming'} cls-msg${pingsMe ? ' cls-pinged' : ''}${m.bot ? ' cls-bot-msg' : ''}">
+                <div class="chat-msg-bubble-wrapper ${mine ? 'outgoing' : 'incoming'} cls-msg${pingsMe ? ' cls-pinged' : ''}${m.bot ? ' cls-bot-msg' : ''}${poll ? ' cls-poll-msg' : ''}">
                     <div class="friend-avatar cls-msg-avatar${m.bot ? ' cls-bot-avatar' : ''}">${m.bot ? 'PB' : escapeHTML(initials(name))}</div>
                     <div class="cls-msg-body">
                         ${mine ? '' : `<span class="cls-msg-name">${label}</span>`}
                         <div class="chat-msg-bubble">
-                            <div>${messageTextHtml(m)}</div>
+                            ${poll ? pollHtml(poll, moderator) : `<div>${messageTextHtml(m)}</div>`}
                             <span class="chat-msg-time">${escapeHTML(messageTime(Date.parse(m.created_at)))}</span>
                         </div>
                         <div class="cls-msg-actions">${actions}</div>
@@ -1124,6 +1262,231 @@
     function isReadingChat(chatId) {
         return document.getElementById('classes')?.classList.contains('active-view') && currentChatId() === chatId &&
             document.visibilityState === 'visible';
+    }
+
+    // A poll inside its chat message: tap a choice to vote, tap it again to take your vote back
+    function pollHtml(poll, moderator) {
+        const votes = state.pollVotes[poll.id] || [];
+        const mine = votes.find(v => v.user_id === myId());
+        const total = votes.length;
+        const most = Math.max(0, ...poll.options.map((_, i) => votes.filter(v => v.choice === i).length));
+        const options = poll.options.map((option, i) => {
+            const count = votes.filter(v => v.choice === i).length;
+            const percent = total ? Math.round((count / total) * 100) : 0;
+            const picked = mine?.choice === i;
+            const leading = poll.closed && count && count === most;
+            return `
+                <button type="button" class="cls-poll-option${picked ? ' picked' : ''}${leading ? ' leading' : ''}" data-act="poll-vote" data-poll="${poll.id}" data-choice="${i}"
+                    ${poll.closed ? 'disabled' : ''} aria-pressed="${picked}">
+                    <span class="cls-poll-fill" style="width: ${percent}%"></span>
+                    <span class="cls-poll-label">${picked ? '✓ ' : ''}${escapeHTML(option)}</span>
+                    <span class="cls-poll-count">${count}${total ? ` · ${percent}%` : ''}</span>
+                </button>`;
+        }).join('');
+        const voters = poll.options.map((option, i) => {
+            const names = votes.filter(v => v.choice === i).map(v => (v.user_id === myId() ? 'you' : personName(v.user_id)));
+            return names.length ? `<li><strong>${escapeHTML(option)}:</strong> ${escapeHTML(names.join(', '))}</li>` : '';
+        }).join('');
+        const canClose = poll.created_by === myId() || moderator;
+        let status = poll.closed ? 'Closed' : (mine ? 'Tap your choice again to take your vote back' : 'Tap a choice to vote');
+        if (poll.closed && total) {
+            const winners = poll.options.filter((_, i) => votes.filter(v => v.choice === i).length === most);
+            status = `Closed · ${winners.length > 1 ? 'Tie' : 'Winner'}: ${winners.join(', ')}`;
+        }
+        return `
+            <div class="cls-poll">
+                <p class="cls-poll-q"><span class="cls-poll-tag">${ICONS.poll} Poll</span>${escapeHTML(poll.question)}</p>
+                <div class="cls-poll-options">${options}</div>
+                <p class="cls-poll-foot">${pluralise(total, 'vote')} · ${escapeHTML(status)}</p>
+                <div class="cls-poll-tools">
+                    ${voters ? `<details><summary>Who voted</summary><ul>${voters}</ul></details>` : ''}
+                    ${canClose ? `<button type="button" data-act="poll-close" data-poll="${poll.id}" data-closed="${poll.closed ? 0 : 1}">${poll.closed ? 'Reopen' : 'Close poll'}</button>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function pollDialog(chat) {
+        if (state.pollsMissing) {
+            alert('Polls aren\'t switched on yet. The site owner needs to run supabase/add-polls-and-board.sql in Supabase.');
+            return;
+        }
+        openDialog({
+            title: 'Start a poll',
+            submitLabel: 'Post poll',
+            body: `
+                <p class="cls-hint">Everyone in ${escapeHTML(chat.kind === 'activity' ? 'the group' : chat.name)} can vote and see who voted for what. You can close it when you've decided.</p>
+                <label for="cls-poll-question">Question</label>
+                <input type="text" id="cls-poll-question" name="question" maxlength="150" placeholder="e.g. Which day for the project meeting?" required>
+                <label>Choices</label>
+                <div class="cls-poll-inputs">
+                    ${[1, 2, 3, 4, 5, 6].map(n => `<input type="text" name="option" maxlength="80" aria-label="Choice ${n}"
+                        placeholder="${n <= 2 ? `Choice ${n}` : `Choice ${n} (optional)`}" ${n <= 2 ? 'required' : ''}>`).join('')}
+                </div>`,
+            onSubmit: async form => {
+                const options = Array.from(form.querySelectorAll('input[name="option"]')).map(i => i.value.trim()).filter(Boolean);
+                const { data: poll, error } = await cloud.rpc('create_poll', { p_chat: chat.id, p_question: form.elements.question.value, p_options: options });
+                if (error) {
+                    if (isMissingSetup(error) || /create_poll/.test(error.message || '')) {
+                        state.pollsMissing = true;
+                        throw new Error('Polls aren\'t switched on yet. The site owner needs to run supabase/add-polls-and-board.sql in Supabase.');
+                    }
+                    throw error;
+                }
+                state.polls[poll.message_id] = poll;
+                state.pollVotes[poll.id] = [];
+                await loadMessages(chat.id);
+                const box = document.getElementById('cls-messages');
+                if (box) box.scrollTop = box.scrollHeight;
+            }
+        });
+    }
+
+    async function votePoll(poll, choice) {
+        const mine = (state.pollVotes[poll.id] || []).find(v => v.user_id === myId());
+        const next = mine?.choice === choice ? null : choice; // the same choice again takes the vote back
+        const { error } = await cloud.rpc('vote_poll', { p_poll: poll.id, p_choice: next });
+        if (error) {
+            alert(`Vote not saved: ${friendlyError(error)}`);
+            return;
+        }
+        const others = (state.pollVotes[poll.id] || []).filter(v => v.user_id !== myId());
+        state.pollVotes[poll.id] = next === null ? others : others.concat({ poll_id: poll.id, user_id: myId(), choice: next });
+        renderMessages(poll.chat_id);
+    }
+
+    function boardHtml(cls) {
+        const board = boardOf(cls);
+        const name = boardName(cls);
+        const shared = board.startsWith('grade-') ? `everyone in ${escapeHTML(name)} classes` : `everyone in ${escapeHTML(cls.name)}`;
+        let html = `
+            <div class="cls-files-top cls-board-top">
+                <p class="cls-hint">The ${escapeHTML(name)} board, shared with ${shared}. Lost something, found something, or have a book to swap or give away? Post it here.</p>
+                <button type="button" class="btn primary-btn btn-sm" data-act="board-new" ${state.boardMissing ? 'disabled' : ''}>+ New post</button>
+            </div>`;
+        if (state.boardMissing) {
+            return html + '<p class="cls-banner">The Lost & found board isn\'t switched on yet. Run supabase/add-polls-and-board.sql (SUPABASE_SETUP.md, step 13).</p>';
+        }
+        const posts = state.boards[board];
+        if (!posts) {
+            if (!state.boardLoading) {
+                state.boardLoading = true;
+                setTimeout(() => loadBoard(board).finally(() => { state.boardLoading = false; }));
+            }
+            return html + '<p class="cls-hint">Loading the board...</p>';
+        }
+        const filter = state.boardFilter;
+        html += `<div class="cls-chat-pills">${[['all', 'All'], ...Object.entries(BOARD_KINDS).map(([k, v]) => [k, v.label])].map(([k, label]) => {
+            const count = posts.filter(p => !p.resolved && (k === 'all' || p.kind === k)).length;
+            return `<button type="button" class="cls-pill ${filter === k ? 'active' : ''}" data-act="board-filter" data-filter="${k}">${escapeHTML(label)}${count ? ` · ${count}` : ''}</button>`;
+        }).join('')}</div>`;
+        const shown = posts.filter(p => filter === 'all' || p.kind === filter);
+        const open = shown.filter(p => !p.resolved);
+        const sorted = shown.filter(p => p.resolved);
+        const moderator = canModerateBoard(board);
+        const item = p => {
+            const mineToo = p.posted_by === myId();
+            const photo = p.photo_path && state.boardPhotos[p.photo_path];
+            const by = mineToo ? 'you' : `${p.poster_name || 'A classmate'}${p.poster_class ? ` (${p.poster_class})` : ''}`;
+            return `
+                <li class="cls-board-post${p.resolved ? ' resolved' : ''}">
+                    ${photo ? `<a class="cls-board-photo" href="${escapeHTML(photo.url)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHTML(photo.url)}" alt="Photo: ${escapeHTML(p.title)}" loading="lazy"></a>` : ''}
+                    <div class="cls-board-info">
+                        <p><span class="cls-board-kind kind-${p.kind}">${escapeHTML(BOARD_KINDS[p.kind]?.verb || p.kind)}</span>${p.resolved ? '<span class="cls-chip">Sorted</span>' : ''}</p>
+                        <strong>${escapeHTML(p.title)}</strong>
+                        ${p.details ? `<p class="cls-board-details">${escapeHTML(p.details)}</p>` : ''}
+                        <small>by ${escapeHTML(by)} · ${escapeHTML(timeAgo(Date.parse(p.created_at)))}</small>
+                        ${mineToo || moderator ? `<span class="cls-row-actions">
+                            ${mineToo ? `<button type="button" class="btn secondary-btn btn-sm" data-act="board-resolve" data-post="${p.id}" data-resolved="${p.resolved ? 0 : 1}">${p.resolved ? 'Not sorted yet' : 'Mark as sorted'}</button>` : ''}
+                            <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="board-delete" data-post="${p.id}">Delete</button>
+                        </span>` : ''}
+                    </div>
+                </li>`;
+        };
+        html += open.length ? `<ul class="cls-board-list">${open.map(item).join('')}</ul>` :
+            `<p class="cls-hint">${filter === 'all' ? 'Nothing on the board right now.' : `No "${escapeHTML(BOARD_KINDS[filter].label)}" posts right now.`}</p>`;
+        if (sorted.length) {
+            html += `<details class="cls-past"><summary>Sorted (${sorted.length})</summary><ul class="cls-board-list">${sorted.map(item).join('')}</ul></details>`;
+        }
+        return html + '<p class="cls-hint cls-board-note">To get something back or swap a book, find the person at school. Never post your phone number or address.</p>';
+    }
+
+    // Phone photos are big: shrink to BOARD_PHOTO_MAX px and save as JPEG (well under the 5 MB limit)
+    async function shrinkPhoto(file) {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, BOARD_PHOTO_MAX / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close?.();
+        return new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Couldn\'t read that photo.'))), 'image/jpeg', 0.82));
+    }
+
+    function boardDialog(cls) {
+        const board = boardOf(cls);
+        openDialog({
+            title: `New post on the ${boardName(cls)} board`,
+            submitLabel: 'Post',
+            body: `
+                <label>What is it?</label>
+                <div class="cls-board-kinds">
+                    ${Object.entries(BOARD_KINDS).map(([k, v], i) => `<label class="cls-pick"><input type="radio" name="kind" value="${k}" ${i === 0 ? 'checked' : ''}><span>${escapeHTML(v.verb)}</span></label>`).join('')}
+                </div>
+                <label for="cls-board-title">Title</label>
+                <input type="text" id="cls-board-title" name="title" maxlength="80" placeholder="e.g. Blue water bottle, or Class 10 Maths guide" required>
+                <label for="cls-board-details">Details (optional)</label>
+                <textarea id="cls-board-details" name="details" maxlength="500" rows="3" placeholder="Where and when, what it looks like, or which book you want in return"></textarea>
+                <label for="cls-board-photo">Photo (optional)</label>
+                <input type="file" id="cls-board-photo" name="photo" accept="image/png,image/jpeg,image/webp,image/gif">
+                <p class="cls-hint">Everyone in ${escapeHTML(boardName(cls))} classes sees it. Don't add phone numbers or addresses.</p>`,
+            onSubmit: async form => {
+                const kind = form.querySelector('input[name="kind"]:checked')?.value || 'lost';
+                const title = form.elements.title.value.trim();
+                const details = form.elements.details.value.trim();
+                const file = form.elements.photo.files[0];
+                if (!title) throw new Error('Give it a title.');
+                let path = null;
+                if (file) {
+                    if (!file.type.startsWith('image/')) throw new Error('The photo needs to be a picture (PNG, JPG, WebP or GIF).');
+                    let blob;
+                    try {
+                        blob = await shrinkPhoto(file);
+                    } catch (e) {
+                        throw new Error('Couldn\'t read that photo. Try a JPG or PNG.');
+                    }
+                    path = `${board}/${myId()}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+                    const upload = await cloud.storage.from('board-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+                    if (upload.error) throw new Error(`The photo wasn't uploaded: ${friendlyError(upload.error)}`);
+                }
+                const { error } = await cloud.from('board_posts').insert({ board, kind, title, details, photo_path: path, posted_by: myId() });
+                if (error) {
+                    if (path) await cloud.storage.from('board-photos').remove([path]); // don't leave an unused photo behind
+                    throw /row-level security|violates/i.test(error.message || '')
+                        ? new Error('Not posted. You can have up to 10 posts that aren\'t sorted yet, and post up to 10 a day.')
+                        : error;
+                }
+                state.boardFilter = 'all';
+                await loadBoard(board);
+            }
+        });
+    }
+
+    function findBoardPost(id) {
+        for (const posts of Object.values(state.boards)) {
+            const post = posts.find(p => String(p.id) === String(id));
+            if (post) return post;
+        }
+        return null;
+    }
+
+    async function deleteBoardPost(post) {
+        const { error } = await cloud.from('board_posts').delete().eq('id', post.id);
+        if (error) {
+            alert(friendlyError(error));
+            return;
+        }
+        if (post.photo_path) await cloud.storage.from('board-photos').remove([post.photo_path]);
+        onBoardPost({ eventType: 'DELETE', old: { id: post.id } });
     }
 
     function homeworkHtml(cls) {
@@ -2138,6 +2501,46 @@
                     else onOccasion({ eventType: 'DELETE', old: { id: Number(el.dataset.occ) } });
                 });
                 break;
+            case 'poll-new':
+                pollDialog(state.chats.find(c => c.id === el.dataset.chat));
+                break;
+            case 'poll-vote': {
+                const poll = findPoll(el.dataset.poll);
+                if (poll && !poll.closed) votePoll(poll, Number(el.dataset.choice));
+                break;
+            }
+            case 'poll-close': {
+                const poll = findPoll(el.dataset.poll);
+                const closing = el.dataset.closed === '1';
+                const { error } = await cloud.rpc('close_poll', { p_poll: poll.id, p_closed: closing });
+                if (error) {
+                    alert(friendlyError(error));
+                    break;
+                }
+                poll.closed = closing;
+                renderMessages(poll.chat_id);
+                break;
+            }
+            case 'board-new':
+                boardDialog(group);
+                break;
+            case 'board-filter':
+                state.boardFilter = el.dataset.filter;
+                renderDetail();
+                break;
+            case 'board-resolve': {
+                const post = findBoardPost(el.dataset.post);
+                const { error } = await cloud.rpc('set_board_post_resolved', { p_post: post.id, p_resolved: el.dataset.resolved === '1' });
+                if (error) alert(friendlyError(error));
+                else await loadBoard(post.board);
+                break;
+            }
+            case 'board-delete': {
+                const post = findBoardPost(el.dataset.post);
+                showConfirm(post.posted_by === myId() ? 'Delete your post from the board?' : `Delete this post by ${post.poster_name || 'a classmate'} for everyone?`,
+                    () => deleteBoardPost(post));
+                break;
+            }
             case 'tt-import':
                 importTimetable(group);
                 break;

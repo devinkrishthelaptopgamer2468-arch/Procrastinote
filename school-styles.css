@@ -7036,6 +7036,299 @@ body.external-pip-body .pip-header {
     margin-bottom: 0.75rem;
 }
 
+/* Polls in class chats: a card instead of a coloured bubble, so the bars read the same for everyone */
+.cls-poll-msg .chat-msg-bubble {
+    width: min(340px, 68vw);
+    background: var(--surface-solid) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--hairline) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.cls-poll-msg .chat-msg-time {
+    color: var(--text-3);
+}
+
+.cls-poll-q {
+    margin-bottom: 0.6rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.cls-poll-tag {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.cls-poll-tag svg {
+    width: 14px;
+    height: 14px;
+}
+
+.cls-poll-options {
+    display: grid;
+    gap: 0.4rem;
+}
+
+.cls-poll-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--hairline-strong);
+    background: var(--inset);
+    color: var(--text);
+    font-size: 0.9rem;
+    text-align: left;
+    transition: border-color 0.2s;
+}
+
+.cls-poll-option:not(:disabled):hover {
+    border-color: var(--accent);
+}
+
+.cls-poll-option:disabled {
+    cursor: default;
+}
+
+.cls-poll-option.picked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.cls-poll-option.leading {
+    border-color: var(--accent);
+}
+
+.cls-poll-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--accent-soft);
+    transition: width 0.4s var(--ease-out);
+}
+
+.cls-poll-label,
+.cls-poll-count {
+    position: relative;
+}
+
+.cls-poll-label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+}
+
+.cls-poll-count {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-2);
+}
+
+.cls-poll-foot {
+    margin-top: 0.5rem;
+    font-size: 0.76rem;
+    color: var(--text-2);
+}
+
+.cls-poll-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.4rem 0.8rem;
+    margin-top: 0.35rem;
+    font-size: 0.78rem;
+}
+
+.cls-poll-tools:empty {
+    display: none;
+}
+
+.cls-poll-tools summary,
+.cls-poll-tools button {
+    padding: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.cls-poll-tools ul {
+    margin: 0.3rem 0 0;
+    padding-left: 1rem;
+    color: var(--text-2);
+    line-height: 1.5;
+}
+
+.cls-poll-inputs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+@media (max-width: 520px) {
+    .cls-poll-inputs {
+        grid-template-columns: 1fr;
+    }
+
+    /* Poll and send buttons beside the message box: smaller, so the box keeps room to type */
+    .cls-chat-form {
+        gap: 0.4rem;
+    }
+
+    .cls-chat-form .chat-attach-btn,
+    .cls-chat-form .icon-btn-large {
+        width: 38px;
+        height: 38px;
+    }
+
+    .cls-chat-form input {
+        padding-left: 0.85rem;
+        padding-right: 0.85rem;
+    }
+}
+
+/* Lost & found / book swap board */
+.cls-board-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.cls-board-post {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--radius);
+    background: var(--inset);
+}
+
+.cls-board-post.resolved {
+    opacity: 0.7;
+}
+
+.cls-board-photo img {
+    display: block;
+    width: 100%;
+    height: 170px;
+    object-fit: cover;
+    background: var(--inset-hover);
+}
+
+.cls-board-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1;
+    padding: 0.75rem 0.85rem;
+}
+
+.cls-board-info > strong {
+    font-size: 0.97rem;
+    overflow-wrap: anywhere;
+}
+
+.cls-board-info .cls-chip {
+    margin-left: 0.35rem;
+}
+
+.cls-board-details {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--text-2);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.cls-board-info small {
+    font-size: 0.76rem;
+    color: var(--text-3);
+}
+
+.cls-board-info .cls-row-actions {
+    justify-content: flex-start;
+    margin: 0.3rem 0 0;
+}
+
+.cls-board-kind {
+    display: inline-flex;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.cls-board-kind.kind-lost {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.cls-board-kind.kind-found {
+    background: var(--amber-soft);
+    color: var(--amber-text);
+}
+
+.cls-board-kind.kind-swap {
+    background: var(--violet-soft);
+    color: var(--accent);
+}
+
+.cls-board-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.cls-board-note {
+    margin-top: 1rem;
+}
+
+.classes-dialog-body textarea {
+    width: 100%;
+    padding: 0.78rem 0.95rem;
+    background: var(--field);
+    color: var(--text);
+    border: 1px solid var(--field-border);
+    border-radius: 12px;
+    font: inherit;
+    font-size: 0.95rem;
+    resize: vertical;
+}
+
+.classes-dialog-body textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-ring);
+}
+
+.cls-board-top .cls-hint {
+    flex: 1;
+    margin: 0;
+}
+
+@media (max-width: 520px) {
+    .cls-board-top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
 /* Class AI key box (People tab) */
 .cls-ai-box {
     display: grid;
