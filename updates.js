@@ -4,10 +4,28 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'week-2026-11-09',
+        date: '2026-11-11',
+        title: 'This week: timetable from a photo',
+        text: 'On the Timetable page, press "Read from a photo or PDF" and Procrastinote fills in your Day Order schedule for you. Check it, fix anything it got wrong, and you\'re set up. A timetable a friend sends you in chat can be used the same way (Import > Use as my class timetable).'
+    },
+    {
+        id: 'week-2026-11-02',
+        date: '2026-11-02',
+        title: 'This week: class polls and Lost & found',
+        text: 'Press the chart button in a class chat to start a poll, like "Which day for the project meeting?", and everyone can vote. Lost something, found something, or have a book to swap? Each grade now has a Lost & found board on the class page, with photos.'
+    },
+    {
+        id: 'week-2026-10-26',
+        date: '2026-10-27',
+        title: 'This week: focus stats and revision notes',
+        text: 'Zen mode now counts your study minutes: pick what you\'re studying and see a chart of your week. In the Notebook, AI helper > Make revision notes turns a note or PDF (Tamil too) into short notes.'
+    },
+    {
         id: 'week-2026-10-19',
         date: '2026-10-25',
         title: 'This week: Exams page, flashcards and more',
-        text: 'New Exams page: upload an exam timetable and the exams fill in by themselves, track your marks with a chart, and see countdowns on the dashboard. Make flashcards from any note, keep a homework streak going, and mark half days and occasions in the Calendar. Classmates can share their AI keys with the class, so you don\'t need your own. The Notebook is simpler (AI tools in one menu, search, "Get text" on any picture), and the mouse pointer now shows on Xbox.'
+        text: 'New Exams page: upload an exam timetable and the exams fill in by themselves, track your marks with a chart, and see countdowns on the dashboard. Make flashcards from any note, keep a homework streak going, and mark half days and occasions in the Calendar. Classmates can share their AI keys with the class, so you don\'t need your own. The Notebook is simpler (AI tools in one menu, search, "Get text" on any picture), and the mouse pointer now shows on Xbox. Photos and PDFs friends send you have an Import button, to use them in your notes or as an exam timetable. New here? A "Get started" list on the dashboard walks you through setting up, and the Timetable page now saves by itself.'
     },
     {
         id: 'phone-notifications',
