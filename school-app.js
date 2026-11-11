@@ -903,13 +903,108 @@ function wordsToRows(words) {
     return rows.map(r => r.words.sort((a, b) => a.x - b.x).map(w => w.text).join('  ')).join('\n');
 }
 
-// options.grid: a class timetable (a full table), so straighten it and wipe the table lines
-// first, and read it row by row
+function scaledCanvas(canvas, longest) {
+    const scale = Math.min(1, longest / Math.max(canvas.width, canvas.height));
+    if (scale === 1) return canvas;
+    const out = document.createElement('canvas');
+    out.width = Math.round(canvas.width * scale);
+    out.height = Math.round(canvas.height * scale);
+    out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
+    return out;
+}
+
+// Turn by a quarter turn (90), half (180) or three quarters (270), clockwise
+function rotateCanvas(canvas, turn) {
+    const out = document.createElement('canvas');
+    const sideways = turn === 90 || turn === 270;
+    out.width = sideways ? canvas.height : canvas.width;
+    out.height = sideways ? canvas.width : canvas.height;
+    const ctx = out.getContext('2d');
+    ctx.translate(out.width / 2, out.height / 2);
+    ctx.rotate(turn * Math.PI / 180);
+    ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+    return out;
+}
+
+// A timetable in a book is often photographed sideways. OCR only reads upright writing, so try
+// each way up (on a small copy) and keep the one with the most clearly read words.
+async function turnUpright(canvas, worker) {
+    // A cleaned-up copy: grid lines and grey paper hide words from the OCR (a straight photo
+    // scored 3 words without this, so every way up had to be tried)
+    const copy = document.createElement('canvas');
+    const small = scaledCanvas(canvas, 1200);
+    copy.width = small.width;
+    copy.height = small.height;
+    copy.getContext('2d').drawImage(small, 0, 0);
+    const clean = removeTableLines(binarizeForOcr(copy));
+    const score = async c => {
+        const { data } = await worker.recognize(c);
+        return (data.words || []).filter(w => w.confidence > 60 && /[a-z]{3,}/i.test(w.text)).length;
+    };
+    let best = { turn: 0, score: await score(clean) };
+    if (best.score < 12) {
+        for (const turn of [90, 270, 180]) {
+            const s = await score(rotateCanvas(clean, turn));
+            if (s > best.score) best = { turn, score: s };
+        }
+    }
+    return best.turn ? rotateCanvas(canvas, best.turn) : canvas;
+}
+
+// Black writing on white, whatever the photo: each pixel is compared with the area around it, so
+// coloured or grey cells, shadows, pen ink and dark-mode screenshots all come out clean.
+// (Coloured cells hid the "Day 1" labels from the OCR.)
+function binarizeForOcr(canvas) {
+    const ctx = canvas.getContext('2d');
+    const { width: w, height: h } = canvas;
+    const image = ctx.getImageData(0, 0, w, h);
+    const px = image.data;
+    const gray = new Float32Array(w * h);
+    let total = 0;
+    for (let i = 0; i < w * h; i++) {
+        gray[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+        total += gray[i];
+    }
+    if (total / (w * h) < 110) for (let i = 0; i < w * h; i++) gray[i] = 255 - gray[i]; // light writing on dark
+    const W = w + 1;
+    const sums = new Float64Array(W * (h + 1));
+    for (let y = 0; y < h; y++) {
+        let row = 0;
+        for (let x = 0; x < w; x++) {
+            row += gray[y * w + x];
+            sums[(y + 1) * W + x + 1] = sums[y * W + x + 1] + row;
+        }
+    }
+    const r = Math.max(8, Math.round(Math.max(w, h) / 60));
+    for (let y = 0; y < h; y++) {
+        const y0 = Math.max(0, y - r);
+        const y1 = Math.min(h, y + r + 1);
+        for (let x = 0; x < w; x++) {
+            const x0 = Math.max(0, x - r);
+            const x1 = Math.min(w, x + r + 1);
+            const mean = (sums[y1 * W + x1] - sums[y0 * W + x1] - sums[y1 * W + x0] + sums[y0 * W + x0]) / ((x1 - x0) * (y1 - y0));
+            const v = gray[y * w + x];
+            // In a dark cell (like a navy header), the writing is the light part
+            const ink = mean < 100 ? v > mean * 1.15 + 12 : v < mean * 0.85 && mean - v > 12;
+            const i = (y * w + x) * 4;
+            px[i] = px[i + 1] = px[i + 2] = ink ? 0 : 255;
+        }
+    }
+    ctx.putImageData(image, 0, 0);
+    return canvas;
+}
+
+// options.grid: a class timetable (a full table): turn it upright, straighten it, clean it up and
+// wipe the table lines first, then read it row by row
 async function readExamTimetableText(file, status, options = {}) {
-    const prepare = canvas => (options.grid ? removeTableLines(straightenTable(canvas)) : canvas);
+    const prepare = async (canvas, worker) => {
+        if (!options.grid) return canvas;
+        const upright = await turnUpright(scaledCanvas(canvas, 2400), worker); // a 4000 px photo needn't be that big
+        return removeTableLines(binarizeForOcr(straightenTable(upright)));
+    };
     const ocrMode = options.grid ? '6' : '4';
     const ocr = async (worker, canvas) => {
-        const { data } = await worker.recognize(prepare(canvas));
+        const { data } = await worker.recognize(await prepare(canvas, worker));
         return cleanOcrText(options.grid && data.words?.length ? wordsToRows(data.words) : data.text);
     };
     if (isPdfFile(file)) {
@@ -1929,22 +2024,25 @@ const TT_PERIODS = 8;
 
 // How timetables write subject names, most specific first ('' keeps a free period's place)
 const TT_SUBJECT_PATTERNS = [
-    [/\bvbse\s*[/&+]\s*lsa\b/i, 'VBSE/LSA'],
-    [/\bsocial\s*(?:science|studies|sci)\b|\bs\.?\s?s\.?\s?t\b|\bsocial\b/i, 'Social Science'],
+    [/\bvbse\s*[/&+|nl1]?\s*lsa\b/i, 'VBSE/LSA'], // OCR reads the slash as N, l or 1 sometimes
+    [/\bsocial\s*(?:science|studies|sci)\b|\bs\.?\s?s\.?\s?t\b|\bsocial\b|\bsoc\b/i, 'Social Science'],
+    [/\b(?:vi|6th|sixth)[\s-]*sub(?:ject)?\b/i, 'Sixth Subject'],
+    // A lone Roman "VI" in a day's row, as OCR reads it (VI, Vi, vi, V1, Vl)
+    [/\bv[i1l]\b/i, 'Sixth Subject'],
     [/\bphysical\s*(?:training|education)\b|\bp\.\s?[te]\.?(?![a-z])|\bpt\b|\bpe\b|\bgames\b|\bsports\b/i, 'PT'],
-    [/\bmath(?:s|ematics)?\b/i, 'Mathematics'],
-    [/\bphy(?:sics|s)?\b/i, 'Physics'],
-    [/\bchem(?:istry)?\b/i, 'Chemistry'],
-    [/\bbio(?:logy)?\b/i, 'Biology'],
-    [/\beng(?:lish)?\b/i, 'English'],
-    [/\btam(?:il)?\b/i, 'Tamil'],
-    [/\bhin(?:di)?\b/i, 'Hindi'],
-    [/\bsans(?:krit)?\b|\bskt\b/i, 'Sanskrit'],
+    // The start of the name is enough, so OCR slips like "Chemisty" or "Maths." still count
+    [/\bmath[a-z]{0,8}\b/i, 'Mathematics'],
+    [/\bphy(?!sical)[a-z]{0,5}\b/i, 'Physics'],
+    [/\bchem[a-z]{0,6}\b/i, 'Chemistry'],
+    [/\bbio[a-z]{0,5}\b/i, 'Biology'],
+    [/\beng[a-z]{0,5}\b/i, 'English'],
+    [/\btam[a-z]{0,3}\b/i, 'Tamil'],
+    [/\bhin[a-z]{0,3}\b/i, 'Hindi'],
+    [/\bsans[a-z]{0,5}\b|\bskt\b/i, 'Sanskrit'],
     [/\bfre(?:nch)?\b|\bfr\b/i, 'French'],
-    [/\b(?:sixth|6th)\s*sub(?:ject)?\b/i, 'Sixth Subject'],
     [/\bvbse\b/i, 'VBSE'],
     [/\blsa\b/i, 'LSA'],
-    [/\blib(?:rary)?\b/i, 'Library'],
+    [/\blib[a-z]{0,5}\b/i, 'Library'],
     [/\bmadd\b/i, 'MADD'],
     [/\batl\b/i, 'ATL'],
     [/\bfree\b|\bself[\s-]*study\b|\bstudy\s*period\b/i, '']
@@ -1954,7 +2052,7 @@ const TT_SUBJECT_PATTERNS = [
 function findTimetableSubjects(line) {
     const hits = [];
     TT_SUBJECT_PATTERNS.forEach(([pattern, subject]) => {
-        for (const m of line.matchAll(new RegExp(pattern.source, 'gi'))) {
+        for (const m of line.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))) {
             hits.push({ start: m.index, end: m.index + m[0].length, subject });
         }
     });
@@ -2021,16 +2119,28 @@ function parseTimetableLocally(text) {
                 if (i < subjects.length) (days[key] = days[key] || []).push(subjects[i]);
             });
         });
+    } else if (dayRows < 2) {
+        // The day labels didn't read (shaded or handwritten): rows full of subjects are the
+        // Day Orders in order
+        let next = 1;
+        lines.forEach(line => {
+            const subjects = findTimetableSubjects(line);
+            if (subjects.filter(Boolean).length >= 4 && next <= 10) days[next++] = subjects;
+        });
     } else {
         let current = null;
+        let lastNumber = 0;
         lines.forEach(line => {
             const labels = findTimetableDays(line);
             const label = labels.length === 1 ? labels[0] : null;
+            // "Day Order" whose number didn't read: the one after the last Day Order
+            const bare = !labels.length && /^\W*day\s*(?:order)?\b/i.exec(line);
             if (labels.length > 1) {
                 current = null; // a title like "Day 1 to Day 6"
-            } else if (label) {
-                current = label.key;
-                days[current] = findTimetableSubjects(line.slice(label.end));
+            } else if (label || (bare && findTimetableSubjects(line).length >= 2)) {
+                current = label ? label.key : lastNumber + 1;
+                if (typeof current === 'number') lastNumber = current;
+                days[current] = findTimetableSubjects(line.slice(label ? label.end : bare[0].length));
             } else if (current !== null && days[current].length < TT_PERIODS) {
                 days[current].push(...findTimetableSubjects(line));
             }
@@ -2040,20 +2150,24 @@ function parseTimetableLocally(text) {
     return days;
 }
 
-// With AI: the helper reads the messy text and answers with each Day Order's periods as JSON
-async function parseTimetableWithAI(text) {
-    const reply = await callGroq(
-        'Below is the text of a school class timetable, read from a photo or PDF, so it may have reading mistakes and the table may be split up.\n' +
-        `The school uses Day Orders (Day 1, Day 2, ...) instead of weekdays; it has ${parseInt(appState.settings.totalDays) || 6} of them now, plus maybe a half-day timetable. ` +
-        'If the timetable uses weekdays instead, Monday is day 1, Tuesday day 2 and so on. The table may have days as rows or as columns.\n' +
-        `For each day, list its periods in order, at most ${TT_PERIODS}. Leave out breaks, lunch and assembly. ` +
-        `Use only these subject names: ${SUBJECT_LIST.join(', ')} (for example Maths is Mathematics, SST is Social Science, Games or P.E. is PT). ` +
+// What the AI helper is told about timetables, whether it gets the text or the photo itself
+function timetableAiRules() {
+    return `The school uses Day Orders (Day 1, Day 2, ...) instead of weekdays; it has ${parseInt(appState.settings.totalDays) || 6} of them now, plus maybe a half-day timetable. ` +
+        'If the timetable uses weekdays instead, Monday is day 1, Tuesday day 2 and so on. The table may have days as rows or as columns, and periods may be numbered I, II, III...\n' +
+        `For each day, list its periods in order, at most ${TT_PERIODS}. Leave out times, breaks, lunch and assembly, and leave out days with nothing written in them. ` +
+        `Use only these subject names: ${SUBJECT_LIST.join(', ')}. Short forms: Maths or Math is Mathematics, Eng is English, Tam is Tamil, ` +
+        'Phy is Physics, Chem is Chemistry, Bio is Biology, Soc, SST or Social is Social Science, Games or P.E. is PT, Atl is ATL, Madd is MADD, ' +
+        'VBSE/LSA stays VBSE/LSA, and "VI", "VI-Sub" or "6th sub" (the sixth subject) is Sixth Subject. ' +
         'Use "" for a free period or a subject that is not in the list.\n' +
         'Answer with JSON only, no other words, in exactly this shape ("half" for a half day):\n' +
-        '{"days":[{"day":"1","periods":["Mathematics","English","","Physics"]},{"day":"half","periods":["Tamil"]}]}\n\n' +
-        `Timetable text:\n${text.slice(0, 6000)}`,
-        'You turn school timetables into JSON. You only ever answer with valid JSON.'
-    );
+        '{"days":[{"day":"1","periods":["Mathematics","English","","Physics"]},{"day":"half","periods":["Tamil"]}]}';
+}
+
+const TIMETABLE_AI_SYSTEM = 'You turn school timetables into JSON. You only ever answer with valid JSON.';
+
+// The AI's JSON answer -> { 1: [subjects], half: [...] }
+function timetableDaysFromReply(reply) {
+    reply = String(reply || '').replace(/<think>[\s\S]*?<\/think>/gi, ''); // some models show their thinking first
     const start = reply.indexOf('{');
     const end = reply.lastIndexOf('}');
     if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
@@ -2067,6 +2181,32 @@ async function parseTimetableWithAI(text) {
         if (periods.some(Boolean)) days[key] = periods;
     });
     return days;
+}
+
+// With AI: the helper reads the messy OCR text and answers with each Day Order's periods
+async function parseTimetableWithAI(text) {
+    const reply = await callGroq(
+        'Below is the text of a school class timetable, read from a photo or PDF, so it may have reading mistakes and the table may be split up.\n' +
+        `${timetableAiRules()}\n\nTimetable text:\n${text.slice(0, 6000)}`,
+        TIMETABLE_AI_SYSTEM
+    );
+    return timetableDaysFromReply(reply);
+}
+
+// With an AI that can see pictures: it reads the photo itself, handwriting too, which OCR can't
+async function parseTimetablePictureWithAI(imageUrl) {
+    const reply = await callGroqWithPicture(
+        'This is a photo of a school class timetable. The subjects may be handwritten, and the photo may be turned sideways.\n' +
+        timetableAiRules(),
+        TIMETABLE_AI_SYSTEM,
+        imageUrl
+    );
+    return timetableDaysFromReply(reply);
+}
+
+// The photo for the AI: upright, at most 1600 px, as a JPEG (about 200-400 KB)
+function pictureForAi(canvas) {
+    return scaledCanvas(canvas, 1600).toDataURL('image/jpeg', 0.85);
 }
 
 // Which Day Orders the result fills in. With 6 Day Orders, a "Day 7" is the half-day timetable
@@ -2129,23 +2269,46 @@ async function readTimetablePhoto(file) {
     label?.classList.add('busy');
     try {
         setTimetablePhotoStatus('Opening the timetable...');
-        const text = await readExamTimetableText(file, setTimetablePhotoStatus, { grid: true });
-        if (!text.trim()) throw new Error('No writing was found in it. Try a clearer photo.');
+        const ai = await aiAvailable();
         let days = {};
-        let usedAI = false;
-        if (await aiAvailable()) {
-            setTimetablePhotoStatus('Working out the timetable with the AI helper...');
+        let found = false;
+        // 1. With an AI key, the AI looks at the photo itself: it reads handwriting, OCR doesn't
+        if (ai && file.type.startsWith('image/')) {
             try {
-                days = await parseTimetableWithAI(text);
-                usedAI = Object.keys(days).length > 0;
+                setTimetablePhotoStatus('Turning the photo the right way up...');
+                const worker = await createTimetableOcrWorker('6');
+                let picture;
+                try {
+                    picture = await turnUpright(await imageFileToCanvas(file), worker);
+                } finally {
+                    await worker.terminate();
+                }
+                setTimetablePhotoStatus('Reading the timetable with the AI helper (handwriting too)...');
+                days = await parseTimetablePictureWithAI(pictureForAi(picture));
+                found = Object.keys(days).length > 0;
             } catch (err) {
-                console.warn('AI could not read the timetable, using the simple reader:', err.message);
+                console.warn('The AI could not read the photo, reading its writing instead:', err.message);
             }
         }
-        if (!usedAI) days = parseTimetableLocally(text);
+        // 2. Read the printed writing (OCR), then let the AI helper or the simple reader sort it out
+        if (!found) {
+            const text = await readExamTimetableText(file, setTimetablePhotoStatus, { grid: true });
+            if (text.trim() && ai) {
+                setTimetablePhotoStatus('Working out the timetable with the AI helper...');
+                try {
+                    days = await parseTimetableWithAI(text);
+                    found = Object.keys(days).length > 0;
+                } catch (err) {
+                    console.warn('AI could not read the timetable, using the simple reader:', err.message);
+                }
+            }
+            if (!found && text.trim()) days = parseTimetableLocally(text);
+        }
         const plan = timetableReviewPlan(days);
         if (!plan.rows.length) {
-            setTimetablePhotoStatus(`Couldn't find the Day Orders in it${usedAI ? '' : ' (adding an AI key in Settings helps with messy timetables)'}. Try a straighter, closer photo, or pick the subjects below.`, true);
+            setTimetablePhotoStatus(ai
+                ? 'Couldn\'t make out the timetable. Try a closer photo in good light with the whole table in it, or pick the subjects below.'
+                : 'Couldn\'t make out the timetable. Handwritten timetables need the AI helper: add your own AI key in Settings, or ask a classmate to share one with your class (class page > People). Or pick the subjects below.', true);
             return;
         }
         showTimetableReview(plan);
@@ -5758,6 +5921,40 @@ async function callGroq(prompt, systemPrompt = null, options = {}) {
         console.error("Groq Fetch Error:", error);
         return "I'm having trouble connecting to my brain right now. Please check your internet connection and API key!";
     }
+}
+
+// A question about a picture, for the one Groq model that can see pictures (console.groq.com/docs/vision).
+// Own key first, else the class's key through the class-ai function. Throws when it can't answer.
+const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';
+
+async function callGroqWithPicture(prompt, systemPrompt, imageUrl) {
+    const apiKey = await getGroqKey();
+    if (!apiKey.startsWith('gsk_')) {
+        if (!cloud || !window.Classes?.hasAiKey?.()) throw new Error('no AI key');
+        const { data, error } = await cloud.functions.invoke('class-ai', { body: { prompt, system: systemPrompt, image: imageUrl } });
+        if (error) {
+            let body = null;
+            try { body = await error.context?.json(); } catch (e) { /* not JSON */ }
+            throw new Error(body?.message || 'the class AI couldn\'t be reached');
+        }
+        window.Classes?.noteAiUse?.();
+        if (!data?.reply) throw new Error(data?.message || 'the class AI couldn\'t answer');
+        return data.reply;
+    }
+    const response = await fetch(AI_CONFIG.baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+            model: GROQ_VISION_MODEL,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }
+            ]
+        })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw new Error(data.error?.message || `Groq answered ${response.status}`);
+    return data.choices?.[0]?.message?.content || '';
 }
 
 function handleAICommand(input) {
