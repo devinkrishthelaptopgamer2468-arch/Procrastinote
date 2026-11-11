@@ -3516,56 +3516,12 @@ button.notif-item:hover {
     margin-bottom: 1.4rem;
 }
 
-.tt-review-scroll {
-    overflow-x: auto;
-    border-radius: 12px;
-    border: 1px solid var(--hairline);
+.tt-review-grid {
+    margin: 0.4rem 0 0;
 }
 
-.tt-review-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-}
-
-.tt-review-table th,
-.tt-review-table td {
-    padding: 0.3rem;
-    border-bottom: 1px solid var(--hairline);
-    text-align: left;
-    white-space: nowrap;
-}
-
-.tt-review-table thead th {
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-.tt-review-table tbody th {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    padding-right: 0.6rem;
-    background: var(--surface-solid);
-    font-weight: 700;
-}
-
-.tt-review-cell {
-    width: 100%;
-    min-width: 108px;
-    padding: 0.4rem 0.45rem;
-    border-radius: 8px;
-    border: 1px solid var(--field-border);
-    background: var(--field);
-    color: var(--text);
-    font-size: 0.82rem;
-}
-
-.tt-review-cell:has(option[value=""]:checked) {
-    color: var(--text-3);
+/* An empty period stands out, so it's easy to see what still needs filling in */
+.tt-review-grid .custom-select-display:not(.has-value) {
     border-style: dashed;
 }
 

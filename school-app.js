@@ -2244,16 +2244,35 @@ function closeTimetableReview() {
 
 function showTimetableReview(plan) {
     ttReviewPlan = plan;
-    const options = value => ['', ...SUBJECT_LIST].map(s =>
-        `<option value="${escapeHTML(s)}" ${s === value ? 'selected' : ''}>${s ? escapeHTML(s) : '(empty)'}</option>`).join('');
-    document.getElementById('tt-review-table').innerHTML = `
-        <thead><tr><th scope="col">Day</th>${Array.from({ length: TT_PERIODS }, (_, j) => `<th scope="col">${j + 1}</th>`).join('')}</tr></thead>
-        <tbody>${plan.rows.map((row, r) => `
-            <tr>
-                <th scope="row">${escapeHTML(row.label)}</th>
-                ${Array.from({ length: TT_PERIODS }, (_, j) => `<td><select class="tt-review-cell" data-row="${r}" data-period="${j}" aria-label="${escapeHTML(row.label)}, period ${j + 1}">${options(row.periods[j] || '')}</select></td>`).join('')}
-            </tr>`).join('')}
-        </tbody>`;
+    // The same subject pickers as the Day Order schedule below (the browser's own lists ignored
+    // dark mode, so their options showed white on white)
+    const emptyLabel = j => `Period ${j + 1}: empty`;
+    document.getElementById('tt-review-table').innerHTML = plan.rows.map((row, r) => `
+        <div class="day-column${row.key === 'half' ? ' half-day-column' : ''}">
+            <h4>${escapeHTML(row.label)}</h4>
+            ${Array.from({ length: TT_PERIODS }, (_, j) => {
+                const value = row.periods[j] || '';
+                return `
+                <div class="form-group" style="position: relative;">
+                    <div id="tt-rev-${r}-${j}-display" class="custom-select-display ${value ? 'has-value' : ''}" role="button" tabindex="0"
+                        aria-label="${escapeHTML(row.label)}, period ${j + 1}">${escapeHTML(value || emptyLabel(j))}</div>
+                    <div id="tt-rev-${r}-${j}-options" class="custom-select-options"></div>
+                    <input type="hidden" class="tt-review-cell" id="tt-rev-${r}-${j}" data-row="${r}" data-period="${j}" value="${escapeHTML(value)}">
+                </div>`;
+            }).join('')}
+        </div>`).join('');
+    const subjectOptions = [{ label: '(empty)', value: '' }, ...SUBJECT_LIST.map(s => ({ label: s, value: s }))];
+    plan.rows.forEach((row, r) => {
+        for (let j = 0; j < TT_PERIODS; j++) {
+            setupCustomDropdown(`tt-rev-${r}-${j}-display`, `tt-rev-${r}-${j}-options`, `tt-rev-${r}-${j}`, subjectOptions, value => {
+                const display = document.getElementById(`tt-rev-${r}-${j}-display`);
+                if (!value) { // "(empty)": say which period is empty, greyed out
+                    display.innerText = emptyLabel(j);
+                    display.classList.remove('has-value');
+                }
+            });
+        }
+    });
     const notes = [];
     if (plan.newTotal !== plan.total) notes.push(`Your timetable has ${plan.newTotal} Day Orders, so the number of Day Orders will change from ${plan.total} to ${plan.newTotal}.`);
     if (plan.rows.some(r => r.periods.length > TT_PERIODS)) notes.push(`Only the first ${TT_PERIODS} periods of each day are kept.`);
