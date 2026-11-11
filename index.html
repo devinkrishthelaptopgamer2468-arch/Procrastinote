@@ -594,6 +594,27 @@
                                 <p class="setup-step-hint">Pick the subjects for each day order, in period order. Your backpack list on the dashboard comes from this.</p>
                             </div>
                         </div>
+                        <!-- Fill it in from a photo or PDF of the timetable -->
+                        <div class="tt-photo">
+                            <p class="tt-photo-text"><strong>Have a photo of your timetable?</strong> Procrastinote can read it and fill this in for you.</p>
+                            <label class="btn primary-btn tt-photo-btn">
+                                <input type="file" id="tt-photo-file" accept="image/*,application/pdf" class="visually-hidden">
+                                Read from a photo or PDF
+                            </label>
+                        </div>
+                        <p id="tt-photo-status" class="exam-tt-status" role="status" hidden></p>
+                        <div id="tt-review" class="exam-review tt-review" hidden>
+                            <p class="exam-review-title">Check this before using it</p>
+                            <p id="tt-review-note" class="setup-step-hint"></p>
+                            <div class="tt-review-scroll">
+                                <table class="tt-review-table" id="tt-review-table"></table>
+                            </div>
+                            <div class="exam-review-actions">
+                                <span class="exam-review-spacer"></span>
+                                <button type="button" id="tt-review-cancel" class="btn ghost-btn">Cancel</button>
+                                <button type="button" id="tt-review-save" class="btn primary-btn">Use this timetable</button>
+                            </div>
+                        </div>
                         <div class="timetable-grid" id="timetable-container"></div>
                         <p class="autosave-note">Saves by itself</p>
                     </div>

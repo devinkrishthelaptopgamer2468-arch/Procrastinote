@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'week-2026-11-09',
+        date: '2026-11-11',
+        title: 'This week: timetable from a photo',
+        text: 'On the Timetable page, press "Read from a photo or PDF" and Procrastinote fills in your Day Order schedule for you. Check it, fix anything it got wrong, and you\'re set up. A timetable a friend sends you in chat can be used the same way (Import > Use as my class timetable).'
+    },
+    {
         id: 'week-2026-11-02',
         date: '2026-11-02',
         title: 'This week: class polls and Lost & found',

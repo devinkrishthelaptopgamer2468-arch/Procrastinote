@@ -731,9 +731,11 @@ async function parseExamTimetableWithAI(text) {
 
 // Timetables are tables: the grid lines confuse the normal OCR layout, so read them enlarged
 // (about 2000 px) in "one column of lines" mode (measured: 7 of 7 exams found, 0 the default way)
-async function createTimetableOcrWorker() {
+// A class timetable, once straightened and its lines wiped (see removeTableLines), reads best as
+// one block (measured on 6 test pictures, flat and tilted up to 5 degrees: 300 of 300 periods)
+async function createTimetableOcrWorker(mode = '4') {
     const worker = await Tesseract.createWorker('eng');
-    await worker.setParameters({ tessedit_pageseg_mode: '4', preserve_interword_spaces: '1' });
+    await worker.setParameters({ tessedit_pageseg_mode: mode, preserve_interword_spaces: '1' });
     return worker;
 }
 
@@ -752,7 +754,164 @@ async function imageFileToCanvas(file) {
     return canvas;
 }
 
-async function readExamTimetableText(file, status) {
+// Class timetables are full grids, and their lines hide most of the words from the OCR
+// (measured: 0 of 52 periods found). Wiping long straight dark lines first fixes that (52 of 52,
+// also on a tilted, grey phone-style photo): a line may drift a few pixels, so look in a band.
+function removeTableLines(canvas) {
+    const ctx = canvas.getContext('2d');
+    const { width: w, height: h } = canvas;
+    const image = ctx.getImageData(0, 0, w, h);
+    const px = image.data;
+    let sum = 0;
+    let samples = 0;
+    for (let i = 0; i < w * h; i += 7, samples++) sum += px[i * 4] + px[i * 4 + 1] + px[i * 4 + 2];
+    // Clearly darker than the paper (even grey paper)
+    const paper = sum / samples / 3;
+    const dark = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) dark[i] = (px[i * 4] + px[i * 4 + 1] + px[i * 4 + 2]) / 3 < paper * 0.7 ? 1 : 0;
+    // The picture is straightened first, so a line drifts at most a pixel. A line also has to be
+    // longer than a cell: a long word between two cell borders mustn't count as one.
+    const band = 1;
+    const minRun = Math.round(Math.min(w, h) * 0.25);
+    const wipe = new Uint8Array(w * h);
+    const darkNear = (x, y, dx, dy) => {
+        for (let k = -band; k <= band; k++) {
+            const xx = x + dx * k;
+            const yy = y + dy * k;
+            if (xx >= 0 && yy >= 0 && xx < w && yy < h && dark[yy * w + xx]) return true;
+        }
+        return false;
+    };
+    for (let y = 0; y < h; y += 2) {
+        let run = 0;
+        for (let x = 0; x <= w; x++) {
+            if (x < w && darkNear(x, y, 0, 1)) { run++; continue; }
+            if (run >= minRun) {
+                for (let k = x - run; k < x; k++) {
+                    for (let b = -band; b <= band; b++) if (y + b >= 0 && y + b < h) wipe[(y + b) * w + k] = 1;
+                }
+            }
+            run = 0;
+        }
+    }
+    for (let x = 0; x < w; x += 2) {
+        let run = 0;
+        for (let y = 0; y <= h; y++) {
+            if (y < h && darkNear(x, y, 1, 0)) { run++; continue; }
+            if (run >= minRun) {
+                for (let k = y - run; k < y; k++) {
+                    for (let b = -band; b <= band; b++) if (x + b >= 0 && x + b < w) wipe[k * w + x + b] = 1;
+                }
+            }
+            run = 0;
+        }
+    }
+    // Along a line, clear its faint, blurry edges too (lines in a phone photo are grey, not black)
+    const edge = 2;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            if (!wipe[y * w + x]) continue;
+            for (let dy = -edge; dy <= edge; dy++) {
+                for (let dx = -edge; dx <= edge; dx++) {
+                    const xx = x + dx;
+                    const yy = y + dy;
+                    if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                    const i = (yy * w + xx) * 4;
+                    if ((px[i] + px[i + 1] + px[i + 2]) / 3 < paper * 0.93) px[i] = px[i + 1] = px[i + 2] = 255;
+                }
+            }
+        }
+    }
+    ctx.putImageData(image, 0, 0);
+    return canvas;
+}
+
+// A photo taken at a slight angle: find the tilt (the angle where the table's rows line up best,
+// up to 6 degrees either way) and turn the picture straight, so its lines can be wiped
+function straightenTable(canvas) {
+    const tilt = findTableTilt(canvas);
+    if (Math.abs(tilt) < 0.3) return canvas;
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.translate(out.width / 2, out.height / 2);
+    ctx.rotate(-tilt * Math.PI / 180);
+    ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+    return out;
+}
+
+// The tilt in degrees (clockwise is positive)
+function findTableTilt(canvas) {
+    const scale = Math.min(1, 600 / canvas.width);
+    const w = Math.round(canvas.width * scale);
+    const h = Math.round(canvas.height * scale);
+    const small = document.createElement('canvas');
+    small.width = w;
+    small.height = h;
+    const sctx = small.getContext('2d');
+    sctx.drawImage(canvas, 0, 0, w, h);
+    const px = sctx.getImageData(0, 0, w, h).data;
+    let sum = 0;
+    for (let i = 0; i < w * h; i++) sum += px[i * 4] + px[i * 4 + 1] + px[i * 4 + 2];
+    const limit = (sum / (w * h) / 3) * 0.6;
+    const darkPoints = [];
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            if ((px[i] + px[i + 1] + px[i + 2]) / 3 < limit) darkPoints.push(x, y);
+        }
+    }
+    let best = 0;
+    let bestScore = -1;
+    for (let deg = -6; deg <= 6.001; deg += 0.25) {
+        const slope = Math.tan(deg * Math.PI / 180);
+        const rows = new Float64Array(h * 2 + w);
+        for (let p = 0; p < darkPoints.length; p += 2) rows[Math.round(darkPoints[p + 1] - darkPoints[p] * slope) + w] += 1;
+        let score = 0;
+        for (const r of rows) score += r * r; // straight lines make tall, narrow peaks
+        if (score > bestScore) {
+            bestScore = score;
+            best = deg;
+        }
+    }
+    return best;
+}
+
+// OCR sometimes reads a table column by column. Put the words back into rows by where they
+// are on the page (the picture is straight by now): words at about the same height are one row.
+function wordsToRows(words) {
+    const items = words
+        .filter(w => w.text.trim())
+        .map(w => ({ text: w.text.trim(), x: w.bbox.x0, y: (w.bbox.y0 + w.bbox.y1) / 2, h: w.bbox.y1 - w.bbox.y0 }))
+        .sort((a, b) => a.y - b.y);
+    if (!items.length) return '';
+    const heights = items.map(i => i.h).sort((a, b) => a - b);
+    const near = heights[Math.floor(heights.length / 2)] * 0.6;
+    const rows = [];
+    items.forEach(item => {
+        const row = rows[rows.length - 1];
+        if (row && Math.abs(item.y - row.y) <= near) {
+            row.words.push(item);
+            row.y = row.words.reduce((s, w) => s + w.y, 0) / row.words.length;
+        } else {
+            rows.push({ y: item.y, words: [item] });
+        }
+    });
+    return rows.map(r => r.words.sort((a, b) => a.x - b.x).map(w => w.text).join('  ')).join('\n');
+}
+
+// options.grid: a class timetable (a full table), so straighten it and wipe the table lines
+// first, and read it row by row
+async function readExamTimetableText(file, status, options = {}) {
+    const prepare = canvas => (options.grid ? removeTableLines(straightenTable(canvas)) : canvas);
+    const ocrMode = options.grid ? '6' : '4';
+    const ocr = async (worker, canvas) => {
+        const { data } = await worker.recognize(prepare(canvas));
+        return cleanOcrText(options.grid && data.words?.length ? wordsToRows(data.words) : data.text);
+    };
     if (isPdfFile(file)) {
         if (file.size > PDF_MAX_FILE_MB * 1024 * 1024) throw new Error(`That PDF is too big. Pick one under ${PDF_MAX_FILE_MB} MB.`);
         const pdfjsLib = await loadPdfJs();
@@ -779,8 +938,8 @@ async function readExamTimetableText(file, status) {
                 let text = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(r => r[1].trim()).join('\n');
                 if ((text.match(/[A-Za-z]/g) || []).length < 30) {
                     // A scanned PDF: no saved words, so read the picture
-                    worker = worker || await createTimetableOcrWorker();
-                    text = cleanOcrText((await worker.recognize(await renderPdfPage(pdf, p))).data.text);
+                    worker = worker || await createTimetableOcrWorker(ocrMode);
+                    text = await ocr(worker, await renderPdfPage(pdf, p));
                 }
                 pages.push(text);
             }
@@ -792,9 +951,9 @@ async function readExamTimetableText(file, status) {
     }
     if (!file.type.startsWith('image/')) throw new Error('Pick a photo or a PDF of the timetable.');
     status('Reading the photo... (this takes a few seconds)');
-    const worker = await createTimetableOcrWorker();
+    const worker = await createTimetableOcrWorker(ocrMode);
     try {
-        return cleanOcrText((await worker.recognize(await imageFileToCanvas(file))).data.text);
+        return await ocr(worker, await imageFileToCanvas(file));
     } finally {
         await worker.terminate();
     }
@@ -1761,6 +1920,271 @@ function renderTimetable() {
         if (ed) ed.value = ht.everyday || '';
     }
 }
+
+// --- Fill in the Day Order schedule from a photo or PDF of the timetable ---
+// The picture is read like an exam timetable (the PDF's own text, or OCR), then the AI helper
+// (or, without an AI key, a simpler reader) works out each Day Order's subjects. Nothing changes
+// until the result has been checked in the review grid and "Use this timetable" is pressed.
+const TT_PERIODS = 8;
+
+// How timetables write subject names, most specific first ('' keeps a free period's place)
+const TT_SUBJECT_PATTERNS = [
+    [/\bvbse\s*[/&+]\s*lsa\b/i, 'VBSE/LSA'],
+    [/\bsocial\s*(?:science|studies|sci)\b|\bs\.?\s?s\.?\s?t\b|\bsocial\b/i, 'Social Science'],
+    [/\bphysical\s*(?:training|education)\b|\bp\.\s?[te]\.?(?![a-z])|\bpt\b|\bpe\b|\bgames\b|\bsports\b/i, 'PT'],
+    [/\bmath(?:s|ematics)?\b/i, 'Mathematics'],
+    [/\bphy(?:sics|s)?\b/i, 'Physics'],
+    [/\bchem(?:istry)?\b/i, 'Chemistry'],
+    [/\bbio(?:logy)?\b/i, 'Biology'],
+    [/\beng(?:lish)?\b/i, 'English'],
+    [/\btam(?:il)?\b/i, 'Tamil'],
+    [/\bhin(?:di)?\b/i, 'Hindi'],
+    [/\bsans(?:krit)?\b|\bskt\b/i, 'Sanskrit'],
+    [/\bfre(?:nch)?\b|\bfr\b/i, 'French'],
+    [/\b(?:sixth|6th)\s*sub(?:ject)?\b/i, 'Sixth Subject'],
+    [/\bvbse\b/i, 'VBSE'],
+    [/\blsa\b/i, 'LSA'],
+    [/\blib(?:rary)?\b/i, 'Library'],
+    [/\bmadd\b/i, 'MADD'],
+    [/\batl\b/i, 'ATL'],
+    [/\bfree\b|\bself[\s-]*study\b|\bstudy\s*period\b/i, '']
+];
+
+// Subjects in a line, left to right ("Maths | Eng | Break | Phy" -> Mathematics, English, Physics)
+function findTimetableSubjects(line) {
+    const hits = [];
+    TT_SUBJECT_PATTERNS.forEach(([pattern, subject]) => {
+        for (const m of line.matchAll(new RegExp(pattern.source, 'gi'))) {
+            hits.push({ start: m.index, end: m.index + m[0].length, subject });
+        }
+    });
+    hits.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+    const kept = [];
+    hits.forEach(h => {
+        if (!kept.length || h.start >= kept[kept.length - 1].end) kept.push(h); // "VBSE/LSA" isn't also VBSE and LSA
+    });
+    return kept.map(h => h.subject);
+}
+
+// A subject name from the AI: one of SUBJECT_LIST, or '' if it isn't one we know
+function timetableSubjectFrom(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const exact = SUBJECT_LIST.find(s => s.toLowerCase() === text.toLowerCase());
+    if (exact) return exact;
+    const found = findTimetableSubjects(text);
+    return found.length === 1 ? found[0] : '';
+}
+
+const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+const WEEKDAY_ORDER = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+// Day Order labels in a line, with where they are: "Day 1", "Day Order 2", "DO 3", "Day IV",
+// "Half day", or weekdays (Monday = 1) for schools that use those
+function findTimetableDays(line) {
+    const days = [];
+    for (const m of line.matchAll(/\b(?:day\s*(?:order)?|d\.?\s?o\.?)\s*[-:.#]?\s*(\d{1,2}|[ivx]{1,4})\b/gi)) {
+        const n = /^\d/.test(m[1]) ? parseInt(m[1], 10) : ROMAN[m[1].toLowerCase()];
+        if (n >= 1 && n <= 10) days.push({ key: n, start: m.index, end: m.index + m[0].length });
+    }
+    for (const m of line.matchAll(/\bhalf[\s-]*day\b/gi)) days.push({ key: 'half', start: m.index, end: m.index + m[0].length });
+    if (!days.length) {
+        for (const m of line.matchAll(/\b(mon|tue|wed|thu|fri|sat)[a-z]*\b/gi)) {
+            days.push({ key: WEEKDAY_ORDER[m[1].toLowerCase()], start: m.index, end: m.index + m[0].length });
+        }
+    }
+    if (!days.length) {
+        // A row that starts with just a Roman numeral: "IV  Maths  English ..."
+        const m = /^\s*(i{1,3}|iv|vi{0,3}|ix|x)[\s.:)|-]+(?=\S)/i.exec(line);
+        if (m && findTimetableSubjects(line).length >= 2) days.push({ key: ROMAN[m[1].toLowerCase()], start: 0, end: m[0].length });
+    }
+    return days.sort((a, b) => a.start - b.start);
+}
+
+// Without AI. Two layouts:
+//  - one row per Day Order ("Day 1 | Maths | English | ..."); OCR may split a row over lines
+//  - Day Orders across the top, one row per period
+function parseTimetableLocally(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const days = {};
+    // Rows that each start with one Day Order mean the first layout, even if a title line
+    // above says "Day 1 to Day 6"
+    const dayRows = lines.filter(l => findTimetableDays(l).length === 1 && findTimetableSubjects(l).length >= 2).length;
+    const header = dayRows >= 2 ? -1 : lines.findIndex(l => findTimetableDays(l).length >= 2);
+    if (header !== -1) {
+        const columns = findTimetableDays(lines[header]).map(d => d.key);
+        lines.slice(header + 1).forEach(line => {
+            if (findTimetableDays(line).length >= 2) return; // a second header
+            const subjects = findTimetableSubjects(line);
+            if (subjects.length < 2) return; // a break row, or not part of the table
+            columns.forEach((key, i) => {
+                if (i < subjects.length) (days[key] = days[key] || []).push(subjects[i]);
+            });
+        });
+    } else {
+        let current = null;
+        lines.forEach(line => {
+            const labels = findTimetableDays(line);
+            const label = labels.length === 1 ? labels[0] : null;
+            if (labels.length > 1) {
+                current = null; // a title like "Day 1 to Day 6"
+            } else if (label) {
+                current = label.key;
+                days[current] = findTimetableSubjects(line.slice(label.end));
+            } else if (current !== null && days[current].length < TT_PERIODS) {
+                days[current].push(...findTimetableSubjects(line));
+            }
+        });
+    }
+    Object.keys(days).forEach(k => { if (!days[k].some(Boolean)) delete days[k]; });
+    return days;
+}
+
+// With AI: the helper reads the messy text and answers with each Day Order's periods as JSON
+async function parseTimetableWithAI(text) {
+    const reply = await callGroq(
+        'Below is the text of a school class timetable, read from a photo or PDF, so it may have reading mistakes and the table may be split up.\n' +
+        `The school uses Day Orders (Day 1, Day 2, ...) instead of weekdays; it has ${parseInt(appState.settings.totalDays) || 6} of them now, plus maybe a half-day timetable. ` +
+        'If the timetable uses weekdays instead, Monday is day 1, Tuesday day 2 and so on. The table may have days as rows or as columns.\n' +
+        `For each day, list its periods in order, at most ${TT_PERIODS}. Leave out breaks, lunch and assembly. ` +
+        `Use only these subject names: ${SUBJECT_LIST.join(', ')} (for example Maths is Mathematics, SST is Social Science, Games or P.E. is PT). ` +
+        'Use "" for a free period or a subject that is not in the list.\n' +
+        'Answer with JSON only, no other words, in exactly this shape ("half" for a half day):\n' +
+        '{"days":[{"day":"1","periods":["Mathematics","English","","Physics"]},{"day":"half","periods":["Tamil"]}]}\n\n' +
+        `Timetable text:\n${text.slice(0, 6000)}`,
+        'You turn school timetables into JSON. You only ever answer with valid JSON.'
+    );
+    const start = reply.indexOf('{');
+    const end = reply.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error(reply.slice(0, 120));
+    const data = JSON.parse(reply.slice(start, end + 1));
+    const days = {};
+    (Array.isArray(data.days) ? data.days : []).forEach(d => {
+        const label = String(d?.day ?? '').trim().toLowerCase();
+        const key = label === 'half' ? 'half' : parseInt(label, 10);
+        if (key !== 'half' && !(key >= 1 && key <= 10)) return;
+        const periods = (Array.isArray(d.periods) ? d.periods : []).map(timetableSubjectFrom);
+        if (periods.some(Boolean)) days[key] = periods;
+    });
+    return days;
+}
+
+// Which Day Orders the result fills in. With 6 Day Orders, a "Day 7" is the half-day timetable
+// (as everywhere else in Procrastinote); more than that means the school has more Day Orders.
+function timetableReviewPlan(days) {
+    const total = parseInt(appState.settings.totalDays) || 6;
+    const numbers = Object.keys(days).filter(k => k !== 'half').map(Number).sort((a, b) => a - b);
+    const highest = numbers.length ? numbers[numbers.length - 1] : 0;
+    let newTotal = total;
+    const rows = [];
+    numbers.forEach(n => {
+        if (n === total + 1 && highest === total + 1 && !days.half) rows.push({ key: 'half', label: `Day ${n} · Half day`, periods: days[n] });
+        else rows.push({ key: n, periods: days[n] });
+    });
+    if (highest > total + 1 || (highest === total + 1 && days.half)) newTotal = highest;
+    rows.forEach(r => { if (!r.label) r.label = `Day ${r.key}`; });
+    if (days.half) rows.push({ key: 'half', label: `Day ${newTotal + 1} · Half day`, periods: days.half });
+    return { rows, total, newTotal };
+}
+
+let ttReviewPlan = null;
+
+function setTimetablePhotoStatus(text, isError = false) {
+    const el = document.getElementById('tt-photo-status');
+    el.hidden = !text;
+    el.innerText = text;
+    el.classList.toggle('error', isError);
+}
+
+function closeTimetableReview() {
+    ttReviewPlan = null;
+    document.getElementById('tt-review').hidden = true;
+    document.getElementById('tt-review-table').innerHTML = '';
+}
+
+function showTimetableReview(plan) {
+    ttReviewPlan = plan;
+    const options = value => ['', ...SUBJECT_LIST].map(s =>
+        `<option value="${escapeHTML(s)}" ${s === value ? 'selected' : ''}>${s ? escapeHTML(s) : '(empty)'}</option>`).join('');
+    document.getElementById('tt-review-table').innerHTML = `
+        <thead><tr><th scope="col">Day</th>${Array.from({ length: TT_PERIODS }, (_, j) => `<th scope="col">${j + 1}</th>`).join('')}</tr></thead>
+        <tbody>${plan.rows.map((row, r) => `
+            <tr>
+                <th scope="row">${escapeHTML(row.label)}</th>
+                ${Array.from({ length: TT_PERIODS }, (_, j) => `<td><select class="tt-review-cell" data-row="${r}" data-period="${j}" aria-label="${escapeHTML(row.label)}, period ${j + 1}">${options(row.periods[j] || '')}</select></td>`).join('')}
+            </tr>`).join('')}
+        </tbody>`;
+    const notes = [];
+    if (plan.newTotal !== plan.total) notes.push(`Your timetable has ${plan.newTotal} Day Orders, so the number of Day Orders will change from ${plan.total} to ${plan.newTotal}.`);
+    if (plan.rows.some(r => r.periods.length > TT_PERIODS)) notes.push(`Only the first ${TT_PERIODS} periods of each day are kept.`);
+    notes.push('Day Orders not shown here stay as they are.');
+    document.getElementById('tt-review-note').innerText = notes.join(' ');
+    document.getElementById('tt-review').hidden = false;
+}
+
+// Read a timetable photo/PDF into the review grid (from the file box, or imported from a chat)
+async function readTimetablePhoto(file) {
+    closeTimetableReview();
+    const label = document.querySelector('.tt-photo-btn');
+    label?.classList.add('busy');
+    try {
+        setTimetablePhotoStatus('Opening the timetable...');
+        const text = await readExamTimetableText(file, setTimetablePhotoStatus, { grid: true });
+        if (!text.trim()) throw new Error('No writing was found in it. Try a clearer photo.');
+        let days = {};
+        let usedAI = false;
+        if (await aiAvailable()) {
+            setTimetablePhotoStatus('Working out the timetable with the AI helper...');
+            try {
+                days = await parseTimetableWithAI(text);
+                usedAI = Object.keys(days).length > 0;
+            } catch (err) {
+                console.warn('AI could not read the timetable, using the simple reader:', err.message);
+            }
+        }
+        if (!usedAI) days = parseTimetableLocally(text);
+        const plan = timetableReviewPlan(days);
+        if (!plan.rows.length) {
+            setTimetablePhotoStatus(`Couldn't find the Day Orders in it${usedAI ? '' : ' (adding an AI key in Settings helps with messy timetables)'}. Try a straighter, closer photo, or pick the subjects below.`, true);
+            return;
+        }
+        showTimetableReview(plan);
+        setTimetablePhotoStatus(`Found ${plan.rows.length} day${plan.rows.length === 1 ? '' : 's'}. Check every period, fix anything wrong, then press "Use this timetable".`);
+    } catch (err) {
+        setTimetablePhotoStatus(`Couldn't read that timetable: ${err.message}`, true);
+    } finally {
+        label?.classList.remove('busy');
+    }
+}
+
+document.getElementById('tt-photo-file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // the same file can be picked again
+    if (file) readTimetablePhoto(file);
+});
+
+document.getElementById('tt-review-cancel')?.addEventListener('click', () => {
+    closeTimetableReview();
+    setTimetablePhotoStatus('');
+});
+
+document.getElementById('tt-review-save')?.addEventListener('click', () => {
+    const plan = ttReviewPlan;
+    if (!plan) return;
+    plan.rows.forEach((row, r) => {
+        appState.timetable[row.key] = [...document.querySelectorAll(`#tt-review-table .tt-review-cell[data-row="${r}"]`)].map(s => s.value);
+    });
+    if (plan.newTotal !== plan.total) {
+        appState.settings.totalDays = plan.newTotal;
+        if (parseInt(appState.settings.currentDayOrder) > plan.newTotal) appState.settings.currentDayOrder = plan.newTotal;
+    }
+    appState.settings.setupDone = true;
+    closeTimetableReview();
+    saveState(); // redraws the Day Order schedule below
+    if (typeof renderSettings === 'function') renderSettings();
+    setTimetablePhotoStatus('Done. Your Day Order schedule below is filled in; you can still change any period.');
+    showSetupSaved('setup-step-timetable');
+});
 
 function renderHomework() {
     // Setup Subject Dropdown for Form
@@ -6394,7 +6818,7 @@ function buildChatFile(file) {
 // --- Import a chat file into the Notebook or Exams ---
 // Some devices (like an Xbox) can't pick files from storage, so a photo or PDF a friend sent
 // can be used straight from the chat: as a picture in a new note, as text read into a new note,
-// or as an exam timetable.
+// as an exam timetable, or as the class timetable.
 function buildChatFileImport(file) {
     const wrap = document.createElement('div');
     wrap.className = 'chat-file-import';
@@ -6402,7 +6826,8 @@ function buildChatFileImport(file) {
     const options = [
         ...(isImage ? [['picture', 'Add picture to a new note']] : []),
         ['text', 'Get the text into a new note'],
-        ['exams', 'Use as an exam timetable']
+        ['exams', 'Use as an exam timetable'],
+        ['timetable', 'Use as my class timetable']
     ];
     wrap.innerHTML = `
         <button type="button" class="chat-file-import-btn" aria-expanded="false">Import ▾</button>
@@ -6454,6 +6879,12 @@ async function importChatFile(file, choice) {
     if (choice === 'exams') {
         document.querySelector('.dock-item[data-tab="exams"]')?.click();
         readExamTimetableFile(local);
+        return;
+    }
+    if (choice === 'timetable') {
+        document.querySelector('.dock-item[data-tab="timetable"]')?.click();
+        document.getElementById('setup-step-timetable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        readTimetablePhoto(local);
         return;
     }
     const note = newNoteFromImport(title);
