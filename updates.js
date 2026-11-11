@@ -7,7 +7,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'week-2026-11-09',
         date: '2026-11-11',
         title: 'This week: timetable from a photo',
-        text: 'On the Timetable page, press "Read from a photo or PDF" and Procrastinote fills in your Day Order schedule for you, even from a sideways photo or a handwritten timetable (handwriting needs the AI helper). Check it, fix anything it got wrong, and you\'re set up. A timetable a friend sends you in chat can be used the same way (Import > Use as my class timetable). Also fixed: the AI chat box no longer gets your email filled in or asks to save a password.'
+        text: 'On the Timetable page, press "Read from a photo or PDF" and Procrastinote fills in your Day Order schedule for you, even from a sideways photo or a handwritten timetable (handwriting needs the AI helper). Check it, fix anything it got wrong, and you\'re set up. A timetable a friend sends you in chat can be used the same way (Import > Use as my class timetable). The Zen sounds are calmer too: softer rain with gentle music and faraway thunder, slower waves, a gentler 852 Hz tone and a quieter forest, all fading in and out smoothly. Also fixed: the AI chat box no longer gets your email filled in or asks to save a password.'
     },
     {
         id: 'week-2026-11-02',

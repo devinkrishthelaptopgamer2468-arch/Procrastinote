@@ -5357,12 +5357,17 @@ document.getElementById('break-min')?.addEventListener('change', (e) => {
 });
 
 // --- Zen Music Logic (Web Audio API) ---
+// Every sound plays through its own fader (soundBus): it fades in over 3 seconds and fades out
+// when you switch, instead of starting or stopping with a click. At the end, a soft filter takes
+// off sharp, hissy highs and a limiter stops any sudden peak, so nothing is harsh in headphones.
 let audioCtx = null;
 let masterGain = null;
+let soundBus = null;
 let isMusicPlaying = false;
 let activeNodes = [];
 let beatTimeoutId = null;
 let birdTimeoutId = null;
+let dropTimeoutId = null;
 let currentSound = 'tone852';
 
 const musicToggleBtn = document.getElementById('music-toggle');
@@ -5377,7 +5382,19 @@ function getAudioCtx() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         masterGain = audioCtx.createGain();
         masterGain.gain.value = (document.getElementById('music-volume')?.value || 50) / 100;
-        masterGain.connect(audioCtx.destination);
+        const soften = audioCtx.createBiquadFilter();
+        soften.type = 'lowpass';
+        soften.frequency.value = 5500;
+        soften.Q.value = 0.5;
+        const limiter = audioCtx.createDynamicsCompressor();
+        limiter.threshold.value = -18;
+        limiter.knee.value = 12;
+        limiter.ratio.value = 4;
+        limiter.attack.value = 0.02;
+        limiter.release.value = 0.3;
+        masterGain.connect(soften);
+        soften.connect(limiter);
+        limiter.connect(audioCtx.destination);
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
@@ -5412,6 +5429,8 @@ function createNoiseBuffer(ctx, type) {
     return buf;
 }
 
+// A looping noise through a filter, into the current sound's fader. Returns its filter and
+// volume so they can be slowly moved (gusts of wind, waves).
 function makeNoise(ctx, type, filterType, freq, q, gain) {
     const src = ctx.createBufferSource();
     src.buffer = createNoiseBuffer(ctx, type);
@@ -5422,32 +5441,72 @@ function makeNoise(ctx, type, filterType, freq, q, gain) {
     if (q) flt.Q.value = q;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(flt); flt.connect(g); g.connect(masterGain);
+    src.connect(flt); flt.connect(g); g.connect(soundBus);
     src.start();
     activeNodes.push(src);
-    return src;
+    return { src, filter: flt, gain: g };
 }
 
+// Move a setting slowly up and down around where it is (rate in cycles a second)
+function slowSwell(ctx, param, rate, depth) {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rate;
+    const amount = ctx.createGain();
+    amount.gain.value = depth;
+    lfo.connect(amount); amount.connect(param);
+    lfo.start();
+    activeNodes.push(lfo);
+    return lfo;
+}
+
+function newSoundBus(ctx) {
+    const bus = ctx.createGain();
+    bus.gain.setValueAtTime(0, ctx.currentTime);
+    bus.gain.linearRampToValueAtTime(1, ctx.currentTime + 3);
+    bus.connect(masterGain);
+    return bus;
+}
+
+// Fade the playing sound out over half a second, then stop it
 function stopAllNodes() {
     clearTimeout(beatTimeoutId);
     clearTimeout(birdTimeoutId);
-    beatTimeoutId = null; birdTimeoutId = null;
-    activeNodes.forEach(n => { try { n.stop(); } catch(e){} try { n.disconnect(); } catch(e){} });
+    clearTimeout(dropTimeoutId);
+    beatTimeoutId = null; birdTimeoutId = null; dropTimeoutId = null;
+    const nodes = activeNodes;
+    const bus = soundBus;
     activeNodes = [];
+    soundBus = null;
+    if (bus && audioCtx) {
+        const now = audioCtx.currentTime;
+        bus.gain.cancelScheduledValues(now);
+        bus.gain.setValueAtTime(bus.gain.value, now);
+        bus.gain.linearRampToValueAtTime(0, now + 0.5);
+    }
+    setTimeout(() => {
+        nodes.forEach(n => { try { n.stop(); } catch(e){} try { n.disconnect(); } catch(e){} });
+        try { bus?.disconnect(); } catch(e){}
+    }, bus ? 600 : 0);
 }
 
-// 852 Hz tone. A pure tone sounds much sharper than noise at the same volume, so it plays
-// quietly and fades in over 2 seconds instead of starting at full level.
+// 852 Hz tone. A single pure tone is piercing, so: two quiet voices a quarter of a hertz apart
+// drift in and out of step (a soft pulse every 4 seconds), a quieter note an octave below adds
+// warmth, and the whole tone slowly breathes in volume.
 function startTone852(ctx) {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = 852;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(0.07, ctx.currentTime + 2);
-    osc.connect(g); g.connect(masterGain);
-    osc.start();
-    activeNodes.push(osc);
+    const tone = ctx.createGain();
+    tone.gain.value = 1;
+    tone.connect(soundBus);
+    [[852, 0.022], [852.25, 0.022], [426, 0.012]].forEach(([freq, level]) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const g = ctx.createGain();
+        g.gain.value = level;
+        osc.connect(g); g.connect(tone);
+        osc.start();
+        activeNodes.push(osc);
+    });
+    slowSwell(ctx, tone.gain, 0.08, 0.25); // breathes in and out every 12 seconds
 }
 
 // The 852 Hz warning only shows while that tone is selected
@@ -5463,46 +5522,217 @@ function updateToneWarning() {
     }
 }
 
+// Rain Sounds: soft rain, a low faraway roll of thunder now and then, and soft, slow music underneath
 function startRain(ctx) {
-    makeNoise(ctx, 'white', 'lowpass', 2000, null, 0.4);
-    makeNoise(ctx, 'brown', 'lowpass', 100, null, 0.3);
-    makeNoise(ctx, 'white', 'bandpass', 3000, 2, 0.1);
+    startSoftRain(ctx);
+    startMusicBed(ctx);
+    startDistantThunder(ctx);
 }
 
-function startForest(ctx) {
-    makeNoise(ctx, 'pink', 'lowpass', 800, null, 0.15);
-    makeNoise(ctx, 'white', 'bandpass', 4000, 0.5, 0.08);
-    function bird() {
-        if (!isMusicPlaying) return;
-        const freqs = [1200,1600,2000,1800,2400];
-        const base = freqs[Math.floor(Math.random()*freqs.length)];
-        for (let i = 0; i < 3; i++) {
-            const t = ctx.currentTime + i * 0.12;
-            const o = ctx.createOscillator(), g = ctx.createGain();
-            o.frequency.setValueAtTime(base + Math.random()*200, t);
-            o.frequency.exponentialRampToValueAtTime(base*1.2, t+0.08);
-            g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.1);
-            o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.12);
+// Soft, steady rain: pink noise with the hiss taken off, a low rumble, gently heavier and
+// lighter, and now and then a quiet drop close by, left or right
+function startSoftRain(ctx) {
+    const body = makeNoise(ctx, 'pink', 'lowpass', 1400, 0.5, 0.32);
+    makeNoise(ctx, 'brown', 'lowpass', 160, null, 0.22);
+    slowSwell(ctx, body.gain.gain, 0.05, 0.06);
+    const bus = soundBus;
+    const dropSound = createNoiseBuffer(ctx, 'white');
+    function drop() {
+        if (soundBus !== bus) return; // switched to another sound
+        if (ctx.state === 'running') { // while paused, don't pile up drops to play all at once
+            const t = ctx.currentTime + 0.01;
+            const src = ctx.createBufferSource();
+            src.buffer = dropSound;
+            const tone = ctx.createBiquadFilter();
+            tone.type = 'bandpass';
+            tone.frequency.value = 1500 + Math.random() * 1500;
+            tone.Q.value = 3;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.03 + Math.random() * 0.04, t + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 1.6 - 0.8;
+            src.connect(tone); tone.connect(g); g.connect(pan); pan.connect(bus);
+            src.start(t, Math.random() * 2, 0.08);
         }
-        birdTimeoutId = setTimeout(bird, 2000 + Math.random()*5000);
+        dropTimeoutId = setTimeout(drop, 60 + Math.random() * 260);
     }
-    bird();
+    drop();
 }
 
+// Soft music under the rain: a slow loop of four warm chords (Am, F, C, G), about 9 seconds each,
+// fading into the next, with a bass note and a few slow, soft bell notes on top. It sits above
+// the rain's low rumble: a first try was all below 70 Hz, which laptop speakers and earbuds
+// can't play and the rumble covered, so it couldn't be heard. Measured now: each note stands
+// 6-11 dB above the rain at its own pitch.
+const MUSIC_CHORDS = [
+    { bass: 110.0, notes: [220.0, 329.63, 523.25], bells: [659.25, 880.0, 523.25, 783.99] },  // A minor
+    { bass: 87.31, notes: [174.61, 261.63, 440.0], bells: [698.46, 523.25, 880.0, 659.25] },  // F major
+    { bass: 130.81, notes: [261.63, 392.0, 659.25], bells: [783.99, 659.25, 1046.5, 523.25] }, // C major
+    { bass: 98.0, notes: [196.0, 293.66, 493.88], bells: [587.33, 783.99, 493.88, 659.25] }    // G major
+];
+
+function startMusicBed(ctx) {
+    const bus = soundBus;
+    const music = ctx.createGain();
+    music.gain.value = 1;
+    const warm = ctx.createBiquadFilter(); // rounds off the top, so it stays soft
+    warm.type = 'lowpass';
+    warm.frequency.value = 2200;
+    warm.Q.value = 0.3;
+    music.connect(warm);
+    warm.connect(bus);
+    activeNodes.push(music, warm);
+    const length = 9;   // seconds per chord
+    const fade = 3.5;   // each chord fades in and out over this, overlapping the next
+    let step = 0;
+    // A soft bell: a gentle start and a long fade, like a soft piano or music box far away
+    const bell = (freq, t, level) => {
+        [[1, level], [2, level * 0.25], [3, level * 0.08]].forEach(([harmonic, l]) => {
+            const o = ctx.createOscillator();
+            o.type = 'sine';
+            o.frequency.value = freq * harmonic;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(l, t + 0.03);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2 / harmonic);
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 0.8 - 0.4;
+            o.connect(g); g.connect(pan); pan.connect(music);
+            o.start(t); o.stop(t + 3.3);
+        });
+    };
+    function chord() {
+        if (soundBus !== bus) return; // switched to another sound
+        if (ctx.state === 'running') {
+            const { bass, notes, bells } = MUSIC_CHORDS[step % MUSIC_CHORDS.length];
+            const t = ctx.currentTime + 0.05;
+            const end = t + length + fade;
+            const voice = (freq, type, level, detune = 0) => {
+                const o = ctx.createOscillator();
+                o.type = type;
+                o.frequency.value = freq;
+                o.detune.value = detune;
+                const g = ctx.createGain();
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(level, t + fade);
+                g.gain.setValueAtTime(level, end - fade);
+                g.gain.exponentialRampToValueAtTime(0.0001, end);
+                o.connect(g); g.connect(music);
+                o.start(t); o.stop(end + 0.1);
+            };
+            voice(bass, 'triangle', 0.035);               // the bass note (triangle, so small speakers play it)
+            notes.forEach((f, i) => {
+                const level = 0.02 - i * 0.004;           // higher notes quieter
+                voice(f, 'triangle', level, -4);          // two voices a few cents apart: warm, slowly shimmering
+                voice(f, 'triangle', level, 4);
+            });
+            // 2 or 3 bell notes during the chord, at unhurried, slightly random moments
+            const count = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < count; i++) {
+                bell(bells[(step + i) % bells.length], t + 1.5 + i * 2.6 + Math.random() * 0.8, 0.045 + Math.random() * 0.015);
+            }
+            step++;
+        }
+        beatTimeoutId = setTimeout(chord, length * 1000);
+    }
+    chord();
+}
+
+// A low, faraway roll of thunder every 25 to 60 seconds (the first after 10 to 20): it rolls in
+// slowly over a second and fades over about 6, with no sharp crack
+function startDistantThunder(ctx) {
+    const bus = soundBus;
+    const rumble = createNoiseBuffer(ctx, 'brown');
+    function thunder() {
+        if (soundBus !== bus) return;
+        if (ctx.state === 'running') {
+            const t = ctx.currentTime + 0.05;
+            const src = ctx.createBufferSource();
+            src.buffer = rumble;
+            src.loop = true;
+            const tone = ctx.createBiquadFilter();
+            tone.type = 'lowpass';
+            tone.frequency.setValueAtTime(260, t);
+            tone.frequency.exponentialRampToValueAtTime(90, t + 6);
+            const g = ctx.createGain();
+            const level = 0.25 + Math.random() * 0.2;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(level, t + 1.2);
+            g.gain.exponentialRampToValueAtTime(level * 0.6, t + 3);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 7);
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 1.2 - 0.6;
+            src.connect(tone); tone.connect(g); g.connect(pan); pan.connect(bus);
+            src.start(t); src.stop(t + 7.2);
+        }
+        birdTimeoutId = setTimeout(thunder, 25000 + Math.random() * 35000);
+    }
+    birdTimeoutId = setTimeout(thunder, 10000 + Math.random() * 10000);
+}
+
+// A quiet forest: wind that gusts through the trees, leaves that rustle, and the odd distant bird
+// (left or right, with a soft echo) every 4 to 12 seconds
+function startForest(ctx) {
+    const wind = makeNoise(ctx, 'pink', 'lowpass', 700, 0.5, 0.16);
+    slowSwell(ctx, wind.filter.frequency, 0.04, 250);
+    slowSwell(ctx, wind.gain.gain, 0.06, 0.05);
+    const leaves = makeNoise(ctx, 'pink', 'bandpass', 2200, 0.6, 0.025);
+    slowSwell(ctx, leaves.gain.gain, 0.09, 0.02);
+    const bus = soundBus;
+    const echo = ctx.createDelay(1);
+    echo.delayTime.value = 0.23;
+    const echoTone = ctx.createBiquadFilter();
+    echoTone.type = 'lowpass';
+    echoTone.frequency.value = 2500;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.3;
+    const echoLevel = ctx.createGain();
+    echoLevel.gain.value = 0.5;
+    echo.connect(echoTone); echoTone.connect(feedback); feedback.connect(echo);
+    echoTone.connect(echoLevel); echoLevel.connect(bus);
+    activeNodes.push(echo, echoTone, feedback, echoLevel);
+    function bird() {
+        if (soundBus !== bus) return;
+        if (ctx.state === 'running') {
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 1.4 - 0.7;
+            const near = ctx.createGain();
+            near.gain.value = 0.55 + Math.random() * 0.45; // some birds are further away
+            pan.connect(near); near.connect(bus); near.connect(echo);
+            const base = 1300 + Math.random() * 900;
+            const notes = 2 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < notes; i++) {
+                const t = ctx.currentTime + 0.05 + i * 0.16;
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.setValueAtTime(base * (1 + Math.random() * 0.08), t);
+                o.frequency.exponentialRampToValueAtTime(base * 1.15, t + 0.09);
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(0.022, t + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+                o.connect(g); g.connect(pan);
+                o.start(t); o.stop(t + 0.15);
+            }
+        }
+        birdTimeoutId = setTimeout(bird, 4000 + Math.random() * 8000);
+    }
+    birdTimeoutId = setTimeout(bird, 1500);
+}
+
+// Slow waves, about 13 seconds each, that swell, brighten a little as they break and draw back,
+// over a deep, quiet rumble. A second, slower swell keeps the waves from all sounding the same.
 function startOcean(ctx) {
-    makeNoise(ctx, 'brown', 'lowpass', 200, null, 0.35);
-    // Wave with LFO
-    const ws = ctx.createBufferSource();
-    ws.buffer = createNoiseBuffer(ctx, 'white'); ws.loop = true;
-    const wf = ctx.createBiquadFilter(); wf.type='bandpass'; wf.frequency.value=1000; wf.Q.value=0.7;
-    const wg = ctx.createGain(); wg.gain.value = 0.2;
-    const lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = 0.12; lg.gain.value = 0.15;
-    lfo.connect(lg); lg.connect(wg.gain);
-    ws.connect(wf); wf.connect(wg); wg.connect(masterGain);
-    ws.start(); lfo.start();
-    activeNodes.push(ws, lfo);
-    makeNoise(ctx, 'white', 'highpass', 5000, null, 0.04);
+    makeNoise(ctx, 'brown', 'lowpass', 180, null, 0.3);
+    const wave = makeNoise(ctx, 'pink', 'lowpass', 600, 0.4, 0.14);
+    const waves = slowSwell(ctx, wave.gain.gain, 0.075, 0.12);
+    const brighten = ctx.createGain();
+    brighten.gain.value = 350;
+    waves.connect(brighten); brighten.connect(wave.filter.frequency);
+    activeNodes.push(brighten);
+    slowSwell(ctx, wave.gain.gain, 0.031, 0.03);
 }
 
 // --- Dynamic Zen Background Animations ---
@@ -5592,6 +5822,7 @@ function updateBackgroundAnimation() {
 function startSound(soundKey) {
     const ctx = getAudioCtx();
     stopAllNodes();
+    soundBus = newSoundBus(ctx);
     // Keep the buttons, track name and warning in step (sounds can also start from the AI assistant)
     currentSound = soundKey;
     const btn = document.querySelector(`.noise-btn[data-sound="${soundKey}"]`);
