@@ -250,6 +250,21 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// --- Forms that only group boxes for the browser ---
+// Boxes outside any form all count as one form to browsers, so the AI chat box sat in the same
+// "form" as the password boxes in Settings and got your email filled in, with "save password?"
+// offers. Each group has its own form now; data-local-form ones are never sent (buttons do the work).
+document.addEventListener('submit', (e) => {
+    if (e.target.matches('form[data-local-form]')) e.preventDefault();
+}, true);
+
+// Password managers file a password under the account's email, from the hidden username box
+document.addEventListener('focusin', (e) => {
+    if (e.target.matches?.('#old-password, #ai-unlock-password')) {
+        e.target.form?.querySelectorAll('.pw-username').forEach(box => { box.value = appState.user?.email || ''; });
+    }
+});
+
 // --- Navigation Logic ---
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const phoneNav = window.matchMedia('(max-width: 820px)');

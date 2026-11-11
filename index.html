@@ -792,22 +792,26 @@
                         <h3>Change password</h3>
                         <p class="subtitle card-sub">Update your password to keep your account secure.</p>
 
+                        <!-- A proper change-password form (with the account's username for password
+                             managers), so browsers don't treat other boxes on the page as a login -->
+                        <form id="password-change-form" data-local-form>
+                        <input type="text" class="pw-username" name="username" autocomplete="username" hidden>
                         <div id="pw-step-1" class="pw-step active">
                             <div class="form-group">
                                 <label for="old-password">Current password</label>
-                                <input type="password" id="old-password" placeholder="••••••••">
+                                <input type="password" id="old-password" placeholder="••••••••" autocomplete="current-password">
                                 <div class="show-password-wrapper">
                                     <input type="checkbox" id="show-old-password-cb">
                                     <label for="show-old-password-cb">Show password</label>
                                 </div>
                             </div>
-                            <button class="btn secondary-btn btn-block" id="btn-verify-old">Verify password</button>
+                            <button type="button" class="btn secondary-btn btn-block" id="btn-verify-old">Verify password</button>
                         </div>
 
                         <div id="pw-step-2" class="pw-step">
                             <div class="form-group">
                                 <label for="new-password">New password</label>
-                                <input type="password" id="new-password" placeholder="••••••••">
+                                <input type="password" id="new-password" placeholder="••••••••" autocomplete="new-password">
                                 <div class="show-password-wrapper">
                                     <input type="checkbox" id="show-new-password-cb">
                                     <label for="show-new-password-cb">Show password</label>
@@ -815,21 +819,22 @@
                             </div>
                             <div class="form-group">
                                 <label for="confirm-password">Confirm new password</label>
-                                <input type="password" id="confirm-password" placeholder="••••••••">
+                                <input type="password" id="confirm-password" placeholder="••••••••" autocomplete="new-password">
                                 <div class="show-password-wrapper">
                                     <input type="checkbox" id="show-confirm-password-cb">
                                     <label for="show-confirm-password-cb">Show password</label>
                                 </div>
                             </div>
-                            <button class="btn primary-btn btn-block" id="btn-update-password">Update password</button>
+                            <button type="button" class="btn primary-btn btn-block" id="btn-update-password">Update password</button>
                         </div>
+                        </form>
 
                         <div id="pw-step-success" class="pw-step">
                             <div class="success-state">
                                 <span class="success-check"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
                                 <h4>Password updated</h4>
                                 <p class="subtitle">Your password has been changed.</p>
-                                <button class="btn secondary-btn btn-block" id="btn-reset-pw-flow">Done</button>
+                                <button type="button" class="btn secondary-btn btn-block" id="btn-reset-pw-flow">Done</button>
                             </div>
                         </div>
                     </div>
@@ -838,13 +843,14 @@
                         <h3>AI assistant</h3>
                         <p class="subtitle card-sub">Manage your Groq API key for smarter answers.</p>
                         <!-- Locked until the account password is entered again -->
-                        <div id="ai-key-lock">
+                        <form id="ai-key-lock" data-local-form>
+                            <input type="text" class="pw-username" name="username" autocomplete="username" hidden>
                             <div class="form-group">
                                 <label for="ai-unlock-password">Enter your password to manage the key</label>
-                                <input type="password" id="ai-unlock-password" placeholder="••••••••" autocomplete="off">
+                                <input type="password" id="ai-unlock-password" placeholder="••••••••" autocomplete="current-password">
                             </div>
-                            <button class="btn secondary-btn btn-block" id="btn-unlock-ai-key">Unlock</button>
-                        </div>
+                            <button type="button" class="btn secondary-btn btn-block" id="btn-unlock-ai-key">Unlock</button>
+                        </form>
                         <div id="ai-key-controls" hidden>
                             <div class="form-group">
                                 <label for="groq-api-key">Groq API key</label>
@@ -898,7 +904,7 @@
                         <p class="subtitle card-sub">Configure EmailJS credentials to enable real email verification.</p>
                         <div class="form-group">
                             <label for="emailjs-public-key">Public key</label>
-                            <input type="password" id="emailjs-public-key" placeholder="EmailJS public key">
+                            <input type="text" id="emailjs-public-key" class="secret-input" placeholder="EmailJS public key" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
                         </div>
                         <div class="form-group">
                             <label for="emailjs-service-id">Service ID</label>
@@ -1442,18 +1448,21 @@
                             <span class="dot"></span>
                         </div>
 
-                        <div id="chat-input-wrapper" class="chat-input-wrapper" style="display: none;">
+                        <!-- Its own form (never sent anywhere), so browsers don't mistake the message box for
+                             a login and fill in your email; see the "data-local-form" handler in school-app.js -->
+                        <form id="chat-input-wrapper" class="chat-input-wrapper" style="display: none;" data-local-form autocomplete="off">
                             <!-- Send a photo or document to a friend (shared_files table + storage) -->
                             <input type="file" id="chat-file-input" hidden
                                 accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.txt,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
-                            <button id="chat-attach-btn" class="btn secondary-btn chat-attach-btn" title="Send a photo or document" aria-label="Send a photo or document" hidden>
+                            <button type="button" id="chat-attach-btn" class="btn secondary-btn chat-attach-btn" title="Send a photo or document" aria-label="Send a photo or document" hidden>
                                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
                             </button>
-                            <input type="text" id="chat-message-input" placeholder="Type a message..." autocomplete="off">
-                            <button id="chat-send-btn" class="btn primary-btn icon-btn-large" title="Send message" aria-label="Send message">
+                            <input type="text" id="chat-message-input" name="chat-message" placeholder="Type a message..." autocomplete="off"
+                                enterkeyhint="send" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+                            <button type="button" id="chat-send-btn" class="btn primary-btn icon-btn-large" title="Send message" aria-label="Send message">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14M21 3l-6.5 18-4-8-8-4z"/></svg>
                             </button>
-                        </div>
+                        </form>
                     </div>
                 </div>
             </section>
@@ -1620,12 +1629,14 @@
                 </div>
             </div>
 
-            <div class="ai-chat-input-area">
-                <input type="text" id="ai-user-input" placeholder="Ask me anything..." autocomplete="off">
-                <button id="ai-send-btn" class="ai-send-btn" aria-label="Send">
+            <!-- Its own form (never sent anywhere), so browsers don't mistake the question box for a login -->
+            <form class="ai-chat-input-area" data-local-form autocomplete="off">
+                <input type="text" id="ai-user-input" name="ai-question" placeholder="Ask me anything..." autocomplete="off"
+                    enterkeyhint="send" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+                <button type="button" id="ai-send-btn" class="ai-send-btn" aria-label="Send">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14M21 3l-6.5 18-4-8-8-4z"/></svg>
                 </button>
-            </div>
+            </form>
         </div>
     </div>
 
