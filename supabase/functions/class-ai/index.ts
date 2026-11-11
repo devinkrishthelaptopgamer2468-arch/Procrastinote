@@ -5,8 +5,10 @@
 // allowance, asks Groq with one of the class's keys, and sends back only the answer.
 //
 // Called by the website with the student's login (keep "Verify JWT" ON for this function):
-//   POST { prompt: "...", system?: "...", classId?: "<class uuid>" }
+//   POST { prompt: "...", system?: "...", classId?: "<class uuid>", image?: "data:image/jpeg;base64,..." }
 //     -> { reply, used, limit } or { error: 'no_key' | 'limit' | 'busy' | ..., message }
+//     (with image: a question about a photo, like a handwritten timetable, for the model that can
+//      see pictures; it costs 4 from the allowance)
 //   POST { action: "add_key", classId: "<class uuid>", key: "gsk_..." }
 //     -> { ok: true, hint } or { error, message }   (the key is checked with Groq first)
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.
@@ -22,7 +24,11 @@ const CORS = {
 
 // Same models as the website; each has its own free limits, so a busy one passes to the next
 const MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'];
+// The one Groq model that can see pictures (console.groq.com/docs/vision)
+const VISION_MODEL = 'qwen/qwen3.8-27b';
 const MAX_PROMPT = 12000;
+const MAX_IMAGE = 4_000_000; // characters of the data: link (the site sends about 300 KB)
+const IMAGE_FORMAT = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 const KEY_FORMAT = /^gsk_[A-Za-z0-9]{20,200}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_SYSTEM = 'You are a helpful student assistant for an app called Procrastinote. Keep responses concise and encouraging.';
@@ -37,15 +43,17 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
 export const costOf = prompt => Math.min(4, 1 + Math.floor(prompt.length / 3000));
 
 // One key, trying the models in turn: { reply } or { error: 'bad_key' | 'busy' | 'failed' }
-export async function askGroq(fetchFn, key, system, prompt) {
+// With an image, only the model that can see pictures is asked.
+export async function askGroq(fetchFn, key, system, prompt, image = null) {
     let lastStatus = 0;
-    for (const model of MODELS) {
+    const content = image ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: image } }] : prompt;
+    for (const model of image ? [VISION_MODEL] : MODELS) {
         const res = await fetchFn('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
             body: JSON.stringify({
                 model,
-                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+                messages: [{ role: 'system', content: system }, { role: 'user', content }],
                 ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {})
             })
         });
@@ -105,8 +113,12 @@ export async function handleRequest(req, deps) {
     const classId = typeof body.classId === 'string' && UUID.test(body.classId) ? body.classId : null;
     if (!prompt) return json({ error: 'empty', message: 'Ask something first.' }, 400);
     if (prompt.length > MAX_PROMPT) return json({ error: 'too_long', message: 'That is too long for the class AI. Try a shorter note.' }, 400);
+    const image = typeof body.image === 'string' && body.image ? body.image : null;
+    if (image && (image.length > MAX_IMAGE || !IMAGE_FORMAT.test(image))) {
+        return json({ error: 'image', message: 'That picture can\'t be sent to the class AI. Try a smaller JPG or PNG.' }, 400);
+    }
 
-    const cost = costOf(prompt);
+    const cost = image ? 4 : costOf(prompt);
     const take = await deps.useAllowance(userId, classId, cost);
     if (take.error === 'no_key') return json({ error: 'no_key', message: 'None of your classes has an AI key yet.' });
     if (take.error === 'limit') {
@@ -118,7 +130,7 @@ export async function handleRequest(req, deps) {
     // The keys come in a random order, so they take turns; a busy or broken one passes to the next
     let lastError = 'failed';
     for (const k of take.keys) {
-        const answer = await askGroq(deps.fetchFn, k.key, system, prompt);
+        const answer = await askGroq(deps.fetchFn, k.key, system, prompt, image);
         if (answer.reply) return json({ reply: answer.reply, used: take.used, limit: take.limit });
         if (answer.error === 'bad_key') await deps.markBroken(k.id); // its owner sees it on the class page
         else lastError = answer.error;
