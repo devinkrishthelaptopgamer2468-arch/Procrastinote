@@ -5522,9 +5522,16 @@ function updateToneWarning() {
     }
 }
 
+// Rain Sounds: soft rain, a low faraway roll of thunder now and then, and soft, slow music underneath
+function startRain(ctx) {
+    startSoftRain(ctx);
+    startMusicBed(ctx);
+    startDistantThunder(ctx);
+}
+
 // Soft, steady rain: pink noise with the hiss taken off, a low rumble, gently heavier and
 // lighter, and now and then a quiet drop close by, left or right
-function startRain(ctx) {
+function startSoftRain(ctx) {
     const body = makeNoise(ctx, 'pink', 'lowpass', 1400, 0.5, 0.32);
     makeNoise(ctx, 'brown', 'lowpass', 160, null, 0.22);
     slowSwell(ctx, body.gain.gain, 0.05, 0.06);
@@ -5552,6 +5559,117 @@ function startRain(ctx) {
         dropTimeoutId = setTimeout(drop, 60 + Math.random() * 260);
     }
     drop();
+}
+
+// Soft music under the rain: a slow loop of four warm chords (Am, F, C, G), about 9 seconds each,
+// fading into the next, with a bass note and a few slow, soft bell notes on top. It sits above
+// the rain's low rumble: a first try was all below 70 Hz, which laptop speakers and earbuds
+// can't play and the rumble covered, so it couldn't be heard. Measured now: each note stands
+// 6-11 dB above the rain at its own pitch.
+const MUSIC_CHORDS = [
+    { bass: 110.0, notes: [220.0, 329.63, 523.25], bells: [659.25, 880.0, 523.25, 783.99] },  // A minor
+    { bass: 87.31, notes: [174.61, 261.63, 440.0], bells: [698.46, 523.25, 880.0, 659.25] },  // F major
+    { bass: 130.81, notes: [261.63, 392.0, 659.25], bells: [783.99, 659.25, 1046.5, 523.25] }, // C major
+    { bass: 98.0, notes: [196.0, 293.66, 493.88], bells: [587.33, 783.99, 493.88, 659.25] }    // G major
+];
+
+function startMusicBed(ctx) {
+    const bus = soundBus;
+    const music = ctx.createGain();
+    music.gain.value = 1;
+    const warm = ctx.createBiquadFilter(); // rounds off the top, so it stays soft
+    warm.type = 'lowpass';
+    warm.frequency.value = 2200;
+    warm.Q.value = 0.3;
+    music.connect(warm);
+    warm.connect(bus);
+    activeNodes.push(music, warm);
+    const length = 9;   // seconds per chord
+    const fade = 3.5;   // each chord fades in and out over this, overlapping the next
+    let step = 0;
+    // A soft bell: a gentle start and a long fade, like a soft piano or music box far away
+    const bell = (freq, t, level) => {
+        [[1, level], [2, level * 0.25], [3, level * 0.08]].forEach(([harmonic, l]) => {
+            const o = ctx.createOscillator();
+            o.type = 'sine';
+            o.frequency.value = freq * harmonic;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(l, t + 0.03);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2 / harmonic);
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 0.8 - 0.4;
+            o.connect(g); g.connect(pan); pan.connect(music);
+            o.start(t); o.stop(t + 3.3);
+        });
+    };
+    function chord() {
+        if (soundBus !== bus) return; // switched to another sound
+        if (ctx.state === 'running') {
+            const { bass, notes, bells } = MUSIC_CHORDS[step % MUSIC_CHORDS.length];
+            const t = ctx.currentTime + 0.05;
+            const end = t + length + fade;
+            const voice = (freq, type, level, detune = 0) => {
+                const o = ctx.createOscillator();
+                o.type = type;
+                o.frequency.value = freq;
+                o.detune.value = detune;
+                const g = ctx.createGain();
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(level, t + fade);
+                g.gain.setValueAtTime(level, end - fade);
+                g.gain.exponentialRampToValueAtTime(0.0001, end);
+                o.connect(g); g.connect(music);
+                o.start(t); o.stop(end + 0.1);
+            };
+            voice(bass, 'triangle', 0.035);               // the bass note (triangle, so small speakers play it)
+            notes.forEach((f, i) => {
+                const level = 0.02 - i * 0.004;           // higher notes quieter
+                voice(f, 'triangle', level, -4);          // two voices a few cents apart: warm, slowly shimmering
+                voice(f, 'triangle', level, 4);
+            });
+            // 2 or 3 bell notes during the chord, at unhurried, slightly random moments
+            const count = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < count; i++) {
+                bell(bells[(step + i) % bells.length], t + 1.5 + i * 2.6 + Math.random() * 0.8, 0.045 + Math.random() * 0.015);
+            }
+            step++;
+        }
+        beatTimeoutId = setTimeout(chord, length * 1000);
+    }
+    chord();
+}
+
+// A low, faraway roll of thunder every 25 to 60 seconds (the first after 10 to 20): it rolls in
+// slowly over a second and fades over about 6, with no sharp crack
+function startDistantThunder(ctx) {
+    const bus = soundBus;
+    const rumble = createNoiseBuffer(ctx, 'brown');
+    function thunder() {
+        if (soundBus !== bus) return;
+        if (ctx.state === 'running') {
+            const t = ctx.currentTime + 0.05;
+            const src = ctx.createBufferSource();
+            src.buffer = rumble;
+            src.loop = true;
+            const tone = ctx.createBiquadFilter();
+            tone.type = 'lowpass';
+            tone.frequency.setValueAtTime(260, t);
+            tone.frequency.exponentialRampToValueAtTime(90, t + 6);
+            const g = ctx.createGain();
+            const level = 0.25 + Math.random() * 0.2;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(level, t + 1.2);
+            g.gain.exponentialRampToValueAtTime(level * 0.6, t + 3);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 7);
+            const pan = ctx.createStereoPanner();
+            pan.pan.value = Math.random() * 1.2 - 0.6;
+            src.connect(tone); tone.connect(g); g.connect(pan); pan.connect(bus);
+            src.start(t); src.stop(t + 7.2);
+        }
+        birdTimeoutId = setTimeout(thunder, 25000 + Math.random() * 35000);
+    }
+    birdTimeoutId = setTimeout(thunder, 10000 + Math.random() * 10000);
 }
 
 // A quiet forest: wind that gusts through the trees, leaves that rustle, and the odd distant bird
