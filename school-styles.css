@@ -2457,6 +2457,50 @@ li.empty-state::before {
 .notif-panel-head h3 {
     font-size: 1.05rem;
     font-weight: 700;
+    margin-right: auto;
+}
+
+.notif-clear {
+    margin-right: 0.5rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-strong);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-2);
+}
+
+.notif-clear:hover {
+    border-color: var(--accent-ring);
+    color: var(--accent);
+}
+
+.notif-clear[hidden],
+.notif-caught-up[hidden],
+.notif-section-title[hidden] {
+    display: none;
+}
+
+.notif-hint {
+    margin-bottom: 0.25rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-3);
+}
+
+.notif-caught-up {
+    padding: 1.2rem 0.2rem 0.8rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-2);
+}
+
+.notif-caught-up::before {
+    content: "✓";
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 1.3rem;
+    color: var(--teal);
 }
 
 .notif-section-title {
@@ -4641,8 +4685,40 @@ li.completing .done-check {
     display: grid;
     grid-template-columns: 300px minmax(0, 1fr);
     gap: 1.25rem;
-    height: calc(100vh - 290px);
-    min-height: 540px;
+    height: calc(100vh - 220px);
+    min-height: 620px;
+}
+
+/* Hide the notes list, so the note gets the full width */
+.notebook-layout.list-hidden {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.notebook-layout.list-hidden .notebook-sidebar {
+    display: none;
+}
+
+.nb-list-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    padding: 0.45rem;
+    border-radius: 10px;
+    border: 1px solid var(--hairline);
+    color: var(--text-2);
+}
+
+.nb-list-toggle:hover,
+.notebook-layout.list-hidden .nb-list-toggle {
+    color: var(--accent);
+    border-color: var(--accent-ring);
+}
+
+.nb-back-label {
+    display: none;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 .notebook-layout .card {
@@ -5170,7 +5246,7 @@ li.completing .done-check {
 
 #notebook-content {
     flex: 1;
-    min-height: 200px;
+    min-height: max(320px, 40vh);
     resize: none;
     border: none;
     outline: none;
@@ -7874,12 +7950,40 @@ body.external-pip-body .pip-header {
         min-height: 0;
     }
 
+    /* Phones: the notes list OR the open note, each with the whole screen */
     .notebook-sidebar {
-        max-height: 320px;
+        max-height: none;
+    }
+
+    .notebook-layout.has-open-note .notebook-sidebar,
+    .notebook-layout:not(.has-open-note) .notebook-editor {
+        display: none;
     }
 
     .notebook-editor {
-        min-height: 520px;
+        min-height: calc(100vh - 170px);
+    }
+
+    #notebook-content {
+        min-height: 55vh;
+    }
+
+    .nb-list-toggle {
+        padding: 0.4rem 0.7rem 0.4rem 0.55rem;
+    }
+
+    .nb-list-toggle svg {
+        display: none;
+    }
+
+    .nb-list-toggle::before {
+        content: "‹";
+        font-size: 1.2rem;
+        line-height: 1;
+    }
+
+    .nb-back-label {
+        display: inline;
     }
 
     .friends-sidebar-card {

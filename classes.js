@@ -170,11 +170,14 @@
             .reduce((sum, a) => sum + (SIZES[a.size]?.points || 1), 0);
     }
 
+    // A Supabase time in milliseconds, whichever way it's written (toTime in school-app.js: live
+    // updates write "2026-10-20 05:54:28.1+00", which Safari can't read with Date.parse)
+    const timeOf = v => (typeof toTime === 'function' ? toTime(v) : Date.parse(v));
+
     // Live updates and normal loads can write the same time differently
     // ("2026-10-20 05:54:28.1+00" vs "2026-10-20T05:54:28.1+00:00"), so compare the moment itself
     function sameMoment(a, b) {
-        const ms = v => Date.parse(String(v).replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'));
-        return ms(a) === ms(b) || a === b;
+        return timeOf(a) === timeOf(b) || a === b;
     }
 
     function timetableOutdated(cls) {
@@ -294,7 +297,7 @@
         ]);
         if (recent.error) return;
         const rows = recent.data.concat(pings.error ? [] : pings.data.filter(p => !recent.data.some(r => r.id === p.id)));
-        state.recentMessages = rows.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+        state.recentMessages = rows.sort((a, b) => timeOf(b.created_at) - timeOf(a.created_at));
     }
 
     async function loadInbox() {
@@ -482,7 +485,7 @@
             // A chat I was just added to, or someone who just joined: fetch the new lists
             const knownSender = Object.values(state.members).some(list => list.some(m => m.user_id === row.sender_id));
             if (!state.chats.some(c => c.id === row.chat_id) || !knownSender) scheduleReload();
-            if (isReadingChat(row.chat_id)) markClassesSeen(Date.parse(row.created_at));
+            if (isReadingChat(row.chat_id)) markClassesSeen(timeOf(row.created_at));
             else {
                 const chat = state.chats.find(c => c.id === row.chat_id);
                 showPhoneNotification('classes', {
@@ -1231,7 +1234,7 @@
                         ${mine ? '' : `<span class="cls-msg-name">${label}</span>`}
                         <div class="chat-msg-bubble">
                             ${poll ? pollHtml(poll, moderator) : `<div>${messageTextHtml(m)}</div>`}
-                            <span class="chat-msg-time">${escapeHTML(messageTime(Date.parse(m.created_at)))}</span>
+                            <span class="chat-msg-time">${escapeHTML(messageTime(timeOf(m.created_at)))}</span>
                         </div>
                         <div class="cls-msg-actions">${actions}</div>
                     </div>
@@ -1255,7 +1258,7 @@
         const list = state.messages[row.chat_id] = state.messages[row.chat_id] || [];
         if (list.some(m => m.id === row.id)) return;
         list.push(row);
-        list.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+        list.sort((a, b) => timeOf(a.created_at) - timeOf(b.created_at));
         renderMessages(row.chat_id);
     }
 
@@ -1394,7 +1397,7 @@
                         <p><span class="cls-board-kind kind-${p.kind}">${escapeHTML(BOARD_KINDS[p.kind]?.verb || p.kind)}</span>${p.resolved ? '<span class="cls-chip">Sorted</span>' : ''}</p>
                         <strong>${escapeHTML(p.title)}</strong>
                         ${p.details ? `<p class="cls-board-details">${escapeHTML(p.details)}</p>` : ''}
-                        <small>by ${escapeHTML(by)} · ${escapeHTML(timeAgo(Date.parse(p.created_at)))}</small>
+                        <small>by ${escapeHTML(by)} · ${escapeHTML(timeAgo(timeOf(p.created_at)))}</small>
                         ${mineToo || moderator ? `<span class="cls-row-actions">
                             ${mineToo ? `<button type="button" class="btn secondary-btn btn-sm" data-act="board-resolve" data-post="${p.id}" data-resolved="${p.resolved ? 0 : 1}">${p.resolved ? 'Not sorted yet' : 'Mark as sorted'}</button>` : ''}
                             <button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="board-delete" data-post="${p.id}">Delete</button>
@@ -1611,7 +1614,7 @@
         if (!tt) {
             html += `<p class="cls-hint">${admin ? 'Share your timetable with the class: set it up on the Timetable page first, then press the button below.' : 'Your class admin hasn\'t shared a timetable yet.'}</p>`;
         } else {
-            const when = cls.timetable_updated_at ? timeAgo(Date.parse(cls.timetable_updated_at)) : '';
+            const when = cls.timetable_updated_at ? timeAgo(timeOf(cls.timetable_updated_at)) : '';
             if (timetableOutdated(cls)) html += '<p class="cls-banner">The class timetable changed since you imported it. Import it again to update yours.</p>';
             else if (imported) html += '<p class="cls-hint">Your timetable matches this one.</p>';
             html += `<p class="cls-hint">${pluralise(tt.totalDays, 'day order')}${when ? ` · updated ${escapeHTML(when)}` : ''}</p>`;
@@ -1657,7 +1660,7 @@
                 <li class="cls-file">
                     <span class="cls-file-icon">${escapeHTML((extension(f.file_name) || 'file').toUpperCase().slice(0, 4))}</span>
                     <span class="cls-file-info"><strong>${escapeHTML(f.file_name)}</strong>
-                        <small>${escapeHTML(sizeText(f.size_bytes))} · ${escapeHTML(personName(f.uploaded_by))} · ${escapeHTML(timeAgo(Date.parse(f.created_at)))}</small></span>
+                        <small>${escapeHTML(sizeText(f.size_bytes))} · ${escapeHTML(personName(f.uploaded_by))} · ${escapeHTML(timeAgo(timeOf(f.created_at)))}</small></span>
                     <span class="cls-row-actions">
                         <button type="button" class="btn secondary-btn btn-sm" data-act="file-open" data-file="${f.id}">Open</button>
                         ${canDelete ? `<button type="button" class="btn ghost-btn btn-sm cls-danger-text" data-act="file-delete" data-file="${f.id}">Delete</button>` : ''}
@@ -1858,7 +1861,7 @@
     function inboxHtml() {
         const inbox = state.inbox;
         if (!inbox) return '<p class="cls-hint">Loading...</p>';
-        const when = iso => escapeHTML(timeAgo(Date.parse(iso)));
+        const when = iso => escapeHTML(timeAgo(timeOf(iso)));
         const pending = inbox.classes.filter(c => c.status === 'pending');
         let html = `
             <header class="cls-head"><div class="cls-head-main"><h3>Approvals</h3>
@@ -2679,7 +2682,7 @@
             const who = m.bot ? BOT_NAME : personName(m.sender_id);
             const pinged = (m.mentions || []).includes(me);
             items.push({
-                ts: Date.parse(m.created_at),
+                ts: timeOf(m.created_at),
                 html: pinged
                     ? `📣 <strong>${escapeHTML(who)}</strong> mentioned you in ${escapeHTML(chatPlace(chat))}: ${escapeHTML(preview)}`
                     : `<strong>${escapeHTML(who)}</strong> in ${escapeHTML(chatPlace(chat))}: ${escapeHTML(preview)}`,
@@ -2691,7 +2694,7 @@
         Object.entries(state.homework).forEach(([classId, list]) => {
             const cls = findClass(classId);
             list.forEach(hw => {
-                const ts = Date.parse(hw.created_at);
+                const ts = timeOf(hw.created_at);
                 if (!cls || hw.created_by === me || ts < recent) return;
                 items.push({
                     ts,
@@ -2704,14 +2707,14 @@
         state.classes.forEach(c => {
             if (timetableOutdated(c)) {
                 items.push({
-                    ts: Date.parse(c.timetable_updated_at),
+                    ts: timeOf(c.timetable_updated_at),
                     html: `<strong>${escapeHTML(c.name)}</strong>'s timetable changed. Import it again?`,
                     open: () => openFromNotification('class', c.id, 'timetable')
                 });
             }
             if (c.myRole === 'owner' && c.reviewed_at && c.status !== 'pending') {
                 items.push({
-                    ts: Date.parse(c.reviewed_at),
+                    ts: timeOf(c.reviewed_at),
                     html: c.status === 'approved'
                         ? `<strong>${escapeHTML(c.name)}</strong> was approved. Share its code with your classmates.`
                         : `<strong>${escapeHTML(c.name)}</strong> wasn't approved.`,
@@ -2721,10 +2724,10 @@
         });
 
         state.activities.forEach(a => {
-            const selfApproved = a.reviewed_at && Math.abs(Date.parse(a.reviewed_at) - Date.parse(a.created_at)) < 5000;
+            const selfApproved = a.reviewed_at && Math.abs(timeOf(a.reviewed_at) - timeOf(a.created_at)) < 5000;
             if (a.owner_id === me && a.reviewed_at && a.status !== 'pending' && !selfApproved) {
                 items.push({
-                    ts: Date.parse(a.reviewed_at),
+                    ts: timeOf(a.reviewed_at),
                     html: a.status === 'approved'
                         ? `Your activity group <strong>${escapeHTML(a.name)}</strong> was approved. Share its code!`
                         : `Your activity group <strong>${escapeHTML(a.name)}</strong> wasn't approved.`,
@@ -2735,7 +2738,7 @@
 
         state.classActivities.filter(a => a.status === 'pending').forEach(a => {
             items.push({
-                ts: Date.parse(a.created_at),
+                ts: timeOf(a.created_at),
                 html: `<strong>${escapeHTML(personName(a.owner_id))}</strong> wants to start <strong>${escapeHTML(a.name)}</strong> from ${escapeHTML(findClass(a.class_id)?.name || 'your class')}. Approve it?`,
                 open: () => openFromNotification('class', a.class_id, 'activities')
             });
@@ -2748,17 +2751,17 @@
                 select('inbox');
             };
             state.inbox.classes.filter(c => c.status === 'pending').forEach(c => items.push({
-                ts: Date.parse(c.created_at),
+                ts: timeOf(c.created_at),
                 html: `New class waiting for you: <strong>${escapeHTML(c.name)}</strong> by ${escapeHTML(c.owner_name || '?')}`,
                 open: toInbox
             }));
             state.inbox.requests.forEach(r => items.push({
-                ts: Date.parse(r.created_at),
+                ts: timeOf(r.created_at),
                 html: `<strong>${escapeHTML(r.class_name)}</strong>: ${r.kind === 'make_admin' ? 'a co-admin' : 'a hand-over'} is waiting for you`,
                 open: toInbox
             }));
             state.inbox.reports.forEach(r => items.push({
-                ts: Date.parse(r.created_at),
+                ts: timeOf(r.created_at),
                 html: `A message in <strong>${escapeHTML(r.place)}</strong> was reported`,
                 open: toInbox
             }));
@@ -2773,8 +2776,9 @@
         if (timestamp > seen.classSeenAt) setNotifSeen({ ...seen, classSeenAt: timestamp });
     }
 
-    function renderNotificationList(listEl, titleEl, seenAt) {
-        const items = notificationItems();
+    // shown(item): which ones to list (school-app.js lists today's and unread ones)
+    function renderNotificationList(listEl, titleEl, seenAt, shown = () => true) {
+        const items = notificationItems().filter(shown);
         titleEl.hidden = listEl.hidden = items.length === 0;
         listEl.innerHTML = '';
         items.forEach(item => {
