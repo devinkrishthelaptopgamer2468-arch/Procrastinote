@@ -8174,10 +8174,13 @@ document.getElementById('btn-push-test')?.addEventListener('click', () => {
     });
 });
 
-if (PUSH_SUPPORTED) {
+// The helper (sw.js) is registered on every browser that has service workers, not only those
+// with notifications: browsers also need it to offer installing Procrastinote as an app
+if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
         .then(async registration => {
             swRegistration = registration;
+            if (!PUSH_SUPPORTED) return;
             // Turned on before closed-app notifications existed (or the save failed): try again now
             const prefs = getPushPrefs();
             if (prefs.enabled && !prefs.closedToo && Notification.permission === 'granted' && await syncPushSubscription(prefs)) {
@@ -8190,6 +8193,140 @@ if (PUSH_SUPPORTED) {
         if (e.data?.type === 'open-from-notification') openFromNotificationLink(e.data.url);
     });
 }
+
+// --- Install Procrastinote as an app ---
+// Chrome, Edge and Android browsers can install it in one tap (they send "beforeinstallprompt"
+// when it's possible; we keep that and show our own button). iPhones and iPads can't be asked
+// from the page, so the button shows the "Share > Add to Home Screen" steps instead. Once it's
+// installed (or opened from its icon) the buttons go away.
+const INSTALL_SNOOZE_KEY = 'pn-install-snooze'; // "Not now" on the dashboard button: hide it for 14 days
+let installPrompt = null;
+let justInstalled = false;
+
+const isRunningAsApp = () => window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone === true;
+const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPads say they're Macs
+
+// 'app' (opened from its icon), 'installed', 'prompt' (one tap), 'ios', or 'steps' (other browsers)
+function installMode() {
+    if (isRunningAsApp()) return 'app';
+    if (justInstalled) return 'installed';
+    if (installPrompt) return 'prompt';
+    if (isAppleMobile()) return 'ios';
+    return 'steps';
+}
+
+function installSnoozed() {
+    try {
+        return Date.now() < Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || 0);
+    } catch (e) {
+        return false;
+    }
+}
+
+function snoozeInstall(days) {
+    try { localStorage.setItem(INSTALL_SNOOZE_KEY, String(Date.now() + days * 86400000)); } catch (e) { /* private mode */ }
+    renderInstallButtons();
+}
+
+function renderInstallButtons() {
+    const mode = installMode();
+    const dash = document.getElementById('btn-install-app');
+    if (dash) dash.hidden = !(mode === 'prompt' || mode === 'ios') || installSnoozed();
+    const text = document.getElementById('install-card-text');
+    const button = document.getElementById('btn-install-card');
+    if (!text || !button) return;
+    const messages = {
+        app: 'You\'re using the Procrastinote app on this device. It updates by itself.',
+        installed: 'Installed! Open Procrastinote from its new icon. It updates by itself.',
+        prompt: 'Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It\'s free and updates by itself.',
+        ios: 'Add Procrastinote to your Home Screen: it gets its own icon, opens full screen, and can send you notifications when it\'s closed. It\'s free and updates by itself.',
+        steps: 'Install Procrastinote on this device so it gets its own icon and opens full screen. It\'s free and updates by itself.'
+    };
+    text.innerText = messages[mode];
+    button.hidden = mode === 'app' || mode === 'installed';
+    button.innerText = mode === 'prompt' ? 'Install Procrastinote' : 'Show me how';
+}
+
+// The steps for this device and browser, when it can't install in one tap
+function installSteps() {
+    const ua = navigator.userAgent;
+    if (isAppleMobile()) {
+        const where = /CriOS|EdgiOS|FxiOS/.test(ua) ? 'in the address bar' : (/iPad/.test(ua) || navigator.maxTouchPoints > 1 && !/iPhone/.test(ua) ? 'at the top of the screen' : 'at the bottom of the screen');
+        return [
+            `Tap the <strong>Share</strong> button (a square with an arrow pointing up) ${where}.`,
+            'Scroll down and tap <strong>Add to Home Screen</strong>.',
+            'Tap <strong>Add</strong>.'
+        ];
+    }
+    if (/Android/.test(ua)) {
+        return [
+            'Open your browser\'s menu (<strong>⋮</strong> or <strong>☰</strong>).',
+            'Tap <strong>Install app</strong> or <strong>Add to Home screen</strong>.',
+            'Tap <strong>Install</strong> (or <strong>Add</strong>).'
+        ];
+    }
+    if (/Firefox/.test(ua)) {
+        return [
+            'Firefox on computers can\'t install apps from websites.',
+            'Open <strong>procrastinote.vercel.app</strong> in <strong>Chrome</strong> or <strong>Edge</strong> and press <strong>Install app</strong> there.'
+        ];
+    }
+    if (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) {
+        return [
+            'In the menu bar, choose <strong>File</strong> then <strong>Add to Dock</strong>.',
+            'Click <strong>Add</strong>.'
+        ];
+    }
+    return [
+        'Look for the <strong>install</strong> icon at the right end of the address bar (a screen with a down arrow) and click it.',
+        'No icon? Open the browser menu (<strong>⋮</strong> or <strong>…</strong>) and choose <strong>Install Procrastinote</strong> (in Edge: <strong>Apps</strong> then <strong>Install this site as an app</strong>).'
+    ];
+}
+
+async function installApp() {
+    const mode = installMode();
+    if (mode === 'prompt') {
+        const prompt = installPrompt;
+        installPrompt = null; // it can only be used once
+        prompt.prompt();
+        try {
+            const { outcome } = await prompt.userChoice;
+            if (outcome === 'accepted') justInstalled = true;
+        } catch (e) { /* closed */ }
+        renderInstallButtons();
+        return;
+    }
+    if (mode === 'app' || mode === 'installed') return;
+    document.getElementById('install-steps').innerHTML = installSteps().map(step => `<li>${step}</li>`).join('');
+    document.getElementById('install-dialog').showModal();
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // our own button asks instead of the browser's banner
+    installPrompt = e;
+    renderInstallButtons();
+});
+
+window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    justInstalled = true;
+    renderInstallButtons();
+});
+
+window.matchMedia('(display-mode: standalone)').addEventListener?.('change', renderInstallButtons);
+
+document.querySelectorAll('[data-install]').forEach(btn => btn.addEventListener('click', installApp));
+document.getElementById('install-dialog-ok')?.addEventListener('click', () => {
+    document.getElementById('install-dialog').close();
+    snoozeInstall(30); // they're doing it now; don't keep showing the dashboard button
+});
+document.getElementById('install-dialog-later')?.addEventListener('click', () => {
+    document.getElementById('install-dialog').close();
+    snoozeInstall(14);
+});
+renderInstallButtons();
 
 // On page load: make sure the saved login is still a valid online session
 async function restoreCloudSession() {

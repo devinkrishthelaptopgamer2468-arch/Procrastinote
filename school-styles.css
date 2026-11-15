@@ -2380,6 +2380,40 @@ li.empty-state::before {
     color: var(--accent);
 }
 
+/* Install app: next to Messages and Updates, a little more noticeable */
+.notif-btn.install-btn {
+    background: var(--accent-soft);
+    border-color: var(--accent-ring);
+    color: var(--accent);
+}
+
+.notif-btn.install-btn[hidden] {
+    display: none;
+}
+
+.install-card .btn[hidden] {
+    display: none;
+}
+
+.install-steps {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0.4rem 0 0;
+    padding-left: 1.3rem;
+    line-height: 1.5;
+}
+
+.install-steps li::marker {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.install-note {
+    margin-top: 0.9rem;
+    font-size: 0.86rem;
+    color: var(--text-2);
+}
+
 .notif-badge {
     min-width: 20px;
     height: 20px;

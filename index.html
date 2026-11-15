@@ -439,6 +439,11 @@
                                 <span>Updates</span>
                                 <span id="updates-badge" class="notif-badge" hidden></span>
                             </button>
+                            <!-- Shown only when this device can install Procrastinote as an app -->
+                            <button id="btn-install-app" class="notif-btn install-btn" data-install hidden>
+                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 19h14"/></svg>
+                                <span>Install app</span>
+                            </button>
                             <div id="msg-panel" class="notif-panel" role="dialog" aria-label="Messages" hidden>
                                 <div class="notif-panel-head">
                                     <h3>Messages</h3>
@@ -721,6 +726,15 @@
                                 <span class="info-value" id="profile-email">--</span>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="card install-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span>
+                            <h3>Get the app</h3>
+                        </div>
+                        <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
+                        <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
                     </div>
 
                     <div class="card security-card clickable-card" id="btn-go-security">
@@ -1653,6 +1667,17 @@
     </div>
 
     <!-- Classes: create a class, new chat, start an activity... (filled in by classes.js) -->
+    <!-- How to install, for devices without a one-tap install (iPhone, iPad, some browsers) -->
+    <dialog id="install-dialog" class="classes-dialog install-dialog" aria-labelledby="install-dialog-title">
+        <h3 id="install-dialog-title">Install Procrastinote</h3>
+        <ol id="install-steps" class="install-steps"></ol>
+        <p class="install-note">Then open Procrastinote from its new icon. You stay logged in, and it updates by itself.</p>
+        <div class="confirm-actions">
+            <button type="button" class="btn secondary-btn" id="install-dialog-later">Not now</button>
+            <button type="button" class="btn primary-btn" id="install-dialog-ok">Got it</button>
+        </div>
+    </dialog>
+
     <dialog id="classes-dialog" class="classes-dialog">
         <form id="classes-dialog-form" class="classes-dialog-form">
             <h3 id="classes-dialog-title"></h3>
