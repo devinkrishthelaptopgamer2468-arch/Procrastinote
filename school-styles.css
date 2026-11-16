@@ -2419,6 +2419,61 @@ li.empty-state::before {
     color: var(--text-2);
 }
 
+/* ---------- Invite friends ---------- */
+.invite-header-btn {
+    margin-top: 1rem;
+    gap: 0.5rem;
+}
+
+.invite-qr {
+    width: min(230px, 100%);
+    aspect-ratio: 1;
+    margin: 1.1rem auto 0.6rem;
+    padding: 10px;
+    border-radius: 18px;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 1px var(--hairline);
+    display: grid;
+    place-items: center;
+}
+
+.invite-qr svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.invite-qr-error {
+    padding: 0 0.75rem;
+    text-align: center;
+    font-size: 0.86rem;
+    color: #556072;
+}
+
+.invite-link {
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+}
+
+.invite-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 1rem;
+}
+
+.invite-actions .btn {
+    width: 100%;
+    text-decoration: none;
+}
+
+/* Only on devices that have a share menu */
+.invite-actions .btn[hidden] {
+    display: none;
+}
+
 .notif-badge {
     min-width: 20px;
     height: 20px;

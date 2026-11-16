@@ -18,7 +18,21 @@
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Procrastinote">
-    <meta name="description" content="Personal school planner for day orders, uniforms, and homework.">
+    <meta name="description" content="Your calm school planner: day orders, uniforms, homework, notes and focus time.">
+    <!-- Link preview: what WhatsApp, Instagram and others show when someone shares the link -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Procrastinote">
+    <meta property="og:title" content="Procrastinote: your calm school planner">
+    <meta property="og:description" content="Day orders, uniforms, homework, notes and focus time, all in one place. Free.">
+    <meta property="og:url" content="https://procrastinote.vercel.app/">
+    <meta property="og:image" content="https://procrastinote.vercel.app/icon-512.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:image:alt" content="The Procrastinote logo">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Procrastinote: your calm school planner">
+    <meta name="twitter:description" content="Day orders, uniforms, homework, notes and focus time, all in one place. Free.">
+    <meta name="twitter:image" content="https://procrastinote.vercel.app/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -748,6 +762,15 @@
                         </div>
                         <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
                         <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
+                    </div>
+
+                    <div class="card invite-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg></span>
+                            <h3>Invite friends</h3>
+                        </div>
+                        <p class="subtitle card-sub">Show them a QR code to scan, or send the link on WhatsApp.</p>
+                        <button type="button" class="btn primary-btn btn-block" data-invite>Invite friends</button>
                     </div>
 
                     <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
@@ -1491,6 +1514,10 @@
                     <p class="eyebrow">Together</p>
                     <h2>Friends and chat</h2>
                     <p class="subtitle">Chat with your friends and AI buddies</p>
+                    <button type="button" class="btn secondary-btn invite-header-btn" data-invite>
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg>
+                        Invite friends
+                    </button>
                 </header>
 
                 <!-- Shown until supabase-config.js is filled in; school-app.js swaps in the chat once it is -->
@@ -1756,6 +1783,22 @@
         <div class="confirm-actions">
             <button type="button" class="btn secondary-btn" id="install-dialog-later">Not now</button>
             <button type="button" class="btn primary-btn" id="install-dialog-ok">Got it</button>
+        </div>
+    </dialog>
+
+    <!-- Invite friends: a QR code for the site, WhatsApp, the phone's share menu, and copy link -->
+    <dialog id="invite-dialog" class="classes-dialog invite-dialog" aria-labelledby="invite-dialog-title">
+        <h3 id="invite-dialog-title">Invite friends</h3>
+        <p class="install-note">Friends can scan this with their phone camera, or you can send them the link.</p>
+        <div id="invite-qr" class="invite-qr" role="img" aria-label="QR code that opens procrastinote.vercel.app"></div>
+        <p class="invite-link">procrastinote.vercel.app</p>
+        <div class="invite-actions">
+            <a id="invite-whatsapp" class="btn primary-btn" target="_blank" rel="noopener">Send on WhatsApp</a>
+            <button type="button" class="btn secondary-btn" id="invite-share" hidden>More ways to share</button>
+            <button type="button" class="btn secondary-btn" id="invite-copy">Copy link</button>
+        </div>
+        <div class="confirm-actions">
+            <button type="button" class="btn secondary-btn" id="invite-close">Done</button>
         </div>
     </dialog>
 
