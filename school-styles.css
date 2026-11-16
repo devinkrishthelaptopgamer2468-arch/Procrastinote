@@ -9568,6 +9568,128 @@ body.external-pip-body .pip-header {
     }
 }
 
+/* Classic's personality, borrowed from the original site: your name types itself out with a
+   blinking cursor, the sidebar opens out with page names when you point at it, and light/dark
+   is the old slider switch */
+[data-skin="classic"] .view-header .highlight {
+    display: inline-block;
+    animation: classic-type 0.9s steps(9, end) 0.2s both;
+}
+
+[data-skin="classic"] .view-header .highlight::after {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 0.85em;
+    margin-left: 4px;
+    vertical-align: -0.05em;
+    background: var(--accent);
+    animation: classic-caret 1s step-end infinite;
+}
+
+@keyframes classic-type {
+    from { clip-path: inset(0 100% 0 0); }
+    to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes classic-caret {
+    50% { opacity: 0; }
+}
+
+/* The old light/dark slider switch */
+[data-skin="classic"] .theme-toggle .nav-icon {
+    display: none;
+}
+
+[data-skin="classic"] .theme-toggle::before {
+    content: '';
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: #CBD5E1;
+    transition: background-color 0.25s ease;
+}
+
+[data-skin="classic"] .theme-toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin-top: -9px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.25s var(--ease-out);
+}
+
+[data-skin="classic"][data-theme="dark"] .theme-toggle::before {
+    background: #3B82F6;
+}
+
+/* Knob on the left for light, slid right for dark (phone menu position; the rail moves it below) */
+[data-skin="classic"] .theme-toggle::after {
+    left: 17px;
+}
+
+[data-skin="classic"][data-theme="dark"] .theme-toggle::after {
+    transform: translateX(20px);
+}
+
+@media (min-width: 821px) {
+    [data-skin="classic"] .theme-toggle::after {
+        left: 9px;
+    }
+
+    /* Point at the sidebar and it opens out with the page names, like the original */
+    [data-skin="classic"] .dock {
+        transition: width 0.3s var(--ease-out), box-shadow 0.3s ease;
+    }
+
+    [data-skin="classic"] .dock:hover,
+    [data-skin="classic"] .dock:focus-within {
+        width: 230px;
+        align-items: stretch;
+        padding-left: 12px;
+        padding-right: 12px;
+        box-shadow: var(--shadow-lg);
+    }
+
+    [data-skin="classic"] .dock:hover .nav-links,
+    [data-skin="classic"] .dock:hover .dock-utils,
+    [data-skin="classic"] .dock:focus-within .nav-links,
+    [data-skin="classic"] .dock:focus-within .dock-utils {
+        align-items: stretch;
+    }
+
+    [data-skin="classic"] .dock:hover .dock-item,
+    [data-skin="classic"] .dock:focus-within .dock-item {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 14px;
+        padding: 0 16px;
+    }
+
+    [data-skin="classic"] .dock:hover .dock-item .nav-label,
+    [data-skin="classic"] .dock:focus-within .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+
+    [data-skin="classic"] .dock:hover .theme-toggle::after,
+    [data-skin="classic"] .dock:focus-within .theme-toggle::after {
+        left: 19px;
+    }
+}
+
 /* ---------- True Black on phones: a bottom bar with 5 pages and More (opens a second row) ---------- */
 .dock-more {
     display: none;
