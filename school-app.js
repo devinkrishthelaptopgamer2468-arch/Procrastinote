@@ -293,13 +293,15 @@ document.querySelectorAll('.nav-links li').forEach(link => {
         const tabId = li.getAttribute('data-tab');
         document.getElementById(tabId).classList.add('active-view');
         closePhoneNav();
-        window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+        // Phones jump straight to the top: a smooth scroll while the new page appears feels slow there
+        window.scrollTo({ top: 0, behavior: reducedMotion.matches || phoneNav.matches ? 'auto' : 'smooth' });
     });
 });
 
 // When any view becomes visible (dock, back buttons, mini player...), its cards float in one after another
 function playViewEntrance(view) {
-    if (!view || reducedMotion.matches) return;
+    // Phones get a quick fade of the whole page instead (see "Phones: lighter and smoother")
+    if (!view || reducedMotion.matches || phoneNav.matches) return;
     const items = view.querySelectorAll(':scope > .view-header, .card, .timetable-switch');
     items.forEach((el, i) => el.style.setProperty('--i', Math.min(i, 10)));
     view.classList.remove('entering');
@@ -8583,6 +8585,73 @@ async function installApp() {
     document.getElementById('install-steps').innerHTML = installSteps().map(step => `<li>${step}</li>`).join('');
     document.getElementById('install-dialog').showModal();
 }
+
+// --- Invite friends ---
+// Always the real site, even from a test copy, so the QR code and messages work for friends
+const INVITE_URL = 'https://procrastinote.vercel.app/';
+const INVITE_MESSAGE = `I plan school with Procrastinote: day orders, homework and focus time in one place. It's free, try it: ${INVITE_URL}`;
+const QR_LIBRARY = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+let qrLibraryLoading = null;
+
+function loadQrLibrary() {
+    if (window.qrcode) return Promise.resolve();
+    qrLibraryLoading ||= new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = QR_LIBRARY;
+        script.onload = resolve;
+        script.onerror = () => { qrLibraryLoading = null; reject(new Error('QR library did not load')); };
+        document.head.appendChild(script);
+    });
+    return qrLibraryLoading;
+}
+
+// Draws the QR code as dark squares on white (always white, so phone cameras can read it in any theme)
+async function renderInviteQr() {
+    const box = document.getElementById('invite-qr');
+    if (!box || box.dataset.ready) return;
+    try {
+        await loadQrLibrary();
+        const qr = window.qrcode(0, 'M');
+        qr.addData(INVITE_URL);
+        qr.make();
+        const n = qr.getModuleCount();
+        let path = '';
+        for (let r = 0; r < n; r++) {
+            for (let c = 0; c < n; c++) if (qr.isDark(r, c)) path += `M${c} ${r}h1v1h-1z`;
+        }
+        box.innerHTML = `<svg viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges" aria-hidden="true"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#FFFFFF"/><path d="${path}" fill="#0F1728"/></svg>`;
+        box.dataset.ready = '1';
+    } catch (e) {
+        box.innerHTML = '<p class="invite-qr-error">The QR code needs the internet to appear. You can still send the link.</p>';
+    }
+}
+
+function openInviteDialog() {
+    const dialog = document.getElementById('invite-dialog');
+    if (!dialog) return;
+    document.getElementById('invite-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(INVITE_MESSAGE)}`;
+    document.getElementById('invite-share').hidden = !navigator.share;
+    document.getElementById('invite-copy').textContent = 'Copy link';
+    dialog.showModal();
+    renderInviteQr();
+}
+
+document.querySelectorAll('[data-invite]').forEach(btn => btn.addEventListener('click', openInviteDialog));
+document.getElementById('invite-close')?.addEventListener('click', () => document.getElementById('invite-dialog').close());
+document.getElementById('invite-share')?.addEventListener('click', async () => {
+    try {
+        await navigator.share({ title: 'Procrastinote', text: INVITE_MESSAGE.replace(INVITE_URL, '').trim(), url: INVITE_URL });
+    } catch (e) { /* closed without sharing */ }
+});
+document.getElementById('invite-copy')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    try {
+        await navigator.clipboard.writeText(INVITE_URL);
+        btn.textContent = 'Link copied';
+    } catch (err) {
+        btn.textContent = INVITE_URL; // couldn't copy: show it so it can be copied by hand
+    }
+});
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault(); // our own button asks instead of the browser's banner
