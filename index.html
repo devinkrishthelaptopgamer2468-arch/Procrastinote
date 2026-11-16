@@ -439,16 +439,24 @@
                                 <span>Updates</span>
                                 <span id="updates-badge" class="notif-badge" hidden></span>
                             </button>
+                            <!-- Shown only when this device can install Procrastinote as an app -->
+                            <button id="btn-install-app" class="notif-btn install-btn" data-install hidden>
+                                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 19h14"/></svg>
+                                <span>Install app</span>
+                            </button>
                             <div id="msg-panel" class="notif-panel" role="dialog" aria-label="Messages" hidden>
                                 <div class="notif-panel-head">
                                     <h3>Messages</h3>
+                                    <button type="button" class="notif-clear" id="notif-clear" hidden>Clear</button>
                                     <button class="icon-btn icon-btn-small" data-notif-close aria-label="Close messages">
                                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                                     </button>
                                 </div>
+                                <p class="notif-hint">Today's messages and anything you haven't seen. Older ones clear by themselves; your chats keep everything.</p>
+                                <p class="notif-caught-up" id="notif-caught-up" hidden>You're all caught up.</p>
                                 <p class="notif-section-title" id="notif-classes-title" hidden>Classes</p>
                                 <ul id="notif-classes" class="notif-list" hidden></ul>
-                                <p class="notif-section-title">Messages from friends</p>
+                                <p class="notif-section-title" id="notif-friends-title">Messages from friends</p>
                                 <ul id="notif-messages" class="notif-list"></ul>
                                 <p class="notif-section-title" id="notif-shared-title" hidden>Notes shared with you</p>
                                 <ul id="notif-shared" class="notif-list" hidden></ul>
@@ -721,6 +729,15 @@
                                 <span class="info-value" id="profile-email">--</span>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="card install-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span>
+                            <h3>Get the app</h3>
+                        </div>
+                        <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
+                        <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
                     </div>
 
                     <div class="card security-card clickable-card" id="btn-go-security">
@@ -1277,6 +1294,11 @@
 
                         <div id="notebook-active-view" style="display: none;">
                             <div class="notebook-title-row">
+                                <!-- Computers: hide or show the notes list. Phones: back to the list. -->
+                                <button type="button" id="btn-notes-list" class="nb-list-toggle" aria-label="Hide the notes list" title="Hide the notes list">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
+                                    <span class="nb-back-label">All notes</span>
+                                </button>
                                 <input type="text" id="notebook-title" placeholder="Give your note a title" aria-label="Note title">
                                 <div class="notebook-title-actions">
                                     <span id="notebook-saved" class="nb-saved" aria-live="polite">Saved</span>
@@ -1653,6 +1675,17 @@
     </div>
 
     <!-- Classes: create a class, new chat, start an activity... (filled in by classes.js) -->
+    <!-- How to install, for devices without a one-tap install (iPhone, iPad, some browsers) -->
+    <dialog id="install-dialog" class="classes-dialog install-dialog" aria-labelledby="install-dialog-title">
+        <h3 id="install-dialog-title">Install Procrastinote</h3>
+        <ol id="install-steps" class="install-steps"></ol>
+        <p class="install-note">Then open Procrastinote from its new icon. You stay logged in, and it updates by itself.</p>
+        <div class="confirm-actions">
+            <button type="button" class="btn secondary-btn" id="install-dialog-later">Not now</button>
+            <button type="button" class="btn primary-btn" id="install-dialog-ok">Got it</button>
+        </div>
+    </dialog>
+
     <dialog id="classes-dialog" class="classes-dialog">
         <form id="classes-dialog-form" class="classes-dialog-form">
             <h3 id="classes-dialog-title"></h3>

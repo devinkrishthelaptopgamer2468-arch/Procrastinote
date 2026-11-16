@@ -17,6 +17,18 @@ function escapeHTML(value) {
         .replace(/'/g, '&#39;');
 }
 
+// A time from Supabase in milliseconds. Live updates write "2026-11-15 10:20:30.123456+00",
+// which Safari (iPhone, iPad) can't read: one unreadable time used to reset what you'd seen in
+// Messages, so everything came back as new. NaN only if it really isn't a time.
+function toTime(value) {
+    if (typeof value === 'number') return value;
+    const text = String(value ?? '').trim()
+        .replace(' ', 'T')
+        .replace(/(\.\d{3})\d+/, '$1')        // milliseconds only
+        .replace(/([+-]\d\d)$/, '$1:00');     // "+00" -> "+00:00"
+    return Date.parse(text);
+}
+
 // --- In-page notes instead of pop-up alerts ---
 // Some browsers (and in-app browsers) block alert() pop-ups, which hid sign-up messages.
 // Every alert() in the app now shows as a small note at the top of the page.
@@ -83,7 +95,7 @@ const cloud = (function createCloudClient() {
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
     'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks', 'focusLog',
-    'classFollow', 'classTimetableImported', 'classHomeworkAdded'];
+    'classFollow', 'classTimetableImported', 'classHomeworkAdded', 'notifSeen'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
 let plannerDirty = false;     // local changes not saved online yet
@@ -116,6 +128,7 @@ let defaultState = {
     streak: { start: null, best: 0 }, // homework streak: since when nothing has been overdue
     marks: [], // e.g. [{ id, subject: "Physics", test: "Revision Exam 3", score: 42, outOf: 50, date: "2026-11-12" }]
     focusLog: {}, // study minutes from the Zen timer: { "2026-10-27": { "Physics": 50, "General": 25 } }
+    notifSeen: {}, // what Messages and Updates you've seen (see "Notifications"), on every device
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -164,6 +177,7 @@ function saveState() {
                 streak: appState.streak || { start: null, best: 0 },
                 marks: appState.marks || [],
                 focusLog: appState.focusLog || {},
+                notifSeen: appState.notifSeen || {},
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -3151,6 +3165,29 @@ document.getElementById('btn-download-notebook')?.addEventListener('click', () =
     URL.revokeObjectURL(a.href);
 });
 
+// The notebook was cramped: on phones the notes list sat above the note, and on computers the
+// list took a third of the width. Phones now show the list or the note (with "All notes" to go
+// back); computers can hide the list (remembered on this device).
+function isPhoneNotebook() {
+    return window.matchMedia('(max-width: 900px)').matches;
+}
+
+function notebookListHidden() {
+    try { return localStorage.getItem('pn-notes-list-hidden') === '1'; } catch (e) { return false; }
+}
+
+document.getElementById('btn-notes-list')?.addEventListener('click', () => {
+    if (isPhoneNotebook()) {
+        appState.activeNotebookId = null; // back to the list
+        saveState();
+        document.getElementById('notebook')?.scrollIntoView({ block: 'start' });
+        return;
+    }
+    try { localStorage.setItem('pn-notes-list-hidden', notebookListHidden() ? '0' : '1'); } catch (e) { /* private mode */ }
+    renderNotebooks();
+});
+window.matchMedia('(max-width: 900px)').addEventListener?.('change', () => renderNotebooks()); // turning a tablet
+
 function renderNotebooks() {
     const listEl = document.getElementById('notebook-list');
     const emptyState = document.getElementById('notebook-empty-state');
@@ -3224,6 +3261,16 @@ function renderNotebooks() {
     updateBulkActionsBar();
 
     const activeNb = appState.notebooks.find(n => n.id === appState.activeNotebookId);
+    // Phones show the list or the open note, never both (see .has-open-note)
+    const layout = document.querySelector('.notebook-layout');
+    layout?.classList.toggle('has-open-note', !!activeNb);
+    layout?.classList.toggle('list-hidden', !!activeNb && notebookListHidden());
+    const listBtn = document.getElementById('btn-notes-list');
+    if (listBtn) {
+        const label = isPhoneNotebook() ? 'Back to all notes' : (notebookListHidden() ? 'Show the notes list' : 'Hide the notes list');
+        listBtn.title = label;
+        listBtn.setAttribute('aria-label', label);
+    }
 
     if (activeNb) {
         emptyState.style.display = 'none';
@@ -7179,7 +7226,7 @@ function addCloudMessage(row, render) {
     if (!cloudRooms[row.room_id]) cloudRooms[row.room_id] = [];
     const list = cloudRooms[row.room_id];
     if (list.some(m => m.id === row.id)) return;
-    list.push({ id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) });
+    list.push({ id: row.id, sender: row.sender_email, text: row.text, timestamp: toTime(row.created_at) });
     list.sort((a, b) => a.timestamp - b.timestamp);
 
     addFriendIfNew(row.member_a === myEmail ? row.member_b : row.member_a);
@@ -7219,7 +7266,7 @@ function addCloudFile(row, render) {
     list.push({
         id,
         sender: row.sender_email,
-        timestamp: Date.parse(row.created_at),
+        timestamp: toTime(row.created_at),
         file: { path: row.path, name: row.file_name, type: row.mime_type, size: row.size_bytes }
     });
     list.sort((a, b) => a.timestamp - b.timestamp);
@@ -7540,31 +7587,65 @@ function stopCloudChat() {
 }
 
 // --- Notifications: new messages from friends + "What's new" (updates.js) ---
-// What each person has already seen is remembered on this device:
+// What each person has already seen:
 // { messagesSeenAt / sharedSeenAt / classSeenAt: time of the newest friend message / shared note /
-//   class event seen, updatesSeen: [update ids] }
+//   class event seen, updatesSeen: [update ids], clearedAt: when Messages was last cleared }
+// It's kept with the account (appState.notifSeen, synced like the planner), so seeing something on
+// one device counts on all of them, and on this device as a backup. Each time only ever moves
+// forward, so nothing seen can come back as new.
 const NOTIF_MESSAGE_LIMIT = 20;
+const NOTIF_TIMES = ['messagesSeenAt', 'sharedSeenAt', 'classSeenAt', 'clearedAt'];
 
 function notifStorageKey() {
     return `procrastinote_notifications_${(appState.user?.email || '').toLowerCase()}`;
 }
 
+// The later of two "seen" records (a broken time counts as 0, never as "nothing seen")
+function mergeNotifSeen(a, b) {
+    const time = v => (Number.isFinite(v) ? v : 0);
+    const merged = {};
+    NOTIF_TIMES.forEach(k => { merged[k] = Math.max(time(a?.[k]), time(b?.[k])); });
+    merged.updatesSeen = [...new Set([...(Array.isArray(a?.updatesSeen) ? a.updatesSeen : []),
+        ...(Array.isArray(b?.updatesSeen) ? b.updatesSeen : [])])];
+    return merged;
+}
+
 function getNotifSeen() {
+    let local = {};
     try {
-        const seen = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
-        return {
-            messagesSeenAt: seen.messagesSeenAt || 0, sharedSeenAt: seen.sharedSeenAt || 0,
-            classSeenAt: seen.classSeenAt || 0, updatesSeen: seen.updatesSeen || []
-        };
-    } catch (e) {
-        return { messagesSeenAt: 0, sharedSeenAt: 0, classSeenAt: 0, updatesSeen: [] };
-    }
+        local = JSON.parse(localStorage.getItem(notifStorageKey())) || {};
+    } catch (e) { /* blocked or broken: the account's copy still counts */ }
+    return mergeNotifSeen(local, appState.notifSeen);
 }
 
 function setNotifSeen(seen) {
+    const merged = mergeNotifSeen(getNotifSeen(), seen);
     try {
-        localStorage.setItem(notifStorageKey(), JSON.stringify(seen));
-    } catch (e) { /* storage full or blocked: badges just reappear next time */ }
+        localStorage.setItem(notifStorageKey(), JSON.stringify(merged));
+    } catch (e) { /* storage full or blocked: the account's copy still counts */ }
+    if (JSON.stringify(merged) === JSON.stringify(mergeNotifSeen(appState.notifSeen, {}))) return;
+    // Save with the account (without redrawing every page, as saveState would)
+    appState.notifSeen = merged;
+    const email = appState.user?.email?.toLowerCase();
+    if (email && allUsers[email]) {
+        allUsers[email].data = { ...(allUsers[email].data || {}), notifSeen: merged };
+        try { localStorage.setItem(USERS_KEY, JSON.stringify(allUsers)); } catch (e) { /* full */ }
+        schedulePlannerSync();
+    }
+}
+
+// Messages clear themselves each day: ones you've seen from before today aren't listed, and
+// "Clear" hides everything up to now. Unread ones always show. (The chats keep everything.)
+function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+}
+
+function showInMessages(ts, seenAt, seen) {
+    if (!Number.isFinite(ts)) return false;
+    if (ts <= (seen.clearedAt || 0)) return false;
+    return ts > seenAt || ts >= startOfToday();
 }
 
 const appUpdates = () => (Array.isArray(window.PROCRASTINOTE_UPDATES) ? window.PROCRASTINOTE_UPDATES : []);
@@ -7589,7 +7670,7 @@ async function loadFriendNotifications() {
         .limit(NOTIF_MESSAGE_LIMIT);
     const rows = data.concat(files.error ? [] : files.data.map(fileNotificationRow));
     friendNotifications = rows
-        .map(row => ({ id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) }))
+        .map(row => ({ id: row.id, sender: row.sender_email, text: row.text, timestamp: toTime(row.created_at) }))
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, NOTIF_MESSAGE_LIMIT);
     renderNotifications();
@@ -7599,7 +7680,7 @@ function addFriendNotification(row) {
     const myEmail = appState.user?.email?.toLowerCase();
     if (!myEmail || row.sender_email === myEmail) return;
     if (friendNotifications.some(n => n.id === row.id)) return;
-    const note = { id: row.id, sender: row.sender_email, text: row.text, timestamp: Date.parse(row.created_at) };
+    const note = { id: row.id, sender: row.sender_email, text: row.text, timestamp: toTime(row.created_at) };
     friendNotifications.unshift(note);
     friendNotifications = friendNotifications.slice(0, NOTIF_MESSAGE_LIMIT);
 
@@ -7666,17 +7747,33 @@ function renderNotifications(seenOverride) {
         classItems.filter(n => n.ts > badgeSeen.classSeenAt).length);
     setNotifBadge('updates', updates.filter(u => !badgeSeen.updatesSeen.includes(u.id)).length);
 
+    // Only today's messages and unread ones are listed (see showInMessages)
+    const shownFriends = friendNotifications.filter(n => showInMessages(n.timestamp, seen.messagesSeenAt, badgeSeen));
+    const shownShared = sharedNotes.filter(n => showInMessages(n.timestamp, seen.sharedSeenAt, badgeSeen));
+    const shownClass = classItems.filter(n => showInMessages(n.ts, seen.classSeenAt, badgeSeen));
+
     const classTitle = document.getElementById('notif-classes-title');
     const classList = document.getElementById('notif-classes');
-    if (window.Classes && classTitle && classList) Classes.renderNotificationList(classList, classTitle, seen.classSeenAt);
+    if (window.Classes && classTitle && classList) {
+        Classes.renderNotificationList(classList, classTitle, seen.classSeenAt, item => showInMessages(item.ts, seen.classSeenAt, badgeSeen));
+    }
 
+    const clearBtn = document.getElementById('notif-clear');
+    const caughtUp = document.getElementById('notif-caught-up');
+    const nothingShown = !shownFriends.length && !shownShared.length && !shownClass.length;
+    if (clearBtn) clearBtn.hidden = nothingShown;
+    if (caughtUp) caughtUp.hidden = !nothingShown || !(cloud && appState.user?.cloudId);
+
+    const friendsTitle = document.getElementById('notif-friends-title');
     messagesEl.innerHTML = '';
     if (!cloud || !appState.user?.cloudId) {
         messagesEl.innerHTML = '<li class="notif-empty">Log in to an online account to get messages from friends.</li>';
-    } else if (friendNotifications.length === 0) {
-        messagesEl.innerHTML = '<li class="notif-empty">No messages from friends yet.</li>';
+        if (friendsTitle) friendsTitle.hidden = false;
+    } else if (shownFriends.length === 0) {
+        if (friendsTitle) friendsTitle.hidden = true;
     } else {
-        friendNotifications.forEach(note => {
+        if (friendsTitle) friendsTitle.hidden = false;
+        shownFriends.forEach(note => {
             const li = document.createElement('li');
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -7693,9 +7790,9 @@ function renderNotifications(seenOverride) {
     const sharedTitle = document.getElementById('notif-shared-title');
     const sharedEl = document.getElementById('notif-shared');
     if (sharedTitle && sharedEl) {
-        sharedTitle.hidden = sharedEl.hidden = sharedNotes.length === 0;
+        sharedTitle.hidden = sharedEl.hidden = shownShared.length === 0;
         sharedEl.innerHTML = '';
-        sharedNotes.forEach(note => {
+        shownShared.forEach(note => {
             const li = document.createElement('li');
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -7727,10 +7824,11 @@ function openNotifications(kind = 'messages') {
     closeNotifications();
     const before = getNotifSeen();
     const after = { ...before };
+    const newest = (start, times) => Math.max(start, ...times.filter(Number.isFinite));
     if (kind === 'messages') {
-        after.messagesSeenAt = Math.max(before.messagesSeenAt, ...friendNotifications.map(n => n.timestamp));
-        after.sharedSeenAt = Math.max(before.sharedSeenAt, ...sharedNotes.map(n => n.timestamp));
-        after.classSeenAt = Math.max(before.classSeenAt, ...(window.Classes ? Classes.notificationItems().map(n => n.ts) : []));
+        after.messagesSeenAt = newest(before.messagesSeenAt, friendNotifications.map(n => n.timestamp));
+        after.sharedSeenAt = newest(before.sharedSeenAt, sharedNotes.map(n => n.timestamp));
+        after.classSeenAt = newest(before.classSeenAt, window.Classes ? Classes.notificationItems().map(n => n.ts) : []);
     } else {
         after.updatesSeen = appUpdates().map(u => u.id);
     }
@@ -7772,6 +7870,14 @@ Object.entries(NOTIF_PANELS).forEach(([kind, { button, panel }]) => {
     });
 });
 document.querySelectorAll('[data-notif-close]').forEach(btn => btn.addEventListener('click', closeNotifications));
+// Clear: everything up to now is seen and leaves the list (the chats keep it all)
+document.getElementById('notif-clear')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const now = Date.now();
+    setNotifSeen({ messagesSeenAt: now, sharedSeenAt: now, classSeenAt: now, clearedAt: now });
+    notifSeenWhileOpen = getNotifSeen();
+    renderNotifications();
+});
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.notif-wrap')) closeNotifications();
 });
@@ -7793,7 +7899,7 @@ const sharedNoteFromRow = row => ({
     title: row.title,
     content: row.content,
     images: Array.isArray(row.images) ? row.images.filter(src => /^https?:\/\//i.test(src)) : [],
-    timestamp: Date.parse(row.created_at)
+    timestamp: toTime(row.created_at)
 });
 
 // The table exists only after add-note-sharing.sql was run in Supabase
@@ -8174,10 +8280,13 @@ document.getElementById('btn-push-test')?.addEventListener('click', () => {
     });
 });
 
-if (PUSH_SUPPORTED) {
+// The helper (sw.js) is registered on every browser that has service workers, not only those
+// with notifications: browsers also need it to offer installing Procrastinote as an app
+if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
         .then(async registration => {
             swRegistration = registration;
+            if (!PUSH_SUPPORTED) return;
             // Turned on before closed-app notifications existed (or the save failed): try again now
             const prefs = getPushPrefs();
             if (prefs.enabled && !prefs.closedToo && Notification.permission === 'granted' && await syncPushSubscription(prefs)) {
@@ -8190,6 +8299,140 @@ if (PUSH_SUPPORTED) {
         if (e.data?.type === 'open-from-notification') openFromNotificationLink(e.data.url);
     });
 }
+
+// --- Install Procrastinote as an app ---
+// Chrome, Edge and Android browsers can install it in one tap (they send "beforeinstallprompt"
+// when it's possible; we keep that and show our own button). iPhones and iPads can't be asked
+// from the page, so the button shows the "Share > Add to Home Screen" steps instead. Once it's
+// installed (or opened from its icon) the buttons go away.
+const INSTALL_SNOOZE_KEY = 'pn-install-snooze'; // "Not now" on the dashboard button: hide it for 14 days
+let installPrompt = null;
+let justInstalled = false;
+
+const isRunningAsApp = () => window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone === true;
+const isAppleMobile = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPads say they're Macs
+
+// 'app' (opened from its icon), 'installed', 'prompt' (one tap), 'ios', or 'steps' (other browsers)
+function installMode() {
+    if (isRunningAsApp()) return 'app';
+    if (justInstalled) return 'installed';
+    if (installPrompt) return 'prompt';
+    if (isAppleMobile()) return 'ios';
+    return 'steps';
+}
+
+function installSnoozed() {
+    try {
+        return Date.now() < Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || 0);
+    } catch (e) {
+        return false;
+    }
+}
+
+function snoozeInstall(days) {
+    try { localStorage.setItem(INSTALL_SNOOZE_KEY, String(Date.now() + days * 86400000)); } catch (e) { /* private mode */ }
+    renderInstallButtons();
+}
+
+function renderInstallButtons() {
+    const mode = installMode();
+    const dash = document.getElementById('btn-install-app');
+    if (dash) dash.hidden = !(mode === 'prompt' || mode === 'ios') || installSnoozed();
+    const text = document.getElementById('install-card-text');
+    const button = document.getElementById('btn-install-card');
+    if (!text || !button) return;
+    const messages = {
+        app: 'You\'re using the Procrastinote app on this device. It updates by itself.',
+        installed: 'Installed! Open Procrastinote from its new icon. It updates by itself.',
+        prompt: 'Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It\'s free and updates by itself.',
+        ios: 'Add Procrastinote to your Home Screen: it gets its own icon, opens full screen, and can send you notifications when it\'s closed. It\'s free and updates by itself.',
+        steps: 'Install Procrastinote on this device so it gets its own icon and opens full screen. It\'s free and updates by itself.'
+    };
+    text.innerText = messages[mode];
+    button.hidden = mode === 'app' || mode === 'installed';
+    button.innerText = mode === 'prompt' ? 'Install Procrastinote' : 'Show me how';
+}
+
+// The steps for this device and browser, when it can't install in one tap
+function installSteps() {
+    const ua = navigator.userAgent;
+    if (isAppleMobile()) {
+        const where = /CriOS|EdgiOS|FxiOS/.test(ua) ? 'in the address bar' : (/iPad/.test(ua) || navigator.maxTouchPoints > 1 && !/iPhone/.test(ua) ? 'at the top of the screen' : 'at the bottom of the screen');
+        return [
+            `Tap the <strong>Share</strong> button (a square with an arrow pointing up) ${where}.`,
+            'Scroll down and tap <strong>Add to Home Screen</strong>.',
+            'Tap <strong>Add</strong>.'
+        ];
+    }
+    if (/Android/.test(ua)) {
+        return [
+            'Open your browser\'s menu (<strong>⋮</strong> or <strong>☰</strong>).',
+            'Tap <strong>Install app</strong> or <strong>Add to Home screen</strong>.',
+            'Tap <strong>Install</strong> (or <strong>Add</strong>).'
+        ];
+    }
+    if (/Firefox/.test(ua)) {
+        return [
+            'Firefox on computers can\'t install apps from websites.',
+            'Open <strong>procrastinote.vercel.app</strong> in <strong>Chrome</strong> or <strong>Edge</strong> and press <strong>Install app</strong> there.'
+        ];
+    }
+    if (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) {
+        return [
+            'In the menu bar, choose <strong>File</strong> then <strong>Add to Dock</strong>.',
+            'Click <strong>Add</strong>.'
+        ];
+    }
+    return [
+        'Look for the <strong>install</strong> icon at the right end of the address bar (a screen with a down arrow) and click it.',
+        'No icon? Open the browser menu (<strong>⋮</strong> or <strong>…</strong>) and choose <strong>Install Procrastinote</strong> (in Edge: <strong>Apps</strong> then <strong>Install this site as an app</strong>).'
+    ];
+}
+
+async function installApp() {
+    const mode = installMode();
+    if (mode === 'prompt') {
+        const prompt = installPrompt;
+        installPrompt = null; // it can only be used once
+        prompt.prompt();
+        try {
+            const { outcome } = await prompt.userChoice;
+            if (outcome === 'accepted') justInstalled = true;
+        } catch (e) { /* closed */ }
+        renderInstallButtons();
+        return;
+    }
+    if (mode === 'app' || mode === 'installed') return;
+    document.getElementById('install-steps').innerHTML = installSteps().map(step => `<li>${step}</li>`).join('');
+    document.getElementById('install-dialog').showModal();
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // our own button asks instead of the browser's banner
+    installPrompt = e;
+    renderInstallButtons();
+});
+
+window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    justInstalled = true;
+    renderInstallButtons();
+});
+
+window.matchMedia('(display-mode: standalone)').addEventListener?.('change', renderInstallButtons);
+
+document.querySelectorAll('[data-install]').forEach(btn => btn.addEventListener('click', installApp));
+document.getElementById('install-dialog-ok')?.addEventListener('click', () => {
+    document.getElementById('install-dialog').close();
+    snoozeInstall(30); // they're doing it now; don't keep showing the dashboard button
+});
+document.getElementById('install-dialog-later')?.addEventListener('click', () => {
+    document.getElementById('install-dialog').close();
+    snoozeInstall(14);
+});
+renderInstallButtons();
 
 // On page load: make sure the saved login is still a valid online session
 async function restoreCloudSession() {
