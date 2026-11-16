@@ -4104,7 +4104,7 @@ const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 // which the dock's moon/sun button switches between light and dark.
 const THEME_SKINS = {
     trueblack: { mode: 'dark', bar: '#000000', fonts: 'family=Figtree:wght@400;500;600;700;800' },
-    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
+    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Kalam:wght@400;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
     exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' },
     // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
     classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' },

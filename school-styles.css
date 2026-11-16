@@ -8497,7 +8497,7 @@ body.external-pip-body .pip-header {
 /* ---------- Paper: ruled notebook paper, ink colours, a serif and a handwriting font ---------- */
 [data-skin="paper"] {
     --font-sans: 'Lora', Georgia, 'Times New Roman', serif;
-    --font-serif: 'Caveat', 'Segoe Print', cursive;
+    --font-serif: 'Kalam', 'Segoe Print', cursive; /* handwriting that's still easy to read */
     --bg: #FBF6EA;
     --glow-opacity: 0;
     --surface: #FFFDF7;
@@ -8564,7 +8564,8 @@ body.external-pip-body .pip-header {
 /* Handwritten touches: the little labels and the highlighted words */
 [data-skin="paper"] .eyebrow {
     font-family: var(--font-serif);
-    font-size: 1.45rem;
+    font-size: 1.15rem;
+    line-height: 1.3;
     font-weight: 700;
     letter-spacing: 0;
     text-transform: none;
@@ -8576,7 +8577,7 @@ body.external-pip-body .pip-header {
     font-family: var(--font-serif);
     font-style: normal;
     font-weight: 700;
-    font-size: 1.15em;
+    font-size: 1em;
     background: none;
     color: var(--accent);
 }
@@ -8813,9 +8814,9 @@ body.external-pip-body .pip-header {
 [data-skin="paper"] .card-title-wrap h3,
 [data-skin="paper"] .card > h3 {
     font-family: var(--font-serif);
-    font-size: 1.75rem;
+    font-size: 1.3rem;
     font-weight: 700;
-    line-height: 1;
+    line-height: 1.2;
     color: var(--ink);
 }
 
