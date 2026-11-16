@@ -5379,6 +5379,8 @@ function updateTimerDisplay() {
         const leftDeg = Math.min(displaySecs, 3600) / 10;
         display.style.setProperty('--left-deg', `${leftDeg}deg`);
         display.style.setProperty('--sec-deg', `${new Date().getSeconds() * 6}deg`);
+        // Blossom's flower: 0 = a closed bud at the start, 1 = fully open when the time is up
+        display.style.setProperty('--done', Math.min(1, Math.max(0, 1 - ratio)).toFixed(3));
     }
     
     // Sync tab title if running
