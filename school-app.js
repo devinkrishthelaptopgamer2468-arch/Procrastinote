@@ -4219,6 +4219,7 @@ function switchThemeWithReveal(nextTheme, originEl, skin = '') {
     const change = () => {
         appState.settings.theme = nextTheme;
         appState.settings.skin = skin;
+        appState.settings.themeAt = Date.now(); // the newest choice wins when devices sync
         applyTheme();
         saveState();
     };
@@ -6465,6 +6466,7 @@ function handleAICommand(input) {
     if (text.includes('dark mode') || text.includes('dark theme')) {
         appState.settings.theme = 'dark';
         if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = ''; // Classic can be dark, so it stays
+        appState.settings.themeAt = Date.now();
         applyTheme();
         saveState();
         return "Switching to Dark Mode. 🌙";
@@ -6472,6 +6474,7 @@ function handleAICommand(input) {
     if (text.includes('light mode') || text.includes('light theme')) {
         appState.settings.theme = 'light';
         if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = '';
+        appState.settings.themeAt = Date.now();
         applyTheme();
         saveState();
         return "Switching to Light Mode. ☀️";
@@ -8692,6 +8695,14 @@ function mergePlannerField(baseJson, localValue, remoteValue) {
     return localValue; // simple values: the change made here wins
 }
 
+// Light/dark and the theme are one choice: take both from whichever device chose most recently,
+// so merging two devices never mixes them (like Paper's look with another device's dark mode)
+function keepNewestThemeChoice(merged, local, remote) {
+    if (!merged || !local || !remote) return merged;
+    const newest = (remote.themeAt || 0) > (local.themeAt || 0) ? remote : local;
+    return { ...merged, theme: newest.theme, skin: newest.skin || '', themeAt: newest.themeAt || 0 };
+}
+
 function rememberPlannerBase(data, updatedAt) {
     plannerBase = {};
     PLANNER_SYNC_FIELDS.forEach(field => { plannerBase[field] = JSON.stringify(data[field]); });
@@ -8715,6 +8726,7 @@ async function pushPlannerData() {
             PLANNER_SYNC_FIELDS.forEach(field => {
                 toSave[field] = mergePlannerField(base[field], local[field], (remote.data || {})[field]);
             });
+            toSave.settings = keepNewestThemeChoice(toSave.settings, local.settings, (remote.data || {}).settings);
             if (appState.user?.cloudId === userId) applyRemotePlanner(toSave);
         }
     }
