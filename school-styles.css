@@ -10423,3 +10423,38 @@ body.external-pip-body .pip-header {
         animation: none !important;
     }
 }
+
+/* ---------- Phones: lighter and smoother ----------
+   Frosted-glass blur makes the phone redraw everything behind each card on every scroll, and the
+   moving glows repaint the whole screen, so on phones: solid cards (slightly see-through), still
+   glows, and a quick fade when switching pages instead of cards floating in one by one. */
+@media (max-width: 820px) {
+    :root {
+        --blur: none;
+    }
+
+    /* The usual look: glass becomes almost solid, so text stays easy to read without the blur */
+    :root:not([data-skin]) {
+        --surface: rgba(255, 255, 255, 0.9);
+    }
+
+    :root:not([data-skin])[data-theme="dark"] {
+        --surface: rgba(24, 30, 47, 0.94);
+    }
+
+    *,
+    *::before,
+    *::after {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+
+    .fluid-blob {
+        animation: none;
+        will-change: auto;
+    }
+
+    .view.active-view {
+        animation-duration: 0.2s;
+    }
+}

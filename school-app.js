@@ -293,13 +293,15 @@ document.querySelectorAll('.nav-links li').forEach(link => {
         const tabId = li.getAttribute('data-tab');
         document.getElementById(tabId).classList.add('active-view');
         closePhoneNav();
-        window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+        // Phones jump straight to the top: a smooth scroll while the new page appears feels slow there
+        window.scrollTo({ top: 0, behavior: reducedMotion.matches || phoneNav.matches ? 'auto' : 'smooth' });
     });
 });
 
 // When any view becomes visible (dock, back buttons, mini player...), its cards float in one after another
 function playViewEntrance(view) {
-    if (!view || reducedMotion.matches) return;
+    // Phones get a quick fade of the whole page instead (see "Phones: lighter and smoother")
+    if (!view || reducedMotion.matches || phoneNav.matches) return;
     const items = view.querySelectorAll(':scope > .view-header, .card, .timetable-switch');
     items.forEach((el, i) => el.style.setProperty('--i', Math.min(i, 10)));
     view.classList.remove('entering');
