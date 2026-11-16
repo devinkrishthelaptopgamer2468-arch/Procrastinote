@@ -6212,7 +6212,37 @@ function renderGroqKeyStatus() {
     if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
 }
 
-async function requestGroqChat(apiKey, model, sys, prompt) {
+// --- Chat memory ---
+// A chat's earlier messages go with each new question, so the AI remembers the conversation.
+// history: [{ role: 'user' | 'assistant', content }], oldest first. Only the latest few are sent,
+// to keep questions quick and inside the free limits.
+const AI_HISTORY_MESSAGES = 12;
+const AI_HISTORY_CHARS = 6000;
+
+function trimAiHistory(history) {
+    const kept = [];
+    let chars = 0;
+    for (const msg of (history || []).slice(-AI_HISTORY_MESSAGES).reverse()) {
+        const content = String(msg.content || '').trim();
+        if (!content) continue;
+        if (chars + content.length > AI_HISTORY_CHARS) break;
+        chars += content.length;
+        kept.unshift({ role: msg.role === 'assistant' ? 'assistant' : 'user', content });
+    }
+    return kept;
+}
+
+// The class AI takes one question, so the earlier messages are written into it
+function withHistoryText(prompt, history) {
+    if (!history.length) return prompt;
+    const earlier = history.map(m => `${m.role === 'assistant' ? 'You' : 'Student'}: ${m.content}`).join('\n');
+    return `Earlier in this chat:\n${earlier}\n\nNow:\n${prompt}`;
+}
+
+// Error and "no key" replies aren't real answers, so they aren't remembered
+const isAiProblemReply = text => /^API Error|brain right now|need an API key|empty response/i.test(text || '');
+
+async function requestGroqChat(apiKey, model, sys, prompt, history = []) {
     const response = await fetch(AI_CONFIG.baseUrl, {
         method: 'POST',
         headers: {
@@ -6223,6 +6253,7 @@ async function requestGroqChat(apiKey, model, sys, prompt) {
             model,
             messages: [
                 { role: "system", content: sys },
+                ...history,
                 { role: "user", content: prompt }
             ],
             // gpt-oss models think before answering; keep it short so replies stay quick
@@ -6299,10 +6330,12 @@ async function callClassAi(prompt, systemPrompt, classId) {
     }
 }
 
+// options.history: the chat so far (see "Chat memory"), so follow-up questions make sense
 async function callGroq(prompt, systemPrompt = null, options = {}) {
     const apiKey = await getGroqKey();
+    const history = trimAiHistory(options.history);
     if (!apiKey) {
-        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(prompt, systemPrompt, options.classId);
+        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(withHistoryText(prompt, history), systemPrompt, options.classId);
         return "I need an API key to think better! You can add one in Settings, or ask your class admin to add one for your class.";
     }
 
@@ -6315,7 +6348,7 @@ async function callGroq(prompt, systemPrompt = null, options = {}) {
         }
         let data;
         for (const model of models) {
-            data = await requestGroqChat(apiKey, model, sys, prompt);
+            data = await requestGroqChat(apiKey, model, sys, prompt, history);
             if (!data.rateLimited) {
                 activeGroqModel = model; // keep using the model that answered
                 break;
@@ -6332,7 +6365,7 @@ async function callGroq(prompt, systemPrompt = null, options = {}) {
             if (replacement && replacement !== activeGroqModel) {
                 console.warn(`[Groq] ${activeGroqModel} is unavailable, switching to ${replacement}`);
                 activeGroqModel = replacement;
-                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt, history);
             }
         }
 
@@ -6447,32 +6480,53 @@ function handleAICommand(input) {
     return null; // No local command matched
 }
 
+// This chat's conversation so far (until New chat or the page is reloaded)
+let aiChatHistory = [];
+
+function rememberAiTurn(question, answer) {
+    if (isAiProblemReply(answer)) return;
+    aiChatHistory.push({ role: 'user', content: question }, { role: 'assistant', content: answer });
+}
+
 async function processAIInput() {
     const inputEl = document.getElementById('ai-user-input');
     const text = inputEl.value.trim();
     if (!text) return;
-    
+
     addMessage(text, false);
     inputEl.value = '';
-    
+
     const statusText = document.getElementById('ai-status-text');
     if (statusText) statusText.innerText = "Thinking...";
-    
+
     // Check for local commands first
     const localResponse = handleAICommand(text);
     if (localResponse) {
+        rememberAiTurn(text, localResponse);
         setTimeout(() => {
             addMessage(localResponse, true);
             if (statusText) statusText.innerText = "Online";
         }, 600);
         return;
     }
-    
-    // Otherwise, call Groq
-    const botResponse = await callGroq(text);
+
+    // Otherwise, call Groq, with the chat so far
+    const history = aiChatHistory.slice();
+    const botResponse = await callGroq(text, null, { history });
+    rememberAiTurn(text, botResponse);
     addMessage(botResponse, true);
     if (statusText) statusText.innerText = "Online";
 }
+
+// New chat: forget the conversation and start over with just the greeting
+document.getElementById('ai-new-chat-btn')?.addEventListener('click', () => {
+    aiChatHistory = [];
+    const chatMessages = document.getElementById('ai-chat-messages');
+    if (chatMessages) {
+        chatMessages.querySelectorAll('.ai-message:not(:first-child):not(#ai-key-guide)').forEach(msg => msg.remove());
+    }
+    document.getElementById('ai-user-input')?.focus();
+});
 
 // UI Event Listeners
 document.getElementById('ai-mascot-fab')?.addEventListener('click', () => {
@@ -9062,9 +9116,14 @@ async function sendChatMessage() {
         
         let aiResponse = "";
         
+        // This chat's earlier messages (not the one just sent), so the buddy remembers the conversation
+        const history = chats[roomId].slice(0, -1)
+            .filter(m => m.text && !m.file)
+            .map(m => ({ role: m.sender === buddy.id ? 'assistant' : 'user', content: m.text }));
+
         // With an AI key (their own or their class's), ask the AI
         if (await aiAvailable()) {
-            aiResponse = await callGroq(prompt, buddy.systemPrompt);
+            aiResponse = await callGroq(prompt, buddy.systemPrompt, { history });
         }
         
         // If empty, failed, or standard key is used (we fallback if it looks like default/error)

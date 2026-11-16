@@ -6322,6 +6322,12 @@ body.external-pip-body .pip-header {
     box-shadow: 0 0 8px #7CF3C6;
 }
 
+/* New chat sits just before the close button */
+.ai-new-chat-btn {
+    margin-left: auto;
+    margin-right: 8px;
+}
+
 .close-chat-btn {
     width: 32px;
     height: 32px;
