@@ -8606,6 +8606,228 @@ body.external-pip-body .pip-header {
     background: var(--accent);
 }
 
+/* On computers the dock becomes a row of notebook index tabs along the bottom edge,
+   each page its own soft colour; the open page's tab is taller, white and outlined */
+@media (min-width: 821px) {
+    [data-skin="paper"] .dock {
+        bottom: 0;
+        max-width: calc(100vw - 180px); /* room for the AI helper button; narrower windows scroll the tabs */
+        padding: 8px 14px 0;
+        gap: 4px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    [data-skin="paper"] .dock::-webkit-scrollbar {
+        display: none;
+    }
+
+    [data-skin="paper"] .nav-links,
+    [data-skin="paper"] .dock-utils {
+        gap: 4px;
+    }
+
+    [data-skin="paper"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="paper"] .dock-item,
+    [data-skin="paper"] .dock-item:hover {
+        width: auto;
+        height: 46px;
+        padding: 12px 15px 0;
+        align-items: flex-start;
+        gap: 7px;
+        border: 0;
+        border-radius: 12px 12px 0 0;
+        background: var(--tab, #F3E3C2);
+        color: #1F2A44;
+        box-shadow: 0 -1px 0 rgba(31, 42, 68, 0.08) inset;
+        cursor: pointer;
+        transition: height 0.18s var(--ease-out);
+    }
+
+    [data-skin="paper"] .dock-item:hover {
+        height: 52px;
+    }
+
+    [data-skin="paper"] .dock-item .nav-icon {
+        width: 17px;
+        height: 17px;
+        flex-shrink: 0;
+    }
+
+    /* Page tabs are words, like a real notebook; the moon/sun and Log out tabs are icons */
+    [data-skin="paper"] .nav-links .dock-item .nav-icon,
+    [data-skin="paper"] .dock-utils .dock-item .nav-label {
+        display: none;
+    }
+
+    [data-skin="paper"] .dock-utils .dock-item {
+        padding-left: 13px;
+        padding-right: 13px;
+    }
+
+    [data-skin="paper"] .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-family: var(--font-sans);
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 17px;
+    }
+
+    [data-skin="paper"] .dock-item.active {
+        height: 58px;
+        background: #FFFFFF;
+        border: 2px solid #1F2A44;
+        border-bottom: 0;
+        padding-top: 10px;
+        font-weight: 700;
+    }
+
+    [data-skin="paper"] .dock-item.active .nav-label {
+        font-weight: 700;
+    }
+
+    [data-skin="paper"] .dock-item.active::after {
+        display: none;
+    }
+
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+1) { --tab: #F6D6D2; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+2) { --tab: #D8E6F5; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+3) { --tab: #E3EFD5; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+4) { --tab: #F3E3C2; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+5) { --tab: #E5DDF3; }
+    [data-skin="paper"] .dock-utils .dock-item { --tab: #EDE6D6; }
+
+    /* Keep the "Created by" note clear of the tabs */
+    [data-skin="paper"] .app-credit {
+        bottom: 76px;
+    }
+    [data-skin="paper"] #logout-btn:hover { color: var(--accent); }
+}
+
+/* ---------- Exam Mode: quiet greys, one calm blue, nothing drifting or pinging ---------- */
+[data-skin="exam"] {
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #ECEEF1;
+    --glow-opacity: 0;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: #DADEE4;
+    --hairline: #E3E6EB;
+    --hairline-strong: #D3D7DE;
+    --inset: #F3F4F6;
+    --inset-hover: #E8EAEE;
+    --field: #FFFFFF;
+    --field-border: #CDD2DA;
+    --text: #23272F;
+    --text-2: #4B5466;
+    --text-3: #6B7385;
+    --accent: #3E4F6E;
+    --accent-strong: #2F3D57;
+    --accent-soft: rgba(62, 79, 110, 0.1);
+    --accent-ring: rgba(62, 79, 110, 0.28);
+    --grad: linear-gradient(#3E4F6E, #3E4F6E);
+    --grad-soft: linear-gradient(rgba(62, 79, 110, 0.07), rgba(62, 79, 110, 0.07));
+    --shadow-sm: none;
+    --shadow-md: 0 1px 2px rgba(35, 39, 47, 0.06);
+    --shadow-lg: 0 2px 8px rgba(35, 39, 47, 0.08);
+    --shadow-accent: none;
+    --blur: none;
+    --radius-lg: 14px;
+}
+
+[data-skin="exam"] body,
+[data-skin="exam"] .fluid-bg {
+    background: #ECEEF1;
+}
+
+[data-skin="exam"] .fluid-blob,
+[data-skin="exam"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="exam"] .card {
+    border: 1px solid var(--surface-border);
+}
+
+[data-skin="exam"] .eyebrow {
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-3);
+}
+
+[data-skin="exam"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: 800;
+    background: none;
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="exam"] .primary-btn,
+[data-skin="exam"] .primary-btn:hover {
+    color: #FFFFFF;
+    box-shadow: none;
+}
+
+[data-skin="exam"] input[type="checkbox"] {
+    accent-color: #3E4F6E;
+}
+
+/* No red dots asking for attention while you revise */
+[data-skin="exam"] .notif-badge {
+    display: none !important;
+}
+
+[data-skin="exam"] .dock {
+    background: #E2E5EA;
+    border-color: #D3D7DE;
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+}
+
+[data-skin="exam"] .dock-item.active {
+    background: #FFFFFF;
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(35, 39, 47, 0.12);
+}
+
+[data-skin="exam"] .dock-item.active::after {
+    display: none;
+}
+
+.exam-mode-bar {
+    display: none;
+}
+
+[data-skin="exam"] .exam-mode-bar:not(:empty) {
+    display: block;
+    margin: 0 0 1.1rem;
+    padding: 0.7rem 1rem;
+    border-radius: 12px;
+    background: #DADEE4;
+    color: #3A4252;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
 /* Respect people who ask their device for less motion */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

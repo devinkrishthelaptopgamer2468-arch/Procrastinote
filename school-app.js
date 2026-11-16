@@ -600,6 +600,7 @@ function removeExam(id) {
 }
 
 function renderExams() {
+    updateExamModeBar();
     const list = document.getElementById('dash-exam-list');
     if (!list) return;
     const exams = upcomingExams().slice(0, 4); // the next few; the Exams page has the rest
@@ -4099,11 +4100,29 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
 // Themes (Settings > Themes): a skin changes the whole look on top of light/dark.
-// 'trueblack' is always dark, 'paper' always light; none = the standard calm-glass look.
+// 'trueblack' is always dark, 'paper' and 'exam' always light; none = the usual Procrastinote look,
+// which the dock's moon/sun button switches between light and dark.
 const THEME_SKINS = {
     trueblack: { mode: 'dark', bar: '#000000', fonts: 'family=Figtree:wght@400;500;600;700;800' },
-    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' }
+    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
+    exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' }
 };
+
+// Exam Mode keeps the next exam in view at the top of every page
+function updateExamModeBar() {
+    const bar = document.getElementById('exam-mode-bar');
+    if (!bar) return;
+    // Reads the page's attribute (not THEME_SKINS) because renderExams can run before this part of the file
+    if (document.documentElement.dataset.skin !== 'exam') { bar.textContent = ''; return; }
+    const next = upcomingExams()[0];
+    if (!next) {
+        bar.textContent = 'Exam Mode is on. Add your exams on the Exams page to see a countdown here.';
+        return;
+    }
+    const daysLeft = Math.round((parseDay(next.date) - parseDay(formatDateString(new Date()))) / 86400000);
+    const when = daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`;
+    bar.textContent = `Exam Mode is on. Next exam: ${examTitle(next)}, ${when}.`;
+}
 
 const currentSkin = () => (THEME_SKINS[appState.settings?.skin] ? appState.settings.skin : '');
 
@@ -4139,8 +4158,10 @@ function applyTheme() {
     const toggleSwitch = document.getElementById('theme-checkbox');
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
 
+    updateExamModeBar();
+
     // Settings > Themes: mark the chosen one
-    const choice = skin || appState.settings?.theme || 'system';
+    const choice = skin || 'procrastinote';
     document.querySelectorAll('.theme-option').forEach(btn => {
         btn.setAttribute('aria-checked', String(btn.dataset.themeChoice === choice));
     });
@@ -4150,7 +4171,10 @@ document.querySelectorAll('.theme-option').forEach(btn => {
     btn.addEventListener('click', () => {
         const choice = btn.dataset.themeChoice;
         const skin = THEME_SKINS[choice] ? choice : '';
-        switchThemeWithReveal(skin ? THEME_SKINS[skin].mode : choice, btn, skin);
+        if (skin === currentSkin()) return;
+        // Back to Procrastinote from another theme: follow the device until the moon/sun button is used
+        const theme = skin ? THEME_SKINS[skin].mode : (currentSkin() ? 'system' : (appState.settings?.theme || 'system'));
+        switchThemeWithReveal(theme, btn, skin);
     });
 });
 

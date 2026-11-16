@@ -414,6 +414,8 @@
 
         <!-- Main content -->
         <main class="content-area">
+            <!-- Exam Mode theme only: the next exam, always in view -->
+            <p id="exam-mode-bar" class="exam-mode-bar" role="status"></p>
 
             <!-- Dashboard -->
             <section id="dashboard" class="view active-view">
@@ -748,17 +750,9 @@
                         </div>
                         <p class="subtitle card-sub">Pick how Procrastinote looks. It follows you to your other devices.</p>
                         <div class="theme-options" role="radiogroup" aria-label="Theme">
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="system" aria-checked="false">
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="procrastinote" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#070A12"></i><i style="background:#5B6CF0"></i></span>
-                                <span class="theme-option-text"><strong>Follow my device</strong><small>Light or dark, like your phone</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="light" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#FFFFFF"></i><i style="background:#5B6CF0"></i></span>
-                                <span class="theme-option-text"><strong>Light</strong><small>Calm glass, light</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="dark" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#070A12"></i><i style="background:#161C2D"></i><i style="background:#8B97FF"></i></span>
-                                <span class="theme-option-text"><strong>Dark</strong><small>Calm glass, dark</small></span>
+                                <span class="theme-option-text"><strong>Procrastinote</strong><small>The usual colours. Light or dark with the moon/sun button</small></span>
                             </button>
                             <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
@@ -767,6 +761,10 @@
                             <button type="button" class="theme-option" role="radio" data-theme-choice="paper" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#FBF6EA"></i><i style="background:#FFFDF7"></i><i style="background:#B3261E"></i></span>
                                 <span class="theme-option-text"><strong>Paper</strong><small>Like writing in a notebook</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="exam" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#ECEEF1"></i><i style="background:#FFFFFF"></i><i style="background:#3E4F6E"></i></span>
+                                <span class="theme-option-text"><strong>Exam Mode</strong><small>Quiet and plain, with your next exam at the top</small></span>
                             </button>
                         </div>
                     </div>
