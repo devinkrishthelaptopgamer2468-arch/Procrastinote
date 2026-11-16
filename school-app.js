@@ -4105,7 +4105,9 @@ const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 const THEME_SKINS = {
     trueblack: { mode: 'dark', bar: '#000000', fonts: 'family=Figtree:wght@400;500;600;700;800' },
     paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
-    exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' }
+    exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' },
+    // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
+    classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' }
 };
 
 // Exam Mode keeps the next exam in view at the top of every page
@@ -4128,7 +4130,7 @@ const currentSkin = () => (THEME_SKINS[appState.settings?.skin] ? appState.setti
 
 function resolvedTheme() {
     const skin = currentSkin();
-    if (skin) return THEME_SKINS[skin].mode;
+    if (skin && THEME_SKINS[skin].mode) return THEME_SKINS[skin].mode;
     const theme = appState.settings?.theme || 'system';
     if (theme === 'system') return prefersDark.matches ? 'dark' : 'light';
     return theme;
@@ -4152,7 +4154,7 @@ function applyTheme() {
     else document.documentElement.removeAttribute('data-skin');
     loadSkinFonts(skin);
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
-        skin ? THEME_SKINS[skin].bar : (theme === 'dark' ? '#070A12' : '#EEF1F7'));
+        skin ? (THEME_SKINS[skin].bar[theme] || THEME_SKINS[skin].bar) : (theme === 'dark' ? '#070A12' : '#EEF1F7'));
 
     // Update switch visually
     const toggleSwitch = document.getElementById('theme-checkbox');
@@ -4172,8 +4174,11 @@ document.querySelectorAll('.theme-option').forEach(btn => {
         const choice = btn.dataset.themeChoice;
         const skin = THEME_SKINS[choice] ? choice : '';
         if (skin === currentSkin()) return;
-        // Back to Procrastinote from another theme: follow the device until the moon/sun button is used
-        const theme = skin ? THEME_SKINS[skin].mode : (currentSkin() ? 'system' : (appState.settings?.theme || 'system'));
+        // Themes with a fixed look set light or dark themselves. Coming to Procrastinote or Classic from one
+        // of those follows the device until the moon/sun button is used; otherwise the last choice is kept.
+        const fixed = skin && THEME_SKINS[skin].mode;
+        const leavingFixed = THEME_SKINS[currentSkin()]?.mode;
+        const theme = fixed || (leavingFixed ? 'system' : (appState.settings?.theme || 'system'));
         switchThemeWithReveal(theme, btn, skin);
     });
 });
@@ -4211,9 +4216,9 @@ function switchThemeWithReveal(nextTheme, originEl, skin = '') {
 }
 
 document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
-    // The button is hidden in the other themes; never let it throw someone out of their theme
-    if (currentSkin()) { applyTheme(); return; }
-    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'));
+    // Hidden in themes with a fixed look; never let it throw someone out of their theme
+    if (THEME_SKINS[currentSkin()]?.mode) { applyTheme(); return; }
+    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'), currentSkin());
 });
 
 // --- Auth / Login Logic ---
@@ -6383,14 +6388,14 @@ function handleAICommand(input) {
     // 3. Theme commands
     if (text.includes('dark mode') || text.includes('dark theme')) {
         appState.settings.theme = 'dark';
-        appState.settings.skin = '';
+        if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = ''; // Classic can be dark, so it stays
         applyTheme();
         saveState();
         return "Switching to Dark Mode. 🌙";
     }
     if (text.includes('light mode') || text.includes('light theme')) {
         appState.settings.theme = 'light';
-        appState.settings.skin = '';
+        if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = '';
         applyTheme();
         saveState();
         return "Switching to Light Mode. ☀️";

@@ -2279,8 +2279,8 @@ li.empty-state::before {
     display: none;
 }
 
-/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote gets the light/dark button */
-[data-skin] .theme-toggle {
+/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote and Classic get the light/dark button */
+[data-skin]:not([data-skin="classic"]) .theme-toggle {
     display: none;
 }
 
@@ -8831,6 +8831,220 @@ body.external-pip-body .pip-header {
     color: #3A4252;
     font-size: 0.9rem;
     font-weight: 600;
+}
+
+/* ---------- Classic: Procrastinote before the 19 Oct 2026 redesign (commit 87ef882) ----------
+   Slate and bright blue, Quicksand text with Montserrat headings, solid 12px cards,
+   blue and green glows, and a sidebar down the left on computers. Light and dark both work. */
+[data-skin="classic"] {
+    --font-sans: 'Quicksand', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: Georgia, 'Times New Roman', serif; /* the old italic empty-state notes */
+    --bg: #E9EEF5;
+    --glow-1: #3B82F6;
+    --glow-2: #10B981;
+    --glow-3: #3B82F6;
+    --glow-opacity: 0.22;
+    --surface: #F8FAFC;
+    --surface-strong: #F8FAFC;
+    --surface-solid: #F8FAFC;
+    --surface-border: #D6DEE8;
+    --hairline: #D6DEE8;
+    --hairline-strong: #C3CEDC;
+    --inset: #E9EEF5;
+    --inset-hover: #D5DEEA;
+    --field: #FFFFFF;
+    --field-border: #D6DEE8;
+    --text: #1E293B;
+    --text-2: #556479;
+    --text-3: #6E7B8F;
+    --accent: #3B82F6;
+    --accent-strong: #2563EB;
+    --accent-soft: rgba(59, 130, 246, 0.12);
+    --accent-ring: rgba(59, 130, 246, 0.3);
+    --success: #10B981;
+    --danger: #EF4444;
+    --grad: linear-gradient(#3B82F6, #3B82F6);
+    --grad-soft: linear-gradient(rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.1));
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 25px -8px rgba(15, 23, 42, 0.25);
+    --shadow-accent: 0 4px 12px rgba(59, 130, 246, 0.25);
+    --blur: none;
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --classic-rail: rgba(238, 242, 248, 0.85);
+}
+
+[data-skin="classic"][data-theme="dark"] {
+    --bg: #0F172A;
+    --glow-opacity: 0.35;
+    --surface: #1E293B;
+    --surface-strong: #1E293B;
+    --surface-solid: #1E293B;
+    --surface-border: #334155;
+    --hairline: #334155;
+    --hairline-strong: #475569;
+    --inset: #0F172A;
+    --inset-hover: #263449;
+    --field: #0F172A;
+    --field-border: #334155;
+    --text: #F8FAFC;
+    --text-2: #94A3B8;
+    --text-3: #7C8AA0;
+    --accent-strong: #60A5FA;
+    --accent-soft: rgba(59, 130, 246, 0.18);
+    --shadow-lg: 0 10px 25px -8px rgba(0, 0, 0, 0.6);
+    --classic-rail: rgba(15, 23, 42, 0.85);
+}
+
+[data-skin="classic"] h1,
+[data-skin="classic"] h2,
+[data-skin="classic"] h3,
+[data-skin="classic"] h4,
+[data-skin="classic"] .brand-name,
+[data-skin="classic"] .clock,
+[data-skin="classic"] .live-clock {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    letter-spacing: -0.01em;
+}
+
+[data-skin="classic"] .view-header h2 {
+    font-size: clamp(1.9rem, 3.2vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+/* "Welcome, Arjun!": the name in plain bright blue */
+[data-skin="classic"] .highlight {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-style: normal;
+    font-weight: 800;
+    background: none;
+    color: var(--accent);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="classic"] .eyebrow {
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+[data-skin="classic"] .card {
+    border: 1px solid var(--surface-border);
+}
+
+/* Card titles sit on a thin line, with a small icon and no tinted tile */
+[data-skin="classic"] .card-title-wrap {
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--hairline);
+}
+
+[data-skin="classic"] .card-title-wrap h3 {
+    font-weight: 700;
+}
+
+[data-skin="classic"] .card-title-wrap .tile-icon {
+    width: 26px;
+    height: 26px;
+    background: transparent;
+}
+
+[data-skin="classic"] .primary-btn,
+[data-skin="classic"] .primary-btn:hover {
+    color: #FFFFFF;
+}
+
+[data-skin="classic"] .primary-btn:hover {
+    background: var(--accent-strong);
+}
+
+[data-skin="classic"] input[type="checkbox"] {
+    accent-color: #3B82F6;
+}
+
+/* The open page is a solid blue square, like the old sidebar */
+[data-skin="classic"] .dock-item.active {
+    background: var(--accent);
+    color: #FFFFFF;
+    box-shadow: var(--shadow-accent);
+}
+
+[data-skin="classic"] .dock-item.active::after {
+    display: none;
+}
+
+/* On computers the dock is the old sidebar: an icon rail down the left edge */
+@media (min-width: 821px) {
+    [data-skin="classic"] .app-container {
+        padding-left: 80px;
+    }
+
+    [data-skin="classic"] .dock {
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 80px;
+        transform: none;
+        animation: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 24px 0 20px;
+        border: 0;
+        border-right: 1px solid var(--hairline);
+        border-radius: 0;
+        background: var(--classic-rail);
+        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px);
+        box-shadow: none;
+    }
+
+    [data-skin="classic"] .nav-links,
+    [data-skin="classic"] .dock-utils {
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    [data-skin="classic"] .dock-utils {
+        margin-top: auto;
+    }
+
+    [data-skin="classic"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="classic"] .dock-item {
+        width: 56px;
+        height: 48px;
+        border-radius: 12px;
+    }
+
+    [data-skin="classic"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Page names pop out to the right of the rail */
+    [data-skin="classic"] .dock-item .nav-label {
+        left: calc(100% + 12px);
+        bottom: auto;
+        top: 50%;
+        transform: translate(-6px, -50%);
+    }
+
+    [data-skin="classic"] .dock-item:hover .nav-label {
+        transform: translate(0, -50%);
+    }
+
+    [data-skin="classic"] .app-credit {
+        left: 100px;
+    }
 }
 
 /* Respect people who ask their device for less motion */

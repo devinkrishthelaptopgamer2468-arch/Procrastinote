@@ -7,7 +7,7 @@ window.PROCRASTINOTE_UPDATES = [
         id: 'week-2026-11-16',
         date: '2026-11-16',
         title: 'This week: new themes',
-        text: 'Go to Settings > Themes to pick a new look. True Black is pure black with big, clear text and mint green highlights, easy on the eyes at night. Paper looks like a ruled notebook, with handwritten headings, and on a computer the pages become notebook tabs along the bottom. Exam Mode is quiet and plain, hides the red dots, and keeps your next exam at the top of every page. Procrastinote is the usual look: switch it between light and dark with the moon/sun button. Your theme follows you to every device you sign in on.'
+        text: 'Go to Settings > Themes to pick a new look. True Black is pure black with big, clear text and mint green highlights, easy on the eyes at night. Paper looks like a ruled notebook, with handwritten headings, and on a computer the pages become notebook tabs along the bottom. Exam Mode is quiet and plain, hides the red dots, and keeps your next exam at the top of every page. Classic brings back the original look from before October, sidebar and all. Procrastinote and Classic both switch between light and dark with the moon/sun button. Your theme follows you to every device you sign in on.'
     },
     {
         id: 'week-2026-11-09',
