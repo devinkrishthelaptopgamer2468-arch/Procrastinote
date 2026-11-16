@@ -8722,6 +8722,199 @@ body.external-pip-body .pip-header {
     [data-skin="paper"] #logout-btn:hover { color: var(--accent); }
 }
 
+/* ---------- Paper, more papery: grain, taped-on cards, a sticky note, ink stamps, hand-ticked boxes ---------- */
+[data-skin="paper"] {
+    --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.36 0 0 0 0 0.24 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --ink: #1F2A44;
+    --tape: rgba(222, 205, 160, 0.62);
+}
+
+/* The page: grain on top of the ruled lines */
+[data-skin="paper"] .fluid-bg {
+    background-image:
+        var(--paper-grain),
+        repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #DCE4EF 31px, #DCE4EF 32px);
+}
+
+/* Punched holes down the left edge on computers */
+@media (min-width: 821px) {
+    [data-skin="paper"] .fluid-bg::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 18px;
+        width: 22px;
+        background: radial-gradient(circle at 11px 11px, #E4DAC4 0 9px, #D3C7AC 9px 10px, transparent 10.5px) 0 140px / 22px 260px repeat-y;
+    }
+}
+
+/* Cards are sheets of paper: grainy, nearly square, lifted a little, taped on at the top */
+[data-skin="paper"] .card {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1px solid #EAE0CA;
+    border-radius: 3px;
+    box-shadow: 0 1px 1px rgba(31, 42, 68, 0.08), 0 10px 18px -12px rgba(31, 42, 68, 0.35);
+}
+
+[data-skin="paper"] .card.tile::before {
+    content: '';
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    width: 92px;
+    height: 24px;
+    margin-left: -46px;
+    background: var(--tape);
+    border-left: 1px dashed rgba(255, 255, 255, 0.5);
+    border-right: 1px dashed rgba(255, 255, 255, 0.5);
+    transform: rotate(-2deg);
+    pointer-events: none;
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(odd) {
+    transform: rotate(-0.35deg);
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(even) {
+    transform: rotate(0.3deg);
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(3n)::before {
+    transform: rotate(3deg);
+    left: 28%;
+}
+
+/* Upcoming exams is a yellow sticky note, stuck on (no tape) */
+[data-skin="paper"] .card.exams-card {
+    background-color: #FFF1A6;
+    border-color: #F1DE84;
+    transform: rotate(-0.8deg) !important;
+    box-shadow: 0 14px 20px -14px rgba(31, 42, 68, 0.45);
+}
+
+[data-skin="paper"] .card.exams-card::before {
+    display: none;
+}
+
+/* Card titles are handwritten in ink, underlined in red pen; icons are plain ink */
+[data-skin="paper"] .card-title-wrap {
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid rgba(179, 38, 30, 0.45);
+}
+
+/* Inside a sheet, rows aren't grey boxes */
+[data-skin="paper"] .card {
+    --inset: transparent;
+    --inset-hover: rgba(31, 42, 68, 0.04);
+}
+
+[data-skin="paper"] .card-title-wrap h3,
+[data-skin="paper"] .card > h3 {
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+}
+
+[data-skin="paper"] .card-title-wrap .tile-icon {
+    width: 30px;
+    height: 30px;
+    background: transparent;
+    color: var(--ink);
+}
+
+/* The greeting name gets a highlighter swipe */
+[data-skin="paper"] .view-header .highlight {
+    background: linear-gradient(transparent 58%, #FFE68C 58%, #FFE68C 92%, transparent 92%);
+    padding: 0 4px;
+}
+
+/* Little things are paper tags: squarer, with a pencil-line border */
+[data-skin="paper"] .planning-chip,
+[data-skin="paper"] .notif-btn,
+[data-skin="paper"] .occasion-chip {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1.5px solid rgba(31, 42, 68, 0.35);
+    border-radius: 4px;
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+}
+
+/* Buttons are rubber stamps in navy ink; outline buttons are drawn in pen */
+[data-skin="paper"] .primary-btn,
+[data-skin="paper"] .primary-btn:hover {
+    border-radius: 4px;
+    background: var(--ink);
+    box-shadow: 2px 3px 0 rgba(179, 38, 30, 0.35);
+    letter-spacing: 0.02em;
+}
+
+[data-skin="paper"] .primary-btn:active {
+    transform: translate(1px, 2px);
+    box-shadow: 0 0 0 rgba(179, 38, 30, 0.35);
+}
+
+[data-skin="paper"] .secondary-btn {
+    background: transparent;
+    border: 1.5px solid rgba(31, 42, 68, 0.55);
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+/* Rows inside cards sit on dashed pencil lines instead of grey boxes */
+[data-skin="paper"] .card .interactive-list li,
+[data-skin="paper"] .card .dash-list li,
+[data-skin="paper"] .card ul:not(.nav-links) > li {
+    background: transparent;
+    border-radius: 0;
+    border-bottom: 1.5px dashed rgba(31, 42, 68, 0.2);
+}
+
+/* Writing spaces: white paper with an ink outline */
+[data-skin="paper"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-skin="paper"] textarea,
+[data-skin="paper"] select {
+    border-radius: 4px;
+    border-width: 1.5px;
+    border-color: rgba(31, 42, 68, 0.3);
+}
+
+/* Tick boxes are drawn squares; a tick is a red pen mark */
+[data-skin="paper"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    background: #FFFFFF;
+    cursor: pointer;
+}
+
+[data-skin="paper"] input[type="checkbox"]:checked {
+    background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 13.5c2.5 1.6 4.4 3.6 6 6.5C12.2 12.4 16.4 7 22 2.5' fill='none' stroke='%23B3261E' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 22px no-repeat;
+}
+
+[data-skin="paper"] input[type="checkbox"]:focus-visible {
+    outline: 2px solid #3A55A0;
+    outline-offset: 2px;
+}
+
+/* Pop-up panels and the clock are paper too */
+[data-skin="paper"] .modal-content,
+[data-skin="paper"] .notif-panel,
+[data-skin="paper"] .live-clock,
+[data-skin="paper"] .clock-widget {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border-radius: 4px;
+}
+
 /* ---------- Exam Mode: quiet greys, one calm blue, nothing drifting or pinging ---------- */
 [data-skin="exam"] {
     --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
