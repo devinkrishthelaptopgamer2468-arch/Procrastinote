@@ -4108,6 +4108,7 @@ const THEME_SKINS = {
     exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' },
     // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
     classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' },
+    blossom: { mode: 'light', bar: '#FFF5F8', fonts: 'family=Quicksand:wght@500;600;700' },
     // Plain page, big clear words, thin lines instead of boxes; light and dark
     minimal: { mode: null, bar: { dark: '#111111', light: '#FAFAF8' }, fonts: 'family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' }
 };
