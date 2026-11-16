@@ -4107,8 +4107,33 @@ const THEME_SKINS = {
     paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
     exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' },
     // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
-    classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' }
+    classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' },
+    // Plain page, big clear words, thin lines instead of boxes; light and dark
+    minimal: { mode: null, bar: { dark: '#111111', light: '#FAFAF8' }, fonts: 'family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' }
 };
+
+// True Black on phones: the bottom bar's More button opens a second row with the other pages.
+// The row closes after picking a page; More stays lit while the open page is in that row.
+(() => {
+    const dock = document.getElementById('app-dock');
+    const more = document.getElementById('dock-more');
+    if (!dock || !more) return;
+    const label = more.querySelector('.nav-label');
+    const setOpen = (open) => {
+        dock.classList.toggle('more-open', open);
+        more.setAttribute('aria-expanded', String(open));
+        label.textContent = open ? 'Less' : 'More';
+        more.querySelector('path').setAttribute('d', open ? 'M6 9l6 6 6-6' : 'M6 15l6-6 6 6');
+    };
+    const markMore = () => {
+        const items = [...dock.querySelectorAll('.nav-links .dock-item')];
+        more.classList.toggle('has-active', items.slice(5).some(item => item.classList.contains('active')));
+    };
+    more.addEventListener('click', () => setOpen(!dock.classList.contains('more-open')));
+    dock.querySelectorAll('.nav-links .dock-item').forEach(item => item.addEventListener('click', () => setOpen(false)));
+    new MutationObserver(markMore).observe(dock.querySelector('.nav-links'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+    markMore();
+})();
 
 // Exam Mode keeps the next exam in view at the top of every page
 function updateExamModeBar() {

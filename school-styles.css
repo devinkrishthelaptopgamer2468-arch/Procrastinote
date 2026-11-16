@@ -2279,8 +2279,8 @@ li.empty-state::before {
     display: none;
 }
 
-/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote and Classic get the light/dark button */
-[data-skin]:not([data-skin="classic"]) .theme-toggle {
+/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote, Classic and Minimalist get the light/dark button */
+[data-skin]:not([data-skin="classic"]):not([data-skin="minimal"]) .theme-toggle {
     display: none;
 }
 
@@ -9044,6 +9044,323 @@ body.external-pip-body .pip-header {
 
     [data-skin="classic"] .app-credit {
         left: 100px;
+    }
+}
+
+/* ---------- True Black on phones: a bottom bar with 5 pages and More (opens a second row) ---------- */
+.dock-more {
+    display: none;
+}
+
+@media (max-width: 820px) {
+    [data-skin="trueblack"] .nav-toggle,
+    [data-skin="trueblack"] .nav-scrim,
+    [data-skin="trueblack"] .dock-panel-head,
+    [data-skin="trueblack"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="trueblack"] .dock {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: auto;
+        transform: none;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        column-gap: 4px;
+        row-gap: 0;
+        padding: 8px 8px calc(env(safe-area-inset-bottom) + 12px);
+        border: 0;
+        border-top: 1px solid #1C1C1C;
+        border-radius: 0;
+        background: #000000;
+        overflow: visible;
+        transition: none;
+        z-index: 900;
+    }
+
+    [data-skin="trueblack"] .dock.more-open {
+        row-gap: 6px;
+    }
+
+    [data-skin="trueblack"] .nav-links,
+    [data-skin="trueblack"] .dock-utils {
+        display: contents;
+    }
+
+    [data-skin="trueblack"] .dock-item {
+        width: auto !important;
+        height: 58px !important;
+        flex-direction: column;
+        justify-content: center;
+        gap: 3px;
+        padding: 0;
+        border-radius: 16px !important;
+        color: #A6A6A6;
+        animation: none !important;
+    }
+
+    [data-skin="trueblack"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    [data-skin="trueblack"] .dock-item .nav-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    [data-skin="trueblack"] .dock-item.active {
+        background: #0F2E24;
+        color: #3DE0A8;
+    }
+
+    [data-skin="trueblack"] .dock-item.active .nav-label {
+        font-weight: 800;
+    }
+
+    /* Bottom row: the first 5 pages and More */
+    [data-skin="trueblack"] .nav-links .dock-item:nth-child(-n+5) {
+        grid-row: 2;
+    }
+
+    [data-skin="trueblack"] .dock-more {
+        display: flex;
+        grid-row: 2;
+        grid-column: 6;
+        border: 1.5px solid #333333;
+        color: #F2F2F2;
+    }
+
+    [data-skin="trueblack"] .dock-more.has-active {
+        border-color: #3DE0A8;
+        color: #3DE0A8;
+    }
+
+    /* Second row (above): the other 5 pages and Log out, only while More is open */
+    [data-skin="trueblack"] .nav-links .dock-item:nth-child(n+6),
+    [data-skin="trueblack"] #logout-btn {
+        grid-row: 1;
+        display: none;
+        background: #141414;
+    }
+
+    [data-skin="trueblack"] .dock.more-open .nav-links .dock-item:nth-child(n+6),
+    [data-skin="trueblack"] .dock.more-open #logout-btn {
+        display: flex;
+    }
+
+    [data-skin="trueblack"] .dock.more-open .nav-links .dock-item.active:nth-child(n+6) {
+        background: #0F2E24;
+    }
+
+    [data-skin="trueblack"] .content-area {
+        padding-bottom: 130px;
+    }
+
+    [data-skin="trueblack"] .ai-assistant {
+        bottom: calc(env(safe-area-inset-bottom) + 96px);
+    }
+
+    [data-skin="trueblack"] body:has(.dock.more-open) .ai-assistant {
+        bottom: calc(env(safe-area-inset-bottom) + 160px);
+    }
+}
+
+/* ---------- Minimalist: a plain page, big clear words, thin lines instead of boxes ---------- */
+[data-skin="minimal"] {
+    --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #FAFAF8;
+    --glow-opacity: 0;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: #E2E2DE;
+    --hairline: #E2E2DE;
+    --hairline-strong: #CFCFCA;
+    --inset: #F0F0EC;
+    --inset-hover: #E6E6E1;
+    --field: #FFFFFF;
+    --field-border: #CFCFCA;
+    --text: #141414;
+    --text-2: #4A4A47;
+    --text-3: #6A6A66;
+    --accent: #141414;
+    --accent-strong: #000000;
+    --accent-soft: rgba(20, 20, 20, 0.07);
+    --accent-ring: rgba(20, 20, 20, 0.25);
+    --grad: linear-gradient(#141414, #141414);
+    --grad-soft: linear-gradient(rgba(20, 20, 20, 0.05), rgba(20, 20, 20, 0.05));
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: 0 20px 50px -24px rgba(0, 0, 0, 0.3);
+    --shadow-accent: none;
+    --blur: none;
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 14px;
+}
+
+[data-skin="minimal"][data-theme="dark"] {
+    --bg: #111111;
+    --surface: #181818;
+    --surface-strong: #181818;
+    --surface-solid: #181818;
+    --surface-border: #2C2C2A;
+    --hairline: #2C2C2A;
+    --hairline-strong: #3A3A38;
+    --inset: #1F1F1E;
+    --inset-hover: #282826;
+    --field: #181818;
+    --field-border: #3A3A38;
+    --text: #F2F2F0;
+    --text-2: #B5B5B0;
+    --text-3: #8F8F8A;
+    --accent: #F2F2F0;
+    --accent-strong: #FFFFFF;
+    --accent-soft: rgba(242, 242, 240, 0.1);
+    --accent-ring: rgba(242, 242, 240, 0.3);
+    --grad: linear-gradient(#F2F2F0, #F2F2F0);
+    --grad-soft: linear-gradient(rgba(242, 242, 240, 0.06), rgba(242, 242, 240, 0.06));
+    --shadow-lg: 0 20px 50px -24px rgba(0, 0, 0, 0.8);
+}
+
+[data-skin="minimal"] body,
+[data-skin="minimal"] .fluid-bg {
+    background: var(--bg);
+}
+
+[data-skin="minimal"] .fluid-blob,
+[data-skin="minimal"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="minimal"] .view-header h2 {
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+[data-skin="minimal"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: inherit;
+    background: none;
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="minimal"] .eyebrow {
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+/* No boxes: each section is a bold title on a solid line */
+[data-skin="minimal"] .card {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0.4rem 0 0.6rem;
+    border-radius: 0;
+}
+
+[data-skin="minimal"] .card-title-wrap {
+    padding-bottom: 0.65rem;
+    border-bottom: 2px solid var(--text);
+}
+
+[data-skin="minimal"] .card-title-wrap h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+[data-skin="minimal"] .card-title-wrap .tile-icon {
+    display: none;
+}
+
+[data-skin="minimal"] .primary-btn,
+[data-skin="minimal"] .primary-btn:hover {
+    color: var(--bg);
+    box-shadow: none;
+}
+
+[data-skin="minimal"] input[type="checkbox"] {
+    accent-color: var(--text);
+}
+
+[data-skin="minimal"] .dock-item.active {
+    background: var(--text);
+    color: var(--bg);
+}
+
+[data-skin="minimal"] .dock-item.active::after {
+    display: none;
+}
+
+/* On computers the dock is a plain bar along the bottom: every page's icon with its name */
+@media (min-width: 821px) {
+    [data-skin="minimal"] .dock {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        transform: none;
+        animation: none;
+        justify-content: center;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 24px calc(env(safe-area-inset-bottom) + 8px);
+        border: 0;
+        border-top: 1px solid var(--hairline);
+        border-radius: 0;
+        background: var(--surface);
+        box-shadow: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    [data-skin="minimal"] .nav-links,
+    [data-skin="minimal"] .dock-utils {
+        align-items: center;
+        gap: 4px;
+    }
+
+    [data-skin="minimal"] .dock-item {
+        width: 76px;
+        height: 58px;
+        flex-direction: column;
+        gap: 4px;
+        border-radius: 14px;
+    }
+
+    [data-skin="minimal"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    [data-skin="minimal"] .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    [data-skin="minimal"] .app-credit {
+        bottom: 90px;
     }
 }
 

@@ -410,6 +410,12 @@
                     <span class="nav-label">Log out</span>
                 </button>
             </div>
+
+            <!-- True Black on phones: the bar shows 5 pages; More opens a second row with the rest -->
+            <button type="button" class="dock-item dock-more" id="dock-more" aria-expanded="false">
+                <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></span>
+                <span class="nav-label">More</span>
+            </button>
         </nav>
 
         <!-- Main content -->
@@ -757,6 +763,10 @@
                             <button type="button" class="theme-option" role="radio" data-theme-choice="classic" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#0F172A"></i><i style="background:#1E293B"></i><i style="background:#3B82F6"></i></span>
                                 <span class="theme-option-text"><strong>Classic</strong><small>The original look, with the sidebar. Light or dark too</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="minimal" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FAFAF8"></i><i style="background:#111111"></i><i style="background:#141414"></i></span>
+                                <span class="theme-option-text"><strong>Minimalist</strong><small>Just big, clear words and thin lines. Light or dark too</small></span>
                             </button>
                             <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
