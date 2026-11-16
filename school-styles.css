@@ -2279,6 +2279,11 @@ li.empty-state::before {
     display: none;
 }
 
+/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote gets the light/dark button */
+[data-skin] .theme-toggle {
+    display: none;
+}
+
 [data-theme="dark"] .theme-toggle .icon-moon {
     display: none;
 }

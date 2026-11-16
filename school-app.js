@@ -4211,6 +4211,8 @@ function switchThemeWithReveal(nextTheme, originEl, skin = '') {
 }
 
 document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
+    // The button is hidden in the other themes; never let it throw someone out of their theme
+    if (currentSkin()) { applyTheme(); return; }
     switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'));
 });
 
