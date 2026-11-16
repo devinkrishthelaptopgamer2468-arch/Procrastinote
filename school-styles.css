@@ -2279,6 +2279,11 @@ li.empty-state::before {
     display: none;
 }
 
+/* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote, Classic and Minimalist get the light/dark button */
+[data-skin]:not([data-skin="classic"]):not([data-skin="minimal"]) .theme-toggle {
+    display: none;
+}
+
 [data-theme="dark"] .theme-toggle .icon-moon {
     display: none;
 }
@@ -6317,6 +6322,12 @@ body.external-pip-body .pip-header {
     box-shadow: 0 0 8px #7CF3C6;
 }
 
+/* New chat sits just before the close button */
+.ai-new-chat-btn {
+    margin-left: auto;
+    margin-right: 8px;
+}
+
 .close-chat-btn {
     width: 32px;
     height: 32px;
@@ -8339,6 +8350,2062 @@ body.external-pip-body .pip-header {
 
     .chat-msg-bubble-wrapper {
         max-width: 88%;
+    }
+}
+
+/* =========================================================
+   Themes (Settings > Themes). school-app.js sets data-skin on <html>.
+   ========================================================= */
+
+/* Settings card */
+.theme-options {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.theme-option {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    border-radius: var(--radius);
+    border: 1.5px solid var(--hairline);
+    background: var(--inset);
+    color: var(--text);
+    text-align: left;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+
+.theme-option:hover {
+    border-color: var(--accent-ring);
+}
+
+.theme-option[aria-checked="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.theme-swatch {
+    display: flex;
+    flex-shrink: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--hairline-strong);
+}
+
+.theme-swatch i {
+    width: 16px;
+    height: 34px;
+}
+
+.theme-option-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.theme-option-text strong {
+    font-size: 0.95rem;
+}
+
+.theme-option-text small {
+    font-size: 0.8rem;
+    color: var(--text-2);
+}
+
+/* ---------- True Black: pure black, solid cards, nothing moving, friendly and clear ---------- */
+[data-skin="trueblack"] {
+    --font-sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #000000;
+    --glow-opacity: 0;
+    --surface: #141414;
+    --surface-strong: #141414;
+    --surface-solid: #1A1A1A;
+    --surface-border: #1F1F1F;
+    --hairline: #222222;
+    --hairline-strong: #333333;
+    --inset: #1A1A1A;
+    --inset-hover: #242424;
+    --field: #141414;
+    --field-border: #333333;
+    --text: #F2F2F2;
+    --text-2: #A6A6A6;
+    --text-3: #8C8C8C;
+    --accent: #3DE0A8;
+    --accent-strong: #62EBBC;
+    --accent-soft: rgba(61, 224, 168, 0.14);
+    --accent-ring: rgba(61, 224, 168, 0.35);
+    --grad: linear-gradient(#3DE0A8, #3DE0A8);
+    --grad-soft: linear-gradient(rgba(61, 224, 168, 0.12), rgba(61, 224, 168, 0.12));
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --shadow-accent: none;
+    --blur: none;
+    --radius-lg: 22px;
+}
+
+[data-skin="trueblack"] body,
+[data-skin="trueblack"] .fluid-bg {
+    background: #000000;
+}
+
+/* No drifting glows: smoother and kinder to phone batteries */
+[data-skin="trueblack"] .fluid-blob,
+[data-skin="trueblack"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="trueblack"] .card {
+    border-color: transparent;
+}
+
+[data-skin="trueblack"] .primary-btn,
+[data-skin="trueblack"] .primary-btn:hover {
+    color: #000000;
+    box-shadow: none;
+}
+
+/* Plain, friendly labels instead of small spaced-out capitals */
+[data-skin="trueblack"] .eyebrow {
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+[data-skin="trueblack"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: 800;
+}
+
+[data-skin="trueblack"] input[type="checkbox"] {
+    accent-color: #3DE0A8;
+}
+
+[data-skin="trueblack"] .dock {
+    background: #0A0A0A;
+    border-color: #1F1F1F;
+}
+
+[data-skin="trueblack"] .dock-item.active {
+    background: #3DE0A8;
+    color: #000000;
+}
+
+[data-skin="trueblack"] .dock-item.active::after {
+    display: none;
+}
+
+/* True Black's personality, kept simple: big clear tick boxes, a bedside-clock Zen timer, mint focus rings */
+
+/* Tick boxes: big rounded squares that fill mint with a black tick */
+[data-skin="trueblack"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2px solid #5A5A5A;
+    border-radius: 8px;
+    background: #000000;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+[data-skin="trueblack"] input[type="checkbox"]:checked {
+    border-color: #3DE0A8;
+    background: #3DE0A8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 18px no-repeat;
+}
+
+/* Keyboard focus shows as a clear mint ring everywhere */
+[data-skin="trueblack"] :focus-visible {
+    outline: 3px solid #3DE0A8;
+    outline-offset: 2px;
+}
+
+/* Zen timer: like a bedside clock in a dark room. Huge white numbers, a thin mint ring */
+[data-skin="trueblack"] .timer-bg {
+    stroke: #1C1C1C;
+    stroke-width: 3;
+}
+
+[data-skin="trueblack"] .timer-bar {
+    stroke: #3DE0A8;
+    stroke-width: 3;
+}
+
+[data-skin="trueblack"] .timer-text {
+    font-size: 4.1rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #FFFFFF;
+}
+
+[data-skin="trueblack"] .noise-btn.active {
+    background: #0F2E24;
+    border-color: #3DE0A8;
+    box-shadow: none;
+}
+
+[data-skin="trueblack"] .noise-btn.active .noise-icon {
+    box-shadow: none;
+}
+
+/* ---------- Paper: ruled notebook paper, ink colours, a serif and a handwriting font ---------- */
+[data-skin="paper"] {
+    --font-sans: 'Lora', Georgia, 'Times New Roman', serif;
+    --font-serif: 'Kalam', 'Segoe Print', cursive; /* handwriting that's still easy to read */
+    --bg: #FBF6EA;
+    --glow-opacity: 0;
+    --surface: #FFFDF7;
+    --surface-strong: #FFFDF7;
+    --surface-solid: #FFFFFF;
+    --surface-border: #E6DCC6;
+    --hairline: rgba(31, 42, 68, 0.12);
+    --hairline-strong: rgba(31, 42, 68, 0.22);
+    --inset: rgba(31, 42, 68, 0.04);
+    --inset-hover: rgba(31, 42, 68, 0.08);
+    --field: #FFFFFF;
+    --field-border: rgba(31, 42, 68, 0.28);
+    --text: #1F2A44;
+    --text-2: #4A5570;
+    --text-3: #6E7689;
+    --accent: #B3261E;
+    --accent-strong: #8E1D17;
+    --accent-soft: rgba(179, 38, 30, 0.09);
+    --accent-ring: rgba(179, 38, 30, 0.25);
+    --grad: linear-gradient(#1F2A44, #1F2A44);
+    --grad-soft: linear-gradient(rgba(31, 42, 68, 0.06), rgba(31, 42, 68, 0.06));
+    --shadow-sm: 0 1px 0 rgba(31, 42, 68, 0.06);
+    --shadow-md: 0 1px 0 rgba(31, 42, 68, 0.05), 0 8px 16px -10px rgba(31, 42, 68, 0.3);
+    --shadow-lg: 0 2px 0 rgba(31, 42, 68, 0.05), 0 16px 30px -16px rgba(31, 42, 68, 0.35);
+    --shadow-accent: none;
+    --blur: none;
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+}
+
+/* The page is ruled paper with a red margin line */
+[data-skin="paper"] .fluid-bg {
+    background-color: #FBF6EA;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #DCE4EF 31px, #DCE4EF 32px);
+}
+
+[data-skin="paper"] .fluid-blob {
+    display: none;
+}
+
+[data-skin="paper"] .fluid-bg::after {
+    background: none;
+    left: 56px;
+    right: auto;
+    width: 2px;
+    background-color: #EBB3AF;
+}
+
+@media (max-width: 820px) {
+    [data-skin="paper"] .fluid-bg::after {
+        display: none; /* on a phone it would run through the text */
+    }
+}
+
+[data-skin="paper"] h1,
+[data-skin="paper"] h2,
+[data-skin="paper"] h3,
+[data-skin="paper"] h4 {
+    letter-spacing: -0.01em;
+}
+
+/* Handwritten touches: the little labels and the highlighted words */
+[data-skin="paper"] .eyebrow {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    line-height: 1.3;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #3A55A0;
+    margin-bottom: 0.2rem;
+}
+
+[data-skin="paper"] .highlight {
+    font-family: var(--font-serif);
+    font-style: normal;
+    font-weight: 700;
+    font-size: 1em;
+    background: none;
+    color: var(--accent);
+}
+
+[data-skin="paper"] .card {
+    border: 1px solid var(--surface-border);
+}
+
+[data-skin="paper"] .primary-btn,
+[data-skin="paper"] .primary-btn:hover {
+    color: #FFFDF7;
+    box-shadow: none;
+}
+
+[data-skin="paper"] input[type="checkbox"] {
+    accent-color: #1F2A44;
+}
+
+/* The dock is a strip of paper; the open page is marked with a highlighter */
+[data-skin="paper"] .dock {
+    background: #FFFDF7;
+    border: 1px solid #E6DCC6;
+    border-radius: 10px;
+}
+
+[data-skin="paper"] .dock-item.active {
+    background: #FFE68C;
+    color: #1F2A44;
+}
+
+[data-skin="paper"] .dock-item.active::after {
+    background: var(--accent);
+}
+
+/* On computers the dock becomes a row of notebook index tabs along the bottom edge,
+   each page its own soft colour; the open page's tab is taller, white and outlined */
+@media (min-width: 821px) {
+    [data-skin="paper"] .dock {
+        bottom: 0;
+        max-width: calc(100vw - 180px); /* room for the AI helper button; narrower windows scroll the tabs */
+        padding: 8px 14px 0;
+        gap: 4px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    [data-skin="paper"] .dock::-webkit-scrollbar {
+        display: none;
+    }
+
+    [data-skin="paper"] .nav-links,
+    [data-skin="paper"] .dock-utils {
+        gap: 4px;
+    }
+
+    [data-skin="paper"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="paper"] .dock-item,
+    [data-skin="paper"] .dock-item:hover {
+        width: auto;
+        height: 46px;
+        padding: 12px 15px 0;
+        align-items: flex-start;
+        gap: 7px;
+        border: 0;
+        border-radius: 12px 12px 0 0;
+        background: var(--tab, #F3E3C2);
+        color: #1F2A44;
+        box-shadow: 0 -1px 0 rgba(31, 42, 68, 0.08) inset;
+        cursor: pointer;
+        transition: height 0.18s var(--ease-out);
+    }
+
+    [data-skin="paper"] .dock-item:hover {
+        height: 52px;
+    }
+
+    [data-skin="paper"] .dock-item .nav-icon {
+        width: 17px;
+        height: 17px;
+        flex-shrink: 0;
+    }
+
+    /* Page tabs are words, like a real notebook; the moon/sun and Log out tabs are icons */
+    [data-skin="paper"] .nav-links .dock-item .nav-icon,
+    [data-skin="paper"] .dock-utils .dock-item .nav-label {
+        display: none;
+    }
+
+    [data-skin="paper"] .dock-utils .dock-item {
+        padding-left: 13px;
+        padding-right: 13px;
+    }
+
+    [data-skin="paper"] .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-family: var(--font-sans);
+        font-size: 0.9rem;
+        font-weight: 600;
+        line-height: 17px;
+    }
+
+    [data-skin="paper"] .dock-item.active {
+        height: 58px;
+        background: #FFFFFF;
+        border: 2px solid #1F2A44;
+        border-bottom: 0;
+        padding-top: 10px;
+        font-weight: 700;
+    }
+
+    [data-skin="paper"] .dock-item.active .nav-label {
+        font-weight: 700;
+    }
+
+    [data-skin="paper"] .dock-item.active::after {
+        display: none;
+    }
+
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+1) { --tab: #F6D6D2; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+2) { --tab: #D8E6F5; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+3) { --tab: #E3EFD5; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+4) { --tab: #F3E3C2; }
+    [data-skin="paper"] .nav-links .dock-item:nth-child(5n+5) { --tab: #E5DDF3; }
+    [data-skin="paper"] .dock-utils .dock-item { --tab: #EDE6D6; }
+
+    /* Keep the "Created by" note clear of the tabs */
+    [data-skin="paper"] .app-credit {
+        bottom: 76px;
+    }
+    [data-skin="paper"] #logout-btn:hover { color: var(--accent); }
+}
+
+/* ---------- Paper, more papery: grain, taped-on cards, a sticky note, ink stamps, hand-ticked boxes ---------- */
+[data-skin="paper"] {
+    --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.36 0 0 0 0 0.24 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --ink: #1F2A44;
+    --tape: rgba(222, 205, 160, 0.62);
+}
+
+/* The page: grain on top of the ruled lines */
+[data-skin="paper"] .fluid-bg {
+    background-image:
+        var(--paper-grain),
+        repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #DCE4EF 31px, #DCE4EF 32px);
+}
+
+/* Punched holes down the left edge on computers */
+@media (min-width: 821px) {
+    [data-skin="paper"] .fluid-bg::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 18px;
+        width: 22px;
+        background: radial-gradient(circle at 11px 11px, #E4DAC4 0 9px, #D3C7AC 9px 10px, transparent 10.5px) 0 140px / 22px 260px repeat-y;
+    }
+}
+
+/* Cards are sheets of paper: grainy, nearly square, lifted a little, taped on at the top */
+[data-skin="paper"] .card {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1px solid #EAE0CA;
+    border-radius: 3px;
+    box-shadow: 0 1px 1px rgba(31, 42, 68, 0.08), 0 10px 18px -12px rgba(31, 42, 68, 0.35);
+}
+
+[data-skin="paper"] .card.tile::before {
+    content: '';
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    width: 92px;
+    height: 24px;
+    margin-left: -46px;
+    background: var(--tape);
+    border-left: 1px dashed rgba(255, 255, 255, 0.5);
+    border-right: 1px dashed rgba(255, 255, 255, 0.5);
+    transform: rotate(-2deg);
+    pointer-events: none;
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(odd) {
+    transform: rotate(-0.35deg);
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(even) {
+    transform: rotate(0.3deg);
+}
+
+[data-skin="paper"] .dashboard-grid .card.tile:nth-child(3n)::before {
+    transform: rotate(3deg);
+    left: 28%;
+}
+
+/* Upcoming exams is a yellow sticky note, stuck on (no tape) */
+[data-skin="paper"] .card.exams-card {
+    background-color: #FFF1A6;
+    border-color: #F1DE84;
+    transform: rotate(-0.8deg) !important;
+    box-shadow: 0 14px 20px -14px rgba(31, 42, 68, 0.45);
+}
+
+[data-skin="paper"] .card.exams-card::before {
+    display: none;
+}
+
+/* Card titles are handwritten in ink, underlined in red pen; icons are plain ink */
+[data-skin="paper"] .card-title-wrap {
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid rgba(179, 38, 30, 0.45);
+}
+
+/* Inside a sheet, rows aren't grey boxes */
+[data-skin="paper"] .card {
+    --inset: transparent;
+    --inset-hover: rgba(31, 42, 68, 0.04);
+}
+
+[data-skin="paper"] .card-title-wrap h3,
+[data-skin="paper"] .card > h3 {
+    font-family: var(--font-serif);
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--ink);
+}
+
+[data-skin="paper"] .card-title-wrap .tile-icon {
+    width: 30px;
+    height: 30px;
+    background: transparent;
+    color: var(--ink);
+}
+
+/* The greeting name gets a highlighter swipe */
+[data-skin="paper"] .view-header .highlight {
+    background: linear-gradient(transparent 58%, #FFE68C 58%, #FFE68C 92%, transparent 92%);
+    padding: 0 4px;
+}
+
+/* Little things are paper tags: squarer, with a pencil-line border */
+[data-skin="paper"] .planning-chip,
+[data-skin="paper"] .notif-btn,
+[data-skin="paper"] .occasion-chip {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1.5px solid rgba(31, 42, 68, 0.35);
+    border-radius: 4px;
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+}
+
+/* Buttons are rubber stamps in navy ink; outline buttons are drawn in pen */
+[data-skin="paper"] .primary-btn,
+[data-skin="paper"] .primary-btn:hover {
+    border-radius: 4px;
+    background: var(--ink);
+    box-shadow: 2px 3px 0 rgba(179, 38, 30, 0.35);
+    letter-spacing: 0.02em;
+}
+
+[data-skin="paper"] .primary-btn:active {
+    transform: translate(1px, 2px);
+    box-shadow: 0 0 0 rgba(179, 38, 30, 0.35);
+}
+
+[data-skin="paper"] .secondary-btn {
+    background: transparent;
+    border: 1.5px solid rgba(31, 42, 68, 0.55);
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+/* Rows inside cards sit on dashed pencil lines instead of grey boxes */
+[data-skin="paper"] .card .interactive-list li,
+[data-skin="paper"] .card .dash-list li,
+[data-skin="paper"] .card ul:not(.nav-links) > li {
+    background: transparent;
+    border-radius: 0;
+    border-bottom: 1.5px dashed rgba(31, 42, 68, 0.2);
+}
+
+/* Writing spaces: white paper with an ink outline */
+[data-skin="paper"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-skin="paper"] textarea,
+[data-skin="paper"] select {
+    border-radius: 4px;
+    border-width: 1.5px;
+    border-color: rgba(31, 42, 68, 0.3);
+}
+
+/* Tick boxes are drawn squares; a tick is a red pen mark */
+[data-skin="paper"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    background: #FFFFFF;
+    cursor: pointer;
+}
+
+[data-skin="paper"] input[type="checkbox"]:checked {
+    background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 13.5c2.5 1.6 4.4 3.6 6 6.5C12.2 12.4 16.4 7 22 2.5' fill='none' stroke='%23B3261E' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 22px no-repeat;
+}
+
+[data-skin="paper"] input[type="checkbox"]:focus-visible {
+    outline: 2px solid #3A55A0;
+    outline-offset: 2px;
+}
+
+/* Pop-up panels and the clock are paper too */
+[data-skin="paper"] .modal-content,
+[data-skin="paper"] .notif-panel,
+[data-skin="paper"] .live-clock,
+[data-skin="paper"] .clock-widget {
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border-radius: 4px;
+}
+
+/* ---------- Paper's Zen page: a classroom wall clock and a classroom cassette player ---------- */
+.wall-clock,
+.cassette-reels {
+    display: none;
+}
+
+[data-skin="paper"] .timer-display {
+    width: min(270px, 100%);
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 1.25rem auto;
+}
+
+[data-skin="paper"] .timer-progress-svg {
+    display: none;
+}
+
+/* Dark plastic rim, cream face */
+[data-skin="paper"] .wall-clock {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 11px;
+    border-radius: 50%;
+    background: #1F2A44;
+    box-shadow: 0 12px 20px -10px rgba(31, 42, 68, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.18);
+}
+
+[data-skin="paper"] .wc-face {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: #FFFEF9;
+    box-shadow: inset 0 3px 9px rgba(31, 42, 68, 0.28);
+    overflow: hidden;
+}
+
+/* Time left: a red wedge from 12 o'clock, a full face is one hour */
+[data-skin="paper"] .wc-wedge {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(rgba(179, 38, 30, 0.2) 0 var(--left-deg, 150deg), transparent 0);
+}
+
+/* Minute marks, and thicker hour marks */
+[data-skin="paper"] .wc-ticks {
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background: repeating-conic-gradient(from -0.6deg, #1F2A44 0 1.2deg, transparent 1.2deg 6deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 90%, #000 91%);
+    mask: radial-gradient(circle closest-side, transparent 0 90%, #000 91%);
+}
+
+[data-skin="paper"] .wc-face::before {
+    content: '';
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background: repeating-conic-gradient(from -1.6deg, #1F2A44 0 3.2deg, transparent 3.2deg 30deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 84%, #000 85%);
+    mask: radial-gradient(circle closest-side, transparent 0 84%, #000 85%);
+}
+
+[data-skin="paper"] .wc-num {
+    position: absolute;
+    left: calc(50% + 34% * sin(var(--i) * 30deg));
+    top: calc(50% - 34% * cos(var(--i) * 30deg));
+    transform: translate(-50%, -50%);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #1F2A44;
+}
+
+[data-skin="paper"] .wc-brand {
+    position: absolute;
+    top: 33%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6E7689;
+}
+
+[data-skin="paper"] .wc-hand {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    transform-origin: 50% 100%;
+}
+
+/* The black hand sits at the edge of the time left */
+[data-skin="paper"] .wc-left {
+    width: 6px;
+    height: 33%;
+    margin-left: -3px;
+    border-radius: 3px 3px 1px 1px;
+    background: #1F2A44;
+    transform: rotate(var(--left-deg, 150deg));
+    transition: transform 0.45s var(--ease-out);
+}
+
+/* Red second hand, ticking (no smooth sweep, like a real classroom clock) */
+[data-skin="paper"] .wc-sec {
+    width: 2px;
+    height: 40%;
+    margin-left: -1px;
+    background: #B3261E;
+    transform: rotate(var(--sec-deg, 0deg));
+}
+
+[data-skin="paper"] .wc-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 13px;
+    height: 13px;
+    margin: -6.5px 0 0 -6.5px;
+    border-radius: 50%;
+    background: #B3261E;
+    border: 2.5px solid #1F2A44;
+}
+
+/* The minutes left, written on a paper tag under the clock */
+[data-skin="paper"] .timer-text {
+    position: static;
+    padding: 0.3rem 1rem;
+    border: 1.5px solid rgba(31, 42, 68, 0.35);
+    border-radius: 4px;
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+/* The player is a cassette: a sticker label with the sound's name, a window with two reels */
+[data-skin="paper"] .player-info {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label play" "reels play";
+    gap: 10px 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: #3A4560;
+    box-shadow: 0 10px 18px -10px rgba(31, 42, 68, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+}
+
+[data-skin="paper"] .music-icon-animated {
+    display: none;
+}
+
+[data-skin="paper"] .player-text {
+    grid-area: label;
+    padding: 6px 12px 8px;
+    border-top: 6px solid #B3261E;
+    border-radius: 4px;
+    background-color: #FFFDF7;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 21px, #DCE4EF 21px, #DCE4EF 22px);
+}
+
+[data-skin="paper"] .player-text strong {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    color: #1F2A44;
+}
+
+[data-skin="paper"] .player-text .subtitle {
+    color: #4A5570;
+}
+
+[data-skin="paper"] .cassette-reels {
+    grid-area: reels;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: 58px;
+    padding: 0 18px;
+    border-radius: 29px;
+    background: #1C2235;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+[data-skin="paper"] .cassette-reels span {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 3px solid #FFFDF7;
+    background:
+        radial-gradient(circle, #1C2235 0 5px, #FFFDF7 5px 9px, transparent 9.5px),
+        repeating-conic-gradient(#FFFDF7 0 14deg, #8E8775 14deg 60deg);
+}
+
+[data-skin="paper"] .music-player-ui.playing .cassette-reels span {
+    animation: reel-spin 2.6s linear infinite;
+}
+
+@keyframes reel-spin {
+    to { transform: rotate(360deg); }
+}
+
+[data-skin="paper"] .player-controls {
+    grid-area: play;
+    align-self: center;
+}
+
+/* Play is a chunky player key that presses down */
+[data-skin="paper"] .player-controls .icon-btn-large,
+[data-skin="paper"] .player-controls .icon-btn-large:hover {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    background: #E9E2D0;
+    color: #1F2A44;
+    border: 2px solid #1F2A44;
+    box-shadow: 0 5px 0 #1F2A44;
+}
+
+[data-skin="paper"] .player-controls .icon-btn-large:active {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 #1F2A44;
+}
+
+/* The sound choices are tapes on a shelf, each with a coloured label edge */
+[data-skin="paper"] .noise-btn {
+    border-radius: 5px;
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1.5px solid rgba(31, 42, 68, 0.3);
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+}
+
+[data-skin="paper"] .noise-icon {
+    width: 10px;
+    height: 32px;
+    border-radius: 2px;
+}
+
+[data-skin="paper"] .noise-btn.active {
+    background-color: #FFF6CF;
+    border: 2px solid #1F2A44;
+    box-shadow: 2px 3px 0 rgba(31, 42, 68, 0.25);
+}
+
+[data-skin="paper"] .noise-btn.active .noise-icon {
+    box-shadow: none;
+}
+
+[data-skin="paper"] .volume-control input[type="range"] {
+    accent-color: #1F2A44;
+}
+
+/* ---------- Exam Mode: quiet greys, one calm blue, nothing drifting or pinging ---------- */
+[data-skin="exam"] {
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #ECEEF1;
+    --glow-opacity: 0;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: #DADEE4;
+    --hairline: #E3E6EB;
+    --hairline-strong: #D3D7DE;
+    --inset: #F3F4F6;
+    --inset-hover: #E8EAEE;
+    --field: #FFFFFF;
+    --field-border: #CDD2DA;
+    --text: #23272F;
+    --text-2: #4B5466;
+    --text-3: #6B7385;
+    --accent: #3E4F6E;
+    --accent-strong: #2F3D57;
+    --accent-soft: rgba(62, 79, 110, 0.1);
+    --accent-ring: rgba(62, 79, 110, 0.28);
+    --grad: linear-gradient(#3E4F6E, #3E4F6E);
+    --grad-soft: linear-gradient(rgba(62, 79, 110, 0.07), rgba(62, 79, 110, 0.07));
+    --shadow-sm: none;
+    --shadow-md: 0 1px 2px rgba(35, 39, 47, 0.06);
+    --shadow-lg: 0 2px 8px rgba(35, 39, 47, 0.08);
+    --shadow-accent: none;
+    --blur: none;
+    --radius-lg: 14px;
+}
+
+[data-skin="exam"] body,
+[data-skin="exam"] .fluid-bg {
+    background: #ECEEF1;
+}
+
+[data-skin="exam"] .fluid-blob,
+[data-skin="exam"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="exam"] .card {
+    border: 1px solid var(--surface-border);
+}
+
+[data-skin="exam"] .eyebrow {
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-3);
+}
+
+[data-skin="exam"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: 800;
+    background: none;
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="exam"] .primary-btn,
+[data-skin="exam"] .primary-btn:hover {
+    color: #FFFFFF;
+    box-shadow: none;
+}
+
+[data-skin="exam"] input[type="checkbox"] {
+    accent-color: #3E4F6E;
+}
+
+/* No red dots asking for attention while you revise */
+[data-skin="exam"] .notif-badge {
+    display: none !important;
+}
+
+[data-skin="exam"] .dock {
+    background: #E2E5EA;
+    border-color: #D3D7DE;
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+}
+
+[data-skin="exam"] .dock-item.active {
+    background: #FFFFFF;
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(35, 39, 47, 0.12);
+}
+
+[data-skin="exam"] .dock-item.active::after {
+    display: none;
+}
+
+.exam-mode-bar {
+    display: none;
+}
+
+[data-skin="exam"] .exam-mode-bar:not(:empty) {
+    display: block;
+    margin: 0 0 1.1rem;
+    padding: 0.7rem 1rem;
+    border-radius: 12px;
+    background: #DADEE4;
+    color: #3A4252;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* ---------- Classic: Procrastinote before the 19 Oct 2026 redesign (commit 87ef882) ----------
+   Slate and bright blue, Quicksand text with Montserrat headings, solid 12px cards,
+   blue and green glows, and a sidebar down the left on computers. Light and dark both work. */
+[data-skin="classic"] {
+    --font-sans: 'Quicksand', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: Georgia, 'Times New Roman', serif; /* the old italic empty-state notes */
+    --bg: #E9EEF5;
+    --glow-1: #3B82F6;
+    --glow-2: #10B981;
+    --glow-3: #3B82F6;
+    --glow-opacity: 0.22;
+    --surface: #F8FAFC;
+    --surface-strong: #F8FAFC;
+    --surface-solid: #F8FAFC;
+    --surface-border: #D6DEE8;
+    --hairline: #D6DEE8;
+    --hairline-strong: #C3CEDC;
+    --inset: #E9EEF5;
+    --inset-hover: #D5DEEA;
+    --field: #FFFFFF;
+    --field-border: #D6DEE8;
+    --text: #1E293B;
+    --text-2: #556479;
+    --text-3: #6E7B8F;
+    --accent: #3B82F6;
+    --accent-strong: #2563EB;
+    --accent-soft: rgba(59, 130, 246, 0.12);
+    --accent-ring: rgba(59, 130, 246, 0.3);
+    --success: #10B981;
+    --danger: #EF4444;
+    --grad: linear-gradient(#3B82F6, #3B82F6);
+    --grad-soft: linear-gradient(rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.1));
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 25px -8px rgba(15, 23, 42, 0.25);
+    --shadow-accent: 0 4px 12px rgba(59, 130, 246, 0.25);
+    --blur: none;
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --classic-rail: rgba(238, 242, 248, 0.85);
+}
+
+[data-skin="classic"][data-theme="dark"] {
+    --bg: #0F172A;
+    --glow-opacity: 0.35;
+    --surface: #1E293B;
+    --surface-strong: #1E293B;
+    --surface-solid: #1E293B;
+    --surface-border: #334155;
+    --hairline: #334155;
+    --hairline-strong: #475569;
+    --inset: #0F172A;
+    --inset-hover: #263449;
+    --field: #0F172A;
+    --field-border: #334155;
+    --text: #F8FAFC;
+    --text-2: #94A3B8;
+    --text-3: #7C8AA0;
+    --accent-strong: #60A5FA;
+    --accent-soft: rgba(59, 130, 246, 0.18);
+    --shadow-lg: 0 10px 25px -8px rgba(0, 0, 0, 0.6);
+    --classic-rail: rgba(15, 23, 42, 0.85);
+}
+
+[data-skin="classic"] h1,
+[data-skin="classic"] h2,
+[data-skin="classic"] h3,
+[data-skin="classic"] h4,
+[data-skin="classic"] .brand-name,
+[data-skin="classic"] .clock,
+[data-skin="classic"] .live-clock {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    letter-spacing: -0.01em;
+}
+
+[data-skin="classic"] .view-header h2 {
+    font-size: clamp(1.9rem, 3.2vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+/* "Welcome, Arjun!": the name in plain bright blue */
+[data-skin="classic"] .highlight {
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-style: normal;
+    font-weight: 800;
+    background: none;
+    color: var(--accent);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="classic"] .eyebrow {
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+[data-skin="classic"] .card {
+    border: 1px solid var(--surface-border);
+}
+
+/* Card titles sit on a thin line, with a small icon and no tinted tile */
+[data-skin="classic"] .card-title-wrap {
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--hairline);
+}
+
+[data-skin="classic"] .card-title-wrap h3 {
+    font-weight: 700;
+}
+
+[data-skin="classic"] .card-title-wrap .tile-icon {
+    width: 26px;
+    height: 26px;
+    background: transparent;
+}
+
+[data-skin="classic"] .primary-btn,
+[data-skin="classic"] .primary-btn:hover {
+    color: #FFFFFF;
+}
+
+[data-skin="classic"] .primary-btn:hover {
+    background: var(--accent-strong);
+}
+
+[data-skin="classic"] input[type="checkbox"] {
+    accent-color: #3B82F6;
+}
+
+/* The open page is a solid blue square, like the old sidebar */
+[data-skin="classic"] .dock-item.active {
+    background: var(--accent);
+    color: #FFFFFF;
+    box-shadow: var(--shadow-accent);
+}
+
+[data-skin="classic"] .dock-item.active::after {
+    display: none;
+}
+
+/* On computers the dock is the old sidebar: an icon rail down the left edge */
+@media (min-width: 821px) {
+    [data-skin="classic"] .app-container {
+        padding-left: 80px;
+    }
+
+    [data-skin="classic"] .dock {
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 80px;
+        transform: none;
+        animation: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 24px 0 20px;
+        border: 0;
+        border-right: 1px solid var(--hairline);
+        border-radius: 0;
+        background: var(--classic-rail);
+        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px);
+        box-shadow: none;
+    }
+
+    [data-skin="classic"] .nav-links,
+    [data-skin="classic"] .dock-utils {
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    [data-skin="classic"] .dock-utils {
+        margin-top: auto;
+    }
+
+    [data-skin="classic"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="classic"] .dock-item {
+        width: 56px;
+        height: 48px;
+        border-radius: 12px;
+    }
+
+    [data-skin="classic"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Page names pop out to the right of the rail */
+    [data-skin="classic"] .dock-item .nav-label {
+        left: calc(100% + 12px);
+        bottom: auto;
+        top: 50%;
+        transform: translate(-6px, -50%);
+    }
+
+    [data-skin="classic"] .dock-item:hover .nav-label {
+        transform: translate(0, -50%);
+    }
+
+    [data-skin="classic"] .app-credit {
+        left: 100px;
+    }
+}
+
+/* Classic's personality, borrowed from the original site: your name types itself out with a
+   blinking cursor, the sidebar opens out with page names when you point at it, and light/dark
+   is the old slider switch */
+[data-skin="classic"] .view-header .highlight {
+    display: inline-block;
+    animation: classic-type 0.9s steps(9, end) 0.2s both;
+}
+
+[data-skin="classic"] .view-header .highlight::after {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 0.85em;
+    margin-left: 4px;
+    vertical-align: -0.05em;
+    background: var(--accent);
+    animation: classic-caret 1s step-end infinite;
+}
+
+@keyframes classic-type {
+    from { clip-path: inset(0 100% 0 0); }
+    to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes classic-caret {
+    50% { opacity: 0; }
+}
+
+/* The old light/dark slider switch */
+[data-skin="classic"] .theme-toggle .nav-icon {
+    display: none;
+}
+
+[data-skin="classic"] .theme-toggle::before {
+    content: '';
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: #CBD5E1;
+    transition: background-color 0.25s ease;
+}
+
+[data-skin="classic"] .theme-toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin-top: -9px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.25s var(--ease-out);
+}
+
+[data-skin="classic"][data-theme="dark"] .theme-toggle::before {
+    background: #3B82F6;
+}
+
+/* Knob on the left for light, slid right for dark (phone menu position; the rail moves it below) */
+[data-skin="classic"] .theme-toggle::after {
+    left: 17px;
+}
+
+[data-skin="classic"][data-theme="dark"] .theme-toggle::after {
+    transform: translateX(20px);
+}
+
+@media (min-width: 821px) {
+    [data-skin="classic"] .theme-toggle::after {
+        left: 9px;
+    }
+
+    /* Point at the sidebar and it opens out with the page names, like the original */
+    [data-skin="classic"] .dock {
+        transition: width 0.3s var(--ease-out), box-shadow 0.3s ease;
+    }
+
+    [data-skin="classic"] .dock:hover,
+    [data-skin="classic"] .dock:focus-within {
+        width: 230px;
+        align-items: stretch;
+        padding-left: 12px;
+        padding-right: 12px;
+        box-shadow: var(--shadow-lg);
+    }
+
+    [data-skin="classic"] .dock:hover .nav-links,
+    [data-skin="classic"] .dock:hover .dock-utils,
+    [data-skin="classic"] .dock:focus-within .nav-links,
+    [data-skin="classic"] .dock:focus-within .dock-utils {
+        align-items: stretch;
+    }
+
+    [data-skin="classic"] .dock:hover .dock-item,
+    [data-skin="classic"] .dock:focus-within .dock-item {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 14px;
+        padding: 0 16px;
+    }
+
+    [data-skin="classic"] .dock:hover .dock-item .nav-label,
+    [data-skin="classic"] .dock:focus-within .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+
+    [data-skin="classic"] .dock:hover .theme-toggle::after,
+    [data-skin="classic"] .dock:focus-within .theme-toggle::after {
+        left: 19px;
+    }
+}
+
+/* ---------- True Black on phones: a bottom bar with 5 pages and More (opens a second row) ---------- */
+.dock-more {
+    display: none;
+}
+
+@media (max-width: 820px) {
+    [data-skin="trueblack"] .nav-toggle,
+    [data-skin="trueblack"] .nav-scrim,
+    [data-skin="trueblack"] .dock-panel-head,
+    [data-skin="trueblack"] .dock-divider {
+        display: none;
+    }
+
+    [data-skin="trueblack"] .dock {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: auto;
+        transform: none;
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        column-gap: 4px;
+        row-gap: 0;
+        padding: 8px 8px calc(env(safe-area-inset-bottom) + 12px);
+        border: 0;
+        border-top: 1px solid #1C1C1C;
+        border-radius: 0;
+        background: #000000;
+        overflow: visible;
+        transition: none;
+        z-index: 900;
+    }
+
+    [data-skin="trueblack"] .dock.more-open {
+        row-gap: 6px;
+    }
+
+    [data-skin="trueblack"] .nav-links,
+    [data-skin="trueblack"] .dock-utils {
+        display: contents;
+    }
+
+    [data-skin="trueblack"] .dock-item {
+        width: auto !important;
+        height: 58px !important;
+        flex-direction: column;
+        justify-content: center;
+        gap: 3px;
+        padding: 0;
+        border-radius: 16px !important;
+        color: #A6A6A6;
+        animation: none !important;
+    }
+
+    [data-skin="trueblack"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    [data-skin="trueblack"] .dock-item .nav-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    [data-skin="trueblack"] .dock-item.active {
+        background: #0F2E24;
+        color: #3DE0A8;
+    }
+
+    [data-skin="trueblack"] .dock-item.active .nav-label {
+        font-weight: 800;
+    }
+
+    /* Bottom row: the first 5 pages and More */
+    [data-skin="trueblack"] .nav-links .dock-item:nth-child(-n+5) {
+        grid-row: 2;
+    }
+
+    [data-skin="trueblack"] .dock-more {
+        display: flex;
+        grid-row: 2;
+        grid-column: 6;
+        border: 1.5px solid #333333;
+        color: #F2F2F2;
+    }
+
+    [data-skin="trueblack"] .dock-more.has-active {
+        border-color: #3DE0A8;
+        color: #3DE0A8;
+    }
+
+    /* Second row (above): the other 5 pages and Log out, only while More is open */
+    [data-skin="trueblack"] .nav-links .dock-item:nth-child(n+6),
+    [data-skin="trueblack"] #logout-btn {
+        grid-row: 1;
+        display: none;
+        background: #141414;
+    }
+
+    [data-skin="trueblack"] .dock.more-open .nav-links .dock-item:nth-child(n+6),
+    [data-skin="trueblack"] .dock.more-open #logout-btn {
+        display: flex;
+    }
+
+    [data-skin="trueblack"] .dock.more-open .nav-links .dock-item.active:nth-child(n+6) {
+        background: #0F2E24;
+    }
+
+    [data-skin="trueblack"] .content-area {
+        padding-bottom: 130px;
+    }
+
+    [data-skin="trueblack"] .ai-assistant {
+        bottom: calc(env(safe-area-inset-bottom) + 96px);
+    }
+
+    [data-skin="trueblack"] body:has(.dock.more-open) .ai-assistant {
+        bottom: calc(env(safe-area-inset-bottom) + 160px);
+    }
+}
+
+/* ---------- Blossom: soft pinks and lilac, very round cards, pastel circles, a row of round page buttons ---------- */
+[data-skin="blossom"] {
+    --font-sans: 'Quicksand', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'Quicksand', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #FFF5F8;
+    --glow-opacity: 1;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: #FBD9E7;
+    --hairline: #F6DCE7;
+    --hairline-strong: #EFC6D7;
+    --inset: #FFF0F5;
+    --inset-hover: #FDE3EE;
+    --field: #FFFFFF;
+    --field-border: #F0C9D9;
+    --text: #43263A;
+    --text-2: #7A5A6E;
+    --text-3: #93748A;
+    --accent: #C94A80;
+    --accent-strong: #B03A72;
+    --accent-soft: rgba(226, 106, 155, 0.14);
+    --accent-ring: rgba(226, 106, 155, 0.32);
+    --grad: linear-gradient(#E26A9B, #E26A9B);
+    --grad-soft: linear-gradient(rgba(226, 106, 155, 0.1), rgba(226, 106, 155, 0.1));
+    --shadow-sm: 0 2px 6px rgba(67, 38, 58, 0.06);
+    --shadow-md: 0 8px 22px -12px rgba(67, 38, 58, 0.18);
+    --shadow-lg: 0 18px 40px -18px rgba(67, 38, 58, 0.25);
+    --shadow-accent: 0 8px 18px rgba(226, 106, 155, 0.35);
+    --blur: none;
+    --radius-sm: 14px;
+    --radius: 18px;
+    --radius-lg: 28px;
+    --radius-xl: 32px;
+}
+
+[data-skin="blossom"] body,
+[data-skin="blossom"] .fluid-bg {
+    background: #FFF5F8;
+}
+
+/* The glows become still pastel circles in the corners */
+[data-skin="blossom"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="blossom"] .fluid-blob {
+    animation: none;
+    opacity: 1;
+    border-radius: 50%;
+}
+
+[data-skin="blossom"] .blob-blue {
+    top: -60px;
+    right: -60px;
+    left: auto;
+    width: 240px;
+    height: 240px;
+    background: #FBD9E7;
+}
+
+[data-skin="blossom"] .blob-violet {
+    top: 80px;
+    right: 150px;
+    left: auto;
+    width: 64px;
+    height: 64px;
+    background: #E6DCFF;
+}
+
+[data-skin="blossom"] .blob-green {
+    bottom: -80px;
+    left: -80px;
+    right: auto;
+    width: 220px;
+    height: 220px;
+    background: #FDEAF2;
+}
+
+[data-skin="blossom"] h1,
+[data-skin="blossom"] h2,
+[data-skin="blossom"] h3 {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+[data-skin="blossom"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: 700;
+    background: none;
+    color: #E26A9B;
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="blossom"] .eyebrow {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+[data-skin="blossom"] .card {
+    border: 2px solid #FBD9E7;
+}
+
+/* A few dashboard tiles get their own soft colour, like the design */
+[data-skin="blossom"] .uniform-card {
+    --text: #2E2257;
+    --text-2: #4F4380;
+    --inset: rgba(255, 255, 255, 0.6);
+    color: var(--text);
+    background: #E6DCFF;
+    border-color: #E6DCFF;
+}
+
+[data-skin="blossom"] .study-plan-card {
+    --inset: #FFFFFF;
+    background: #FDEAF2;
+    border-color: #FDEAF2;
+}
+
+[data-skin="blossom"] .tile-icon {
+    border-radius: 50%;
+}
+
+[data-skin="blossom"] .primary-btn,
+[data-skin="blossom"] .primary-btn:hover {
+    color: #FFFFFF;
+    border-radius: 999px;
+}
+
+[data-skin="blossom"] input[type="checkbox"] {
+    accent-color: #E26A9B;
+}
+
+/* The dock is a row of round buttons; the open page is a pink circle */
+[data-skin="blossom"] .dock {
+    gap: 10px;
+    padding: 6px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+[data-skin="blossom"] .nav-links,
+[data-skin="blossom"] .dock-utils {
+    gap: 10px;
+}
+
+[data-skin="blossom"] .dock-divider {
+    display: none;
+}
+
+[data-skin="blossom"] .dock-item {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    color: #8C6A80;
+    box-shadow: 0 6px 16px rgba(67, 38, 58, 0.1);
+}
+
+[data-skin="blossom"] .dock-item:hover {
+    background: #FFFFFF;
+    color: #B03A72;
+}
+
+[data-skin="blossom"] .dock-item.active {
+    background: #E26A9B;
+    color: #FFFFFF;
+    box-shadow: 0 8px 18px rgba(226, 106, 155, 0.35);
+}
+
+[data-skin="blossom"] .dock-item.active::after {
+    display: none;
+}
+
+/* Phones: the same round buttons in a row along the bottom (slide sideways for the rest) */
+@media (max-width: 820px) {
+    [data-skin="blossom"] .nav-toggle,
+    [data-skin="blossom"] .nav-scrim,
+    [data-skin="blossom"] .dock-panel-head,
+    [data-skin="blossom"] .blob-violet {
+        display: none;
+    }
+
+    [data-skin="blossom"] .dock {
+        top: auto;
+        right: 0;
+        bottom: calc(env(safe-area-inset-bottom) + 14px);
+        left: 0;
+        width: auto;
+        transform: none;
+        flex-direction: row;
+        align-items: center;
+        padding: 6px 16px 10px;
+        border-radius: 0;
+        overflow-x: auto;
+        overflow-y: visible;
+        scrollbar-width: none;
+        transition: none;
+        z-index: 900;
+        -webkit-mask-image: linear-gradient(to right, #000 86%, transparent);
+        mask-image: linear-gradient(to right, #000 86%, transparent);
+    }
+
+    [data-skin="blossom"] .dock::-webkit-scrollbar {
+        display: none;
+    }
+
+    [data-skin="blossom"] .nav-links,
+    [data-skin="blossom"] .dock-utils {
+        flex-direction: row;
+        align-items: center;
+        margin-top: 0;
+    }
+
+    [data-skin="blossom"] .dock-item {
+        flex: 0 0 54px;
+        width: 54px !important;
+        height: 54px !important;
+        justify-content: center;
+        padding: 0;
+        border-radius: 50% !important;
+        animation: none !important;
+    }
+
+    /* Names stay for screen readers, just not shown */
+    [data-skin="blossom"] .dock-item .nav-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    [data-skin="blossom"] .content-area {
+        padding-bottom: 120px;
+    }
+
+    [data-skin="blossom"] .ai-assistant {
+        bottom: calc(env(safe-area-inset-bottom) + 90px);
+    }
+}
+
+/* ---------- Blossom's personality: drifting petals, flower ticks, and a flower that blooms while you study ---------- */
+.petals,
+.bloom {
+    display: none;
+}
+
+[data-skin="blossom"] {
+    --flower: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%23F28DB2'%3E%3Ccircle cx='12' cy='5.6' r='4.4'/%3E%3Ccircle cx='18.1' cy='10' r='4.4'/%3E%3Ccircle cx='15.8' cy='17.2' r='4.4'/%3E%3Ccircle cx='8.2' cy='17.2' r='4.4'/%3E%3Ccircle cx='5.9' cy='10' r='4.4'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='3.6' fill='%23FFD66B'/%3E%3C/svg%3E");
+}
+
+/* A few petals drifting down the page, very slowly */
+[data-skin="blossom"] .petals {
+    display: block;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+[data-skin="blossom"] .petals i {
+    position: absolute;
+    top: -30px;
+    left: var(--x);
+    width: 14px;
+    height: 10px;
+    border-radius: 100% 0 100% 0;
+    background: #F7B6CD;
+    opacity: 0.7;
+    animation: petal-fall var(--dur) linear var(--delay) infinite;
+}
+
+[data-skin="blossom"] .petals i:nth-child(1) { --x: 6%; --dur: 19s; --delay: -2s; }
+[data-skin="blossom"] .petals i:nth-child(2) { --x: 18%; --dur: 24s; --delay: -11s; background: #E6DCFF; }
+[data-skin="blossom"] .petals i:nth-child(3) { --x: 29%; --dur: 21s; --delay: -6s; }
+[data-skin="blossom"] .petals i:nth-child(4) { --x: 41%; --dur: 27s; --delay: -17s; width: 10px; height: 7px; }
+[data-skin="blossom"] .petals i:nth-child(5) { --x: 52%; --dur: 23s; --delay: -9s; background: #FBD9E7; }
+[data-skin="blossom"] .petals i:nth-child(6) { --x: 63%; --dur: 20s; --delay: -14s; }
+[data-skin="blossom"] .petals i:nth-child(7) { --x: 72%; --dur: 26s; --delay: -4s; background: #E6DCFF; width: 11px; height: 8px; }
+[data-skin="blossom"] .petals i:nth-child(8) { --x: 81%; --dur: 22s; --delay: -19s; }
+[data-skin="blossom"] .petals i:nth-child(9) { --x: 90%; --dur: 25s; --delay: -7s; background: #FBD9E7; }
+[data-skin="blossom"] .petals i:nth-child(10) { --x: 97%; --dur: 28s; --delay: -13s; width: 9px; height: 7px; }
+
+@keyframes petal-fall {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(-40px, 55vh) rotate(260deg); }
+    100% { transform: translate(30px, 112vh) rotate(540deg); }
+}
+
+/* A little flower after your name */
+[data-skin="blossom"] .view-header .highlight::after {
+    content: '';
+    display: inline-block;
+    width: 0.62em;
+    height: 0.62em;
+    margin-left: 0.14em;
+    vertical-align: 0.55em;
+    background: var(--flower) center / contain no-repeat;
+}
+
+/* Tick boxes are round; ticking one makes a flower pop open */
+[data-skin="blossom"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2px solid #E26A9B;
+    border-radius: 50%;
+    background: #FFFFFF;
+    cursor: pointer;
+}
+
+[data-skin="blossom"] input[type="checkbox"]:checked {
+    border-color: transparent;
+    background: var(--flower) center / 100% no-repeat;
+    animation: flower-pop 0.45s var(--ease-spring);
+}
+
+[data-skin="blossom"] input[type="checkbox"]:focus-visible {
+    outline: 3px solid rgba(226, 106, 155, 0.45);
+    outline-offset: 2px;
+}
+
+@keyframes flower-pop {
+    0% { transform: scale(0.3) rotate(-60deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+/* Buttons squish a little when pressed */
+[data-skin="blossom"] .btn:active {
+    transform: scale(0.94);
+}
+
+[data-skin="blossom"] .noise-btn {
+    border-radius: 999px;
+}
+
+/* Zen timer: a flower in the middle of a pink ring. It starts as a bud and opens as the study time passes */
+[data-skin="blossom"] .timer-bg {
+    stroke: #FBD9E7;
+}
+
+[data-skin="blossom"] .timer-bar {
+    stroke: #E26A9B;
+}
+
+[data-skin="blossom"] .bloom {
+    display: block;
+    position: absolute;
+    inset: 13%;
+}
+
+[data-skin="blossom"] .bloom i {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 30%;
+    height: 48%;
+    margin: -48% 0 0 -15%;
+    border-radius: 50% 50% 45% 45% / 62% 62% 38% 38%;
+    background: linear-gradient(#FFD9E7, #F28DB2);
+    transform-origin: 50% 100%;
+    transform: rotate(var(--a)) scale(calc(0.72 + 0.28 * var(--done, 0)));
+    transition: transform 0.9s var(--ease-out);
+}
+
+[data-skin="blossom"] .bloom i:nth-child(1) { --a: 0deg; }
+[data-skin="blossom"] .bloom i:nth-child(2) { --a: 45deg; background: linear-gradient(#EFE7FF, #C9B8FF); }
+[data-skin="blossom"] .bloom i:nth-child(3) { --a: 90deg; }
+[data-skin="blossom"] .bloom i:nth-child(4) { --a: 135deg; background: linear-gradient(#EFE7FF, #C9B8FF); }
+[data-skin="blossom"] .bloom i:nth-child(5) { --a: 180deg; }
+[data-skin="blossom"] .bloom i:nth-child(6) { --a: 225deg; background: linear-gradient(#EFE7FF, #C9B8FF); }
+[data-skin="blossom"] .bloom i:nth-child(7) { --a: 270deg; }
+[data-skin="blossom"] .bloom i:nth-child(8) { --a: 315deg; background: linear-gradient(#EFE7FF, #C9B8FF); }
+
+/* The middle of the flower holds the time */
+[data-skin="blossom"] .bloom b {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 50%;
+    height: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #FFF6DC;
+    box-shadow: 0 4px 12px rgba(67, 38, 58, 0.15), inset 0 -3px 0 rgba(255, 196, 92, 0.35);
+}
+
+[data-skin="blossom"] .timer-text {
+    font-size: 1.85rem;
+    letter-spacing: -0.02em;
+    color: #43263A;
+}
+
+/* ---------- Minimalist: a plain page, big clear words, thin lines instead of boxes ---------- */
+[data-skin="minimal"] {
+    --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #FAFAF8;
+    --glow-opacity: 0;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: #E2E2DE;
+    --hairline: #E2E2DE;
+    --hairline-strong: #CFCFCA;
+    --inset: #F0F0EC;
+    --inset-hover: #E6E6E1;
+    --field: #FFFFFF;
+    --field-border: #CFCFCA;
+    --text: #141414;
+    --text-2: #4A4A47;
+    --text-3: #6A6A66;
+    --accent: #141414;
+    --accent-strong: #000000;
+    --accent-soft: rgba(20, 20, 20, 0.07);
+    --accent-ring: rgba(20, 20, 20, 0.25);
+    --grad: linear-gradient(#141414, #141414);
+    --grad-soft: linear-gradient(rgba(20, 20, 20, 0.05), rgba(20, 20, 20, 0.05));
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: 0 20px 50px -24px rgba(0, 0, 0, 0.3);
+    --shadow-accent: none;
+    --blur: none;
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 14px;
+}
+
+[data-skin="minimal"][data-theme="dark"] {
+    --bg: #111111;
+    --surface: #181818;
+    --surface-strong: #181818;
+    --surface-solid: #181818;
+    --surface-border: #2C2C2A;
+    --hairline: #2C2C2A;
+    --hairline-strong: #3A3A38;
+    --inset: #1F1F1E;
+    --inset-hover: #282826;
+    --field: #181818;
+    --field-border: #3A3A38;
+    --text: #F2F2F0;
+    --text-2: #B5B5B0;
+    --text-3: #8F8F8A;
+    --accent: #F2F2F0;
+    --accent-strong: #FFFFFF;
+    --accent-soft: rgba(242, 242, 240, 0.1);
+    --accent-ring: rgba(242, 242, 240, 0.3);
+    --grad: linear-gradient(#F2F2F0, #F2F2F0);
+    --grad-soft: linear-gradient(rgba(242, 242, 240, 0.06), rgba(242, 242, 240, 0.06));
+    --shadow-lg: 0 20px 50px -24px rgba(0, 0, 0, 0.8);
+}
+
+[data-skin="minimal"] body,
+[data-skin="minimal"] .fluid-bg {
+    background: var(--bg);
+}
+
+[data-skin="minimal"] .fluid-blob,
+[data-skin="minimal"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="minimal"] .view-header h2 {
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+[data-skin="minimal"] .highlight {
+    font-family: var(--font-sans);
+    font-style: normal;
+    font-weight: inherit;
+    background: none;
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+}
+
+[data-skin="minimal"] .eyebrow {
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-2);
+}
+
+/* No boxes: each section is a bold title on a solid line */
+[data-skin="minimal"] .card {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0.4rem 0 0.6rem;
+    border-radius: 0;
+}
+
+[data-skin="minimal"] .card-title-wrap {
+    padding-bottom: 0.65rem;
+    border-bottom: 2px solid var(--text);
+}
+
+[data-skin="minimal"] .card-title-wrap h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+[data-skin="minimal"] .card-title-wrap .tile-icon {
+    display: none;
+}
+
+[data-skin="minimal"] .primary-btn,
+[data-skin="minimal"] .primary-btn:hover {
+    color: var(--bg);
+    box-shadow: none;
+}
+
+[data-skin="minimal"] input[type="checkbox"] {
+    accent-color: var(--text);
+}
+
+[data-skin="minimal"] .dock-item.active {
+    background: var(--text);
+    color: var(--bg);
+}
+
+[data-skin="minimal"] .dock-item.active::after {
+    display: none;
+}
+
+/* On computers the dock is a plain bar along the bottom: every page's icon with its name */
+@media (min-width: 821px) {
+    [data-skin="minimal"] .dock {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        transform: none;
+        animation: none;
+        justify-content: center;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 24px calc(env(safe-area-inset-bottom) + 8px);
+        border: 0;
+        border-top: 1px solid var(--hairline);
+        border-radius: 0;
+        background: var(--surface);
+        box-shadow: none;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    [data-skin="minimal"] .nav-links,
+    [data-skin="minimal"] .dock-utils {
+        align-items: center;
+        gap: 4px;
+    }
+
+    [data-skin="minimal"] .dock-item {
+        width: 76px;
+        height: 58px;
+        flex-direction: column;
+        gap: 4px;
+        border-radius: 14px;
+    }
+
+    [data-skin="minimal"] .dock-item .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    [data-skin="minimal"] .dock-item .nav-label {
+        position: static;
+        padding: 0;
+        opacity: 1;
+        transform: none;
+        background: none;
+        box-shadow: none;
+        color: inherit;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    [data-skin="minimal"] .app-credit {
+        bottom: 90px;
     }
 }
 

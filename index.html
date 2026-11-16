@@ -88,6 +88,8 @@
         <div class="fluid-blob blob-blue"></div>
         <div class="fluid-blob blob-green"></div>
         <div class="fluid-blob blob-violet"></div>
+        <!-- Blossom theme only: a few petals drifting down -->
+        <div class="petals"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     </div>
 
     <div class="top-clock" id="digital-clock" aria-label="Current time">
@@ -410,10 +412,18 @@
                     <span class="nav-label">Log out</span>
                 </button>
             </div>
+
+            <!-- True Black on phones: the bar shows 5 pages; More opens a second row with the rest -->
+            <button type="button" class="dock-item dock-more" id="dock-more" aria-expanded="false">
+                <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></span>
+                <span class="nav-label">More</span>
+            </button>
         </nav>
 
         <!-- Main content -->
         <main class="content-area">
+            <!-- Exam Mode theme only: the next exam, always in view -->
+            <p id="exam-mode-bar" class="exam-mode-bar" role="status"></p>
 
             <!-- Dashboard -->
             <section id="dashboard" class="view active-view">
@@ -738,6 +748,45 @@
                         </div>
                         <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
                         <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
+                    </div>
+
+                    <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
+                    <div class="card themes-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></span>
+                            <h3>Themes</h3>
+                        </div>
+                        <p class="subtitle card-sub">Pick how Procrastinote looks. It follows you to your other devices.</p>
+                        <div class="theme-options" role="radiogroup" aria-label="Theme">
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="procrastinote" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#070A12"></i><i style="background:#5B6CF0"></i></span>
+                                <span class="theme-option-text"><strong>Procrastinote</strong><small>The usual colours. Light or dark with the moon/sun button</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="classic" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#0F172A"></i><i style="background:#1E293B"></i><i style="background:#3B82F6"></i></span>
+                                <span class="theme-option-text"><strong>Classic</strong><small>The original look, with the sidebar. Light or dark too</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="minimal" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FAFAF8"></i><i style="background:#111111"></i><i style="background:#141414"></i></span>
+                                <span class="theme-option-text"><strong>Minimalist</strong><small>Just big, clear words and thin lines. Light or dark too</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
+                                <span class="theme-option-text"><strong>True Black</strong><small>Smoothest, saves battery on phones</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="paper" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FBF6EA"></i><i style="background:#FFFDF7"></i><i style="background:#B3261E"></i></span>
+                                <span class="theme-option-text"><strong>Paper</strong><small>Like writing in a notebook</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="blossom" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FFF5F8"></i><i style="background:#E6DCFF"></i><i style="background:#E26A9B"></i></span>
+                                <span class="theme-option-text"><strong>Blossom</strong><small>Soft pinks and lilac, round and bubbly</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="exam" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#ECEEF1"></i><i style="background:#FFFFFF"></i><i style="background:#3E4F6E"></i></span>
+                                <span class="theme-option-text"><strong>Exam Mode</strong><small>Quiet and plain, with your next exam at the top</small></span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="card security-card clickable-card" id="btn-go-security">
@@ -1081,6 +1130,24 @@
                                 <circle class="timer-bg" cx="50" cy="50" r="45"></circle>
                                 <circle id="timer-progress" class="timer-bar" cx="50" cy="50" r="45"></circle>
                             </svg>
+                            <!-- Paper theme only: a classroom wall clock. The red wedge is the time left,
+                                 the black hand sits at its edge, the red second hand ticks with real time -->
+                            <!-- Blossom theme only: a flower that opens up as the study time passes -->
+                            <div class="bloom" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b></b></div>
+                            <div class="wall-clock" aria-hidden="true">
+                                <div class="wc-face">
+                                    <div class="wc-wedge"></div>
+                                    <div class="wc-ticks"></div>
+                                    <span class="wc-num" style="--i:1">1</span><span class="wc-num" style="--i:2">2</span><span class="wc-num" style="--i:3">3</span>
+                                    <span class="wc-num" style="--i:4">4</span><span class="wc-num" style="--i:5">5</span><span class="wc-num" style="--i:6">6</span>
+                                    <span class="wc-num" style="--i:7">7</span><span class="wc-num" style="--i:8">8</span><span class="wc-num" style="--i:9">9</span>
+                                    <span class="wc-num" style="--i:10">10</span><span class="wc-num" style="--i:11">11</span><span class="wc-num" style="--i:12">12</span>
+                                    <span class="wc-brand">Procrastinote</span>
+                                    <div class="wc-hand wc-left"></div>
+                                    <div class="wc-hand wc-sec"></div>
+                                    <div class="wc-pin"></div>
+                                </div>
+                            </div>
                             <div class="timer-text" id="timer-time">25:00</div>
                         </div>
                         <div class="timer-controls">
@@ -1159,6 +1226,8 @@
 
                         <div class="music-player-ui">
                             <div class="player-info">
+                                <!-- Paper theme only: the player is a cassette; its reels turn while a sound plays -->
+                                <div class="cassette-reels" aria-hidden="true"><span></span><span></span></div>
                                 <div class="music-icon-animated">
                                     <span></span><span></span><span></span><span></span>
                                 </div>
@@ -1628,6 +1697,10 @@
                         </div>
                     </div>
                 </div>
+                <!-- Starts a fresh conversation (the AI remembers the current one until then) -->
+                <button type="button" id="ai-new-chat-btn" class="close-chat-btn ai-new-chat-btn" aria-label="New chat" title="New chat">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
                 <button id="close-chat-btn" class="close-chat-btn" aria-label="Close the AI assistant">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>

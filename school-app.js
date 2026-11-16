@@ -600,6 +600,7 @@ function removeExam(id) {
 }
 
 function renderExams() {
+    updateExamModeBar();
     const list = document.getElementById('dash-exam-list');
     if (!list) return;
     const exams = upcomingExams().slice(0, 4); // the next few; the Exams page has the rest
@@ -4098,30 +4099,126 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
 // 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
+// Themes (Settings > Themes): a skin changes the whole look on top of light/dark.
+// 'trueblack' is always dark, 'paper' and 'exam' always light; none = the usual Procrastinote look,
+// which the dock's moon/sun button switches between light and dark.
+const THEME_SKINS = {
+    trueblack: { mode: 'dark', bar: '#000000', fonts: 'family=Figtree:wght@400;500;600;700;800' },
+    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Kalam:wght@400;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' },
+    exam: { mode: 'light', bar: '#ECEEF1', fonts: 'family=Inter:wght@400;500;600;700;800' },
+    // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
+    classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' },
+    blossom: { mode: 'light', bar: '#FFF5F8', fonts: 'family=Quicksand:wght@500;600;700' },
+    // Plain page, big clear words, thin lines instead of boxes; light and dark
+    minimal: { mode: null, bar: { dark: '#111111', light: '#FAFAF8' }, fonts: 'family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' }
+};
+
+// True Black on phones: the bottom bar's More button opens a second row with the other pages.
+// The row closes after picking a page; More stays lit while the open page is in that row.
+(() => {
+    const dock = document.getElementById('app-dock');
+    const more = document.getElementById('dock-more');
+    if (!dock || !more) return;
+    const label = more.querySelector('.nav-label');
+    const setOpen = (open) => {
+        dock.classList.toggle('more-open', open);
+        more.setAttribute('aria-expanded', String(open));
+        label.textContent = open ? 'Less' : 'More';
+        more.querySelector('path').setAttribute('d', open ? 'M6 9l6 6 6-6' : 'M6 15l6-6 6 6');
+    };
+    const markMore = () => {
+        const items = [...dock.querySelectorAll('.nav-links .dock-item')];
+        more.classList.toggle('has-active', items.slice(5).some(item => item.classList.contains('active')));
+    };
+    more.addEventListener('click', () => setOpen(!dock.classList.contains('more-open')));
+    dock.querySelectorAll('.nav-links .dock-item').forEach(item => item.addEventListener('click', () => setOpen(false)));
+    new MutationObserver(markMore).observe(dock.querySelector('.nav-links'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+    markMore();
+})();
+
+// Exam Mode keeps the next exam in view at the top of every page
+function updateExamModeBar() {
+    const bar = document.getElementById('exam-mode-bar');
+    if (!bar) return;
+    // Reads the page's attribute (not THEME_SKINS) because renderExams can run before this part of the file
+    if (document.documentElement.dataset.skin !== 'exam') { bar.textContent = ''; return; }
+    const next = upcomingExams()[0];
+    if (!next) {
+        bar.textContent = 'Exam Mode is on. Add your exams on the Exams page to see a countdown here.';
+        return;
+    }
+    const daysLeft = Math.round((parseDay(next.date) - parseDay(formatDateString(new Date()))) / 86400000);
+    const when = daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`;
+    bar.textContent = `Exam Mode is on. Next exam: ${examTitle(next)}, ${when}.`;
+}
+
+const currentSkin = () => (THEME_SKINS[appState.settings?.skin] ? appState.settings.skin : '');
+
 function resolvedTheme() {
+    const skin = currentSkin();
+    if (skin && THEME_SKINS[skin].mode) return THEME_SKINS[skin].mode;
     const theme = appState.settings?.theme || 'system';
     if (theme === 'system') return prefersDark.matches ? 'dark' : 'light';
     return theme;
 }
 
+// A skin's fonts load only when someone picks it
+function loadSkinFonts(skin) {
+    if (!skin || document.getElementById(`skin-fonts-${skin}`)) return;
+    const link = document.createElement('link');
+    link.id = `skin-fonts-${skin}`;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?${THEME_SKINS[skin].fonts}&display=swap`;
+    document.head.appendChild(link);
+}
+
 function applyTheme() {
     const theme = resolvedTheme();
+    const skin = currentSkin();
     document.documentElement.setAttribute('data-theme', theme);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#070A12' : '#EEF1F7');
+    if (skin) document.documentElement.setAttribute('data-skin', skin);
+    else document.documentElement.removeAttribute('data-skin');
+    loadSkinFonts(skin);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
+        skin ? (THEME_SKINS[skin].bar[theme] || THEME_SKINS[skin].bar) : (theme === 'dark' ? '#070A12' : '#EEF1F7'));
 
     // Update switch visually
     const toggleSwitch = document.getElementById('theme-checkbox');
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
+
+    updateExamModeBar();
+
+    // Settings > Themes: mark the chosen one
+    const choice = skin || 'procrastinote';
+    document.querySelectorAll('.theme-option').forEach(btn => {
+        btn.setAttribute('aria-checked', String(btn.dataset.themeChoice === choice));
+    });
 }
+
+document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const choice = btn.dataset.themeChoice;
+        const skin = THEME_SKINS[choice] ? choice : '';
+        if (skin === currentSkin()) return;
+        // Themes with a fixed look set light or dark themselves. Coming to Procrastinote or Classic from one
+        // of those follows the device until the moon/sun button is used; otherwise the last choice is kept.
+        const fixed = skin && THEME_SKINS[skin].mode;
+        const leavingFixed = THEME_SKINS[currentSkin()]?.mode;
+        const theme = fixed || (leavingFixed ? 'system' : (appState.settings?.theme || 'system'));
+        switchThemeWithReveal(theme, btn, skin);
+    });
+});
 
 prefersDark.addEventListener('change', () => {
     if ((appState.settings?.theme || 'system') === 'system') applyTheme();
 });
 
 // Switching theme reveals the new one in a circle growing from the toggle
-function switchThemeWithReveal(nextTheme, originEl) {
+// skin: '' for the standard look (the dock's light/dark switch always goes back to it)
+function switchThemeWithReveal(nextTheme, originEl, skin = '') {
     const change = () => {
         appState.settings.theme = nextTheme;
+        appState.settings.skin = skin;
         applyTheme();
         saveState();
     };
@@ -4145,7 +4242,9 @@ function switchThemeWithReveal(nextTheme, originEl) {
 }
 
 document.getElementById('theme-checkbox')?.addEventListener('change', (e) => {
-    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'));
+    // Hidden in themes with a fixed look; never let it throw someone out of their theme
+    if (THEME_SKINS[currentSkin()]?.mode) { applyTheme(); return; }
+    switchThemeWithReveal(e.target.checked ? 'light' : 'dark', e.target.closest('.theme-toggle'), currentSkin());
 });
 
 // --- Auth / Login Logic ---
@@ -5272,6 +5371,17 @@ function updateTimerDisplay() {
     const ratio = displaySecs / total;
     const offset = 282.7 * ratio;
     timerProgress.style.strokeDashoffset = offset;
+
+    // Paper's wall clock: wedge and hand show the minutes left (a full face is an hour);
+    // the second hand follows the real clock, like a classroom clock on the wall
+    const display = timerProgress.closest('.timer-display');
+    if (display) {
+        const leftDeg = Math.min(displaySecs, 3600) / 10;
+        display.style.setProperty('--left-deg', `${leftDeg}deg`);
+        display.style.setProperty('--sec-deg', `${new Date().getSeconds() * 6}deg`);
+        // Blossom's flower: 0 = a closed bud at the start, 1 = fully open when the time is up
+        display.style.setProperty('--done', Math.min(1, Math.max(0, 1 - ratio)).toFixed(3));
+    }
     
     // Sync tab title if running
     if (isTimerRunning) {
@@ -5280,6 +5390,12 @@ function updateTimerDisplay() {
         document.title = "Procrastinote | Educational Planner";
     }
 }
+
+// Keep Paper's wall-clock second hand ticking even while the timer is stopped
+setInterval(() => {
+    if (document.documentElement.dataset.skin !== 'paper') return;
+    document.querySelector('#zen .timer-display')?.style.setProperty('--sec-deg', `${new Date().getSeconds() * 6}deg`);
+}, 1000);
 
 function startTimer(isResume = false) {
     // If called from an event listener, isResume will be the event object.
@@ -6096,7 +6212,37 @@ function renderGroqKeyStatus() {
     if (removeBtn) removeBtn.style.display = saved ? '' : 'none';
 }
 
-async function requestGroqChat(apiKey, model, sys, prompt) {
+// --- Chat memory ---
+// A chat's earlier messages go with each new question, so the AI remembers the conversation.
+// history: [{ role: 'user' | 'assistant', content }], oldest first. Only the latest few are sent,
+// to keep questions quick and inside the free limits.
+const AI_HISTORY_MESSAGES = 12;
+const AI_HISTORY_CHARS = 6000;
+
+function trimAiHistory(history) {
+    const kept = [];
+    let chars = 0;
+    for (const msg of (history || []).slice(-AI_HISTORY_MESSAGES).reverse()) {
+        const content = String(msg.content || '').trim();
+        if (!content) continue;
+        if (chars + content.length > AI_HISTORY_CHARS) break;
+        chars += content.length;
+        kept.unshift({ role: msg.role === 'assistant' ? 'assistant' : 'user', content });
+    }
+    return kept;
+}
+
+// The class AI takes one question, so the earlier messages are written into it
+function withHistoryText(prompt, history) {
+    if (!history.length) return prompt;
+    const earlier = history.map(m => `${m.role === 'assistant' ? 'You' : 'Student'}: ${m.content}`).join('\n');
+    return `Earlier in this chat:\n${earlier}\n\nNow:\n${prompt}`;
+}
+
+// Error and "no key" replies aren't real answers, so they aren't remembered
+const isAiProblemReply = text => /^API Error|brain right now|need an API key|empty response/i.test(text || '');
+
+async function requestGroqChat(apiKey, model, sys, prompt, history = []) {
     const response = await fetch(AI_CONFIG.baseUrl, {
         method: 'POST',
         headers: {
@@ -6107,6 +6253,7 @@ async function requestGroqChat(apiKey, model, sys, prompt) {
             model,
             messages: [
                 { role: "system", content: sys },
+                ...history,
                 { role: "user", content: prompt }
             ],
             // gpt-oss models think before answering; keep it short so replies stay quick
@@ -6183,10 +6330,12 @@ async function callClassAi(prompt, systemPrompt, classId) {
     }
 }
 
+// options.history: the chat so far (see "Chat memory"), so follow-up questions make sense
 async function callGroq(prompt, systemPrompt = null, options = {}) {
     const apiKey = await getGroqKey();
+    const history = trimAiHistory(options.history);
     if (!apiKey) {
-        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(prompt, systemPrompt, options.classId);
+        if (cloud && window.Classes?.hasAiKey?.(options.classId)) return callClassAi(withHistoryText(prompt, history), systemPrompt, options.classId);
         return "I need an API key to think better! You can add one in Settings, or ask your class admin to add one for your class.";
     }
 
@@ -6199,7 +6348,7 @@ async function callGroq(prompt, systemPrompt = null, options = {}) {
         }
         let data;
         for (const model of models) {
-            data = await requestGroqChat(apiKey, model, sys, prompt);
+            data = await requestGroqChat(apiKey, model, sys, prompt, history);
             if (!data.rateLimited) {
                 activeGroqModel = model; // keep using the model that answered
                 break;
@@ -6216,7 +6365,7 @@ async function callGroq(prompt, systemPrompt = null, options = {}) {
             if (replacement && replacement !== activeGroqModel) {
                 console.warn(`[Groq] ${activeGroqModel} is unavailable, switching to ${replacement}`);
                 activeGroqModel = replacement;
-                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt);
+                data = await requestGroqChat(apiKey, activeGroqModel, sys, prompt, history);
             }
         }
 
@@ -6315,12 +6464,14 @@ function handleAICommand(input) {
     // 3. Theme commands
     if (text.includes('dark mode') || text.includes('dark theme')) {
         appState.settings.theme = 'dark';
+        if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = ''; // Classic can be dark, so it stays
         applyTheme();
         saveState();
         return "Switching to Dark Mode. 🌙";
     }
     if (text.includes('light mode') || text.includes('light theme')) {
         appState.settings.theme = 'light';
+        if (THEME_SKINS[currentSkin()]?.mode) appState.settings.skin = '';
         applyTheme();
         saveState();
         return "Switching to Light Mode. ☀️";
@@ -6329,32 +6480,53 @@ function handleAICommand(input) {
     return null; // No local command matched
 }
 
+// This chat's conversation so far (until New chat or the page is reloaded)
+let aiChatHistory = [];
+
+function rememberAiTurn(question, answer) {
+    if (isAiProblemReply(answer)) return;
+    aiChatHistory.push({ role: 'user', content: question }, { role: 'assistant', content: answer });
+}
+
 async function processAIInput() {
     const inputEl = document.getElementById('ai-user-input');
     const text = inputEl.value.trim();
     if (!text) return;
-    
+
     addMessage(text, false);
     inputEl.value = '';
-    
+
     const statusText = document.getElementById('ai-status-text');
     if (statusText) statusText.innerText = "Thinking...";
-    
+
     // Check for local commands first
     const localResponse = handleAICommand(text);
     if (localResponse) {
+        rememberAiTurn(text, localResponse);
         setTimeout(() => {
             addMessage(localResponse, true);
             if (statusText) statusText.innerText = "Online";
         }, 600);
         return;
     }
-    
-    // Otherwise, call Groq
-    const botResponse = await callGroq(text);
+
+    // Otherwise, call Groq, with the chat so far
+    const history = aiChatHistory.slice();
+    const botResponse = await callGroq(text, null, { history });
+    rememberAiTurn(text, botResponse);
     addMessage(botResponse, true);
     if (statusText) statusText.innerText = "Online";
 }
+
+// New chat: forget the conversation and start over with just the greeting
+document.getElementById('ai-new-chat-btn')?.addEventListener('click', () => {
+    aiChatHistory = [];
+    const chatMessages = document.getElementById('ai-chat-messages');
+    if (chatMessages) {
+        chatMessages.querySelectorAll('.ai-message:not(:first-child):not(#ai-key-guide)').forEach(msg => msg.remove());
+    }
+    document.getElementById('ai-user-input')?.focus();
+});
 
 // UI Event Listeners
 document.getElementById('ai-mascot-fab')?.addEventListener('click', () => {
@@ -8944,9 +9116,14 @@ async function sendChatMessage() {
         
         let aiResponse = "";
         
+        // This chat's earlier messages (not the one just sent), so the buddy remembers the conversation
+        const history = chats[roomId].slice(0, -1)
+            .filter(m => m.text && !m.file)
+            .map(m => ({ role: m.sender === buddy.id ? 'assistant' : 'user', content: m.text }));
+
         // With an AI key (their own or their class's), ask the AI
         if (await aiAvailable()) {
-            aiResponse = await callGroq(prompt, buddy.systemPrompt);
+            aiResponse = await callGroq(prompt, buddy.systemPrompt, { history });
         }
         
         // If empty, failed, or standard key is used (we fallback if it looks like default/error)
