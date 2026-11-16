@@ -8494,6 +8494,62 @@ body.external-pip-body .pip-header {
     display: none;
 }
 
+/* True Black's personality, kept simple: big clear tick boxes, a bedside-clock Zen timer, mint focus rings */
+
+/* Tick boxes: big rounded squares that fill mint with a black tick */
+[data-skin="trueblack"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2px solid #5A5A5A;
+    border-radius: 8px;
+    background: #000000;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+[data-skin="trueblack"] input[type="checkbox"]:checked {
+    border-color: #3DE0A8;
+    background: #3DE0A8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 18px no-repeat;
+}
+
+/* Keyboard focus shows as a clear mint ring everywhere */
+[data-skin="trueblack"] :focus-visible {
+    outline: 3px solid #3DE0A8;
+    outline-offset: 2px;
+}
+
+/* Zen timer: like a bedside clock in a dark room. Huge white numbers, a thin mint ring */
+[data-skin="trueblack"] .timer-bg {
+    stroke: #1C1C1C;
+    stroke-width: 3;
+}
+
+[data-skin="trueblack"] .timer-bar {
+    stroke: #3DE0A8;
+    stroke-width: 3;
+}
+
+[data-skin="trueblack"] .timer-text {
+    font-size: 4.1rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #FFFFFF;
+}
+
+[data-skin="trueblack"] .noise-btn.active {
+    background: #0F2E24;
+    border-color: #3DE0A8;
+    box-shadow: none;
+}
+
+[data-skin="trueblack"] .noise-btn.active .noise-icon {
+    box-shadow: none;
+}
+
 /* ---------- Paper: ruled notebook paper, ink colours, a serif and a handwriting font ---------- */
 [data-skin="paper"] {
     --font-sans: 'Lora', Georgia, 'Times New Roman', serif;
