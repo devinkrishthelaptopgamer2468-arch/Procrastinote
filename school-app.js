@@ -5371,6 +5371,15 @@ function updateTimerDisplay() {
     const ratio = displaySecs / total;
     const offset = 282.7 * ratio;
     timerProgress.style.strokeDashoffset = offset;
+
+    // Paper's wall clock: wedge and hand show the minutes left (a full face is an hour);
+    // the second hand follows the real clock, like a classroom clock on the wall
+    const display = timerProgress.closest('.timer-display');
+    if (display) {
+        const leftDeg = Math.min(displaySecs, 3600) / 10;
+        display.style.setProperty('--left-deg', `${leftDeg}deg`);
+        display.style.setProperty('--sec-deg', `${new Date().getSeconds() * 6}deg`);
+    }
     
     // Sync tab title if running
     if (isTimerRunning) {
@@ -5379,6 +5388,12 @@ function updateTimerDisplay() {
         document.title = "Procrastinote | Educational Planner";
     }
 }
+
+// Keep Paper's wall-clock second hand ticking even while the timer is stopped
+setInterval(() => {
+    if (document.documentElement.dataset.skin !== 'paper') return;
+    document.querySelector('#zen .timer-display')?.style.setProperty('--sec-deg', `${new Date().getSeconds() * 6}deg`);
+}, 1000);
 
 function startTimer(isResume = false) {
     // If called from an event listener, isResume will be the event object.

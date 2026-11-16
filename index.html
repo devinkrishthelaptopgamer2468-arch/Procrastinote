@@ -1128,6 +1128,22 @@
                                 <circle class="timer-bg" cx="50" cy="50" r="45"></circle>
                                 <circle id="timer-progress" class="timer-bar" cx="50" cy="50" r="45"></circle>
                             </svg>
+                            <!-- Paper theme only: a classroom wall clock. The red wedge is the time left,
+                                 the black hand sits at its edge, the red second hand ticks with real time -->
+                            <div class="wall-clock" aria-hidden="true">
+                                <div class="wc-face">
+                                    <div class="wc-wedge"></div>
+                                    <div class="wc-ticks"></div>
+                                    <span class="wc-num" style="--i:1">1</span><span class="wc-num" style="--i:2">2</span><span class="wc-num" style="--i:3">3</span>
+                                    <span class="wc-num" style="--i:4">4</span><span class="wc-num" style="--i:5">5</span><span class="wc-num" style="--i:6">6</span>
+                                    <span class="wc-num" style="--i:7">7</span><span class="wc-num" style="--i:8">8</span><span class="wc-num" style="--i:9">9</span>
+                                    <span class="wc-num" style="--i:10">10</span><span class="wc-num" style="--i:11">11</span><span class="wc-num" style="--i:12">12</span>
+                                    <span class="wc-brand">Procrastinote</span>
+                                    <div class="wc-hand wc-left"></div>
+                                    <div class="wc-hand wc-sec"></div>
+                                    <div class="wc-pin"></div>
+                                </div>
+                            </div>
                             <div class="timer-text" id="timer-time">25:00</div>
                         </div>
                         <div class="timer-controls">
@@ -1206,6 +1222,8 @@
 
                         <div class="music-player-ui">
                             <div class="player-info">
+                                <!-- Paper theme only: the player is a cassette; its reels turn while a sound plays -->
+                                <div class="cassette-reels" aria-hidden="true"><span></span><span></span></div>
                                 <div class="music-icon-animated">
                                     <span></span><span></span><span></span><span></span>
                                 </div>

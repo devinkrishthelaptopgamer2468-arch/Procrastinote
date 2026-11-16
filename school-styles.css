@@ -8916,6 +8916,271 @@ body.external-pip-body .pip-header {
     border-radius: 4px;
 }
 
+/* ---------- Paper's Zen page: a classroom wall clock and a classroom cassette player ---------- */
+.wall-clock,
+.cassette-reels {
+    display: none;
+}
+
+[data-skin="paper"] .timer-display {
+    width: min(270px, 100%);
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 1.25rem auto;
+}
+
+[data-skin="paper"] .timer-progress-svg {
+    display: none;
+}
+
+/* Dark plastic rim, cream face */
+[data-skin="paper"] .wall-clock {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 11px;
+    border-radius: 50%;
+    background: #1F2A44;
+    box-shadow: 0 12px 20px -10px rgba(31, 42, 68, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.18);
+}
+
+[data-skin="paper"] .wc-face {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: #FFFEF9;
+    box-shadow: inset 0 3px 9px rgba(31, 42, 68, 0.28);
+    overflow: hidden;
+}
+
+/* Time left: a red wedge from 12 o'clock, a full face is one hour */
+[data-skin="paper"] .wc-wedge {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(rgba(179, 38, 30, 0.2) 0 var(--left-deg, 150deg), transparent 0);
+}
+
+/* Minute marks, and thicker hour marks */
+[data-skin="paper"] .wc-ticks {
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background: repeating-conic-gradient(from -0.6deg, #1F2A44 0 1.2deg, transparent 1.2deg 6deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 90%, #000 91%);
+    mask: radial-gradient(circle closest-side, transparent 0 90%, #000 91%);
+}
+
+[data-skin="paper"] .wc-face::before {
+    content: '';
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background: repeating-conic-gradient(from -1.6deg, #1F2A44 0 3.2deg, transparent 3.2deg 30deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 84%, #000 85%);
+    mask: radial-gradient(circle closest-side, transparent 0 84%, #000 85%);
+}
+
+[data-skin="paper"] .wc-num {
+    position: absolute;
+    left: calc(50% + 34% * sin(var(--i) * 30deg));
+    top: calc(50% - 34% * cos(var(--i) * 30deg));
+    transform: translate(-50%, -50%);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #1F2A44;
+}
+
+[data-skin="paper"] .wc-brand {
+    position: absolute;
+    top: 33%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6E7689;
+}
+
+[data-skin="paper"] .wc-hand {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    transform-origin: 50% 100%;
+}
+
+/* The black hand sits at the edge of the time left */
+[data-skin="paper"] .wc-left {
+    width: 6px;
+    height: 33%;
+    margin-left: -3px;
+    border-radius: 3px 3px 1px 1px;
+    background: #1F2A44;
+    transform: rotate(var(--left-deg, 150deg));
+    transition: transform 0.45s var(--ease-out);
+}
+
+/* Red second hand, ticking (no smooth sweep, like a real classroom clock) */
+[data-skin="paper"] .wc-sec {
+    width: 2px;
+    height: 40%;
+    margin-left: -1px;
+    background: #B3261E;
+    transform: rotate(var(--sec-deg, 0deg));
+}
+
+[data-skin="paper"] .wc-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 13px;
+    height: 13px;
+    margin: -6.5px 0 0 -6.5px;
+    border-radius: 50%;
+    background: #B3261E;
+    border: 2.5px solid #1F2A44;
+}
+
+/* The minutes left, written on a paper tag under the clock */
+[data-skin="paper"] .timer-text {
+    position: static;
+    padding: 0.3rem 1rem;
+    border: 1.5px solid rgba(31, 42, 68, 0.35);
+    border-radius: 4px;
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+/* The player is a cassette: a sticker label with the sound's name, a window with two reels */
+[data-skin="paper"] .player-info {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label play" "reels play";
+    gap: 10px 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: #3A4560;
+    box-shadow: 0 10px 18px -10px rgba(31, 42, 68, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.12);
+}
+
+[data-skin="paper"] .music-icon-animated {
+    display: none;
+}
+
+[data-skin="paper"] .player-text {
+    grid-area: label;
+    padding: 6px 12px 8px;
+    border-top: 6px solid #B3261E;
+    border-radius: 4px;
+    background-color: #FFFDF7;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 21px, #DCE4EF 21px, #DCE4EF 22px);
+}
+
+[data-skin="paper"] .player-text strong {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    color: #1F2A44;
+}
+
+[data-skin="paper"] .player-text .subtitle {
+    color: #4A5570;
+}
+
+[data-skin="paper"] .cassette-reels {
+    grid-area: reels;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: 58px;
+    padding: 0 18px;
+    border-radius: 29px;
+    background: #1C2235;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+[data-skin="paper"] .cassette-reels span {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 3px solid #FFFDF7;
+    background:
+        radial-gradient(circle, #1C2235 0 5px, #FFFDF7 5px 9px, transparent 9.5px),
+        repeating-conic-gradient(#FFFDF7 0 14deg, #8E8775 14deg 60deg);
+}
+
+[data-skin="paper"] .music-player-ui.playing .cassette-reels span {
+    animation: reel-spin 2.6s linear infinite;
+}
+
+@keyframes reel-spin {
+    to { transform: rotate(360deg); }
+}
+
+[data-skin="paper"] .player-controls {
+    grid-area: play;
+    align-self: center;
+}
+
+/* Play is a chunky player key that presses down */
+[data-skin="paper"] .player-controls .icon-btn-large,
+[data-skin="paper"] .player-controls .icon-btn-large:hover {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    background: #E9E2D0;
+    color: #1F2A44;
+    border: 2px solid #1F2A44;
+    box-shadow: 0 5px 0 #1F2A44;
+}
+
+[data-skin="paper"] .player-controls .icon-btn-large:active {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 #1F2A44;
+}
+
+/* The sound choices are tapes on a shelf, each with a coloured label edge */
+[data-skin="paper"] .noise-btn {
+    border-radius: 5px;
+    background-color: #FFFDF7;
+    background-image: var(--paper-grain);
+    border: 1.5px solid rgba(31, 42, 68, 0.3);
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.12);
+}
+
+[data-skin="paper"] .noise-icon {
+    width: 10px;
+    height: 32px;
+    border-radius: 2px;
+}
+
+[data-skin="paper"] .noise-btn.active {
+    background-color: #FFF6CF;
+    border: 2px solid #1F2A44;
+    box-shadow: 2px 3px 0 rgba(31, 42, 68, 0.25);
+}
+
+[data-skin="paper"] .noise-btn.active .noise-icon {
+    box-shadow: none;
+}
+
+[data-skin="paper"] .volume-control input[type="range"] {
+    accent-color: #1F2A44;
+}
+
 /* ---------- Exam Mode: quiet greys, one calm blue, nothing drifting or pinging ---------- */
 [data-skin="exam"] {
     --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
