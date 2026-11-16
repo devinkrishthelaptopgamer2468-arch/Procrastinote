@@ -4098,30 +4098,72 @@ document.getElementById('btn-pdf-ocr-start')?.addEventListener('click', async ()
 // 'system' (the default) follows the device's light or dark setting; the toggle picks one explicitly
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
+// Themes (Settings > Themes): a skin changes the whole look on top of light/dark.
+// 'trueblack' is always dark, 'paper' always light; none = the standard calm-glass look.
+const THEME_SKINS = {
+    trueblack: { mode: 'dark', bar: '#000000', fonts: 'family=Figtree:wght@400;500;600;700;800' },
+    paper: { mode: 'light', bar: '#FBF6EA', fonts: 'family=Caveat:wght@600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400' }
+};
+
+const currentSkin = () => (THEME_SKINS[appState.settings?.skin] ? appState.settings.skin : '');
+
 function resolvedTheme() {
+    const skin = currentSkin();
+    if (skin) return THEME_SKINS[skin].mode;
     const theme = appState.settings?.theme || 'system';
     if (theme === 'system') return prefersDark.matches ? 'dark' : 'light';
     return theme;
 }
 
+// A skin's fonts load only when someone picks it
+function loadSkinFonts(skin) {
+    if (!skin || document.getElementById(`skin-fonts-${skin}`)) return;
+    const link = document.createElement('link');
+    link.id = `skin-fonts-${skin}`;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?${THEME_SKINS[skin].fonts}&display=swap`;
+    document.head.appendChild(link);
+}
+
 function applyTheme() {
     const theme = resolvedTheme();
+    const skin = currentSkin();
     document.documentElement.setAttribute('data-theme', theme);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#070A12' : '#EEF1F7');
+    if (skin) document.documentElement.setAttribute('data-skin', skin);
+    else document.documentElement.removeAttribute('data-skin');
+    loadSkinFonts(skin);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
+        skin ? THEME_SKINS[skin].bar : (theme === 'dark' ? '#070A12' : '#EEF1F7'));
 
     // Update switch visually
     const toggleSwitch = document.getElementById('theme-checkbox');
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
+
+    // Settings > Themes: mark the chosen one
+    const choice = skin || appState.settings?.theme || 'system';
+    document.querySelectorAll('.theme-option').forEach(btn => {
+        btn.setAttribute('aria-checked', String(btn.dataset.themeChoice === choice));
+    });
 }
+
+document.querySelectorAll('.theme-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const choice = btn.dataset.themeChoice;
+        const skin = THEME_SKINS[choice] ? choice : '';
+        switchThemeWithReveal(skin ? THEME_SKINS[skin].mode : choice, btn, skin);
+    });
+});
 
 prefersDark.addEventListener('change', () => {
     if ((appState.settings?.theme || 'system') === 'system') applyTheme();
 });
 
 // Switching theme reveals the new one in a circle growing from the toggle
-function switchThemeWithReveal(nextTheme, originEl) {
+// skin: '' for the standard look (the dock's light/dark switch always goes back to it)
+function switchThemeWithReveal(nextTheme, originEl, skin = '') {
     const change = () => {
         appState.settings.theme = nextTheme;
+        appState.settings.skin = skin;
         applyTheme();
         saveState();
     };
@@ -6315,12 +6357,14 @@ function handleAICommand(input) {
     // 3. Theme commands
     if (text.includes('dark mode') || text.includes('dark theme')) {
         appState.settings.theme = 'dark';
+        appState.settings.skin = '';
         applyTheme();
         saveState();
         return "Switching to Dark Mode. 🌙";
     }
     if (text.includes('light mode') || text.includes('light theme')) {
         appState.settings.theme = 'light';
+        appState.settings.skin = '';
         applyTheme();
         saveState();
         return "Switching to Light Mode. ☀️";

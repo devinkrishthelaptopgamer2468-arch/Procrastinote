@@ -740,6 +740,37 @@
                         <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
                     </div>
 
+                    <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
+                    <div class="card themes-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></span>
+                            <h3>Themes</h3>
+                        </div>
+                        <p class="subtitle card-sub">Pick how Procrastinote looks. It follows you to your other devices.</p>
+                        <div class="theme-options" role="radiogroup" aria-label="Theme">
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="system" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#070A12"></i><i style="background:#5B6CF0"></i></span>
+                                <span class="theme-option-text"><strong>Follow my device</strong><small>Light or dark, like your phone</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="light" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#FFFFFF"></i><i style="background:#5B6CF0"></i></span>
+                                <span class="theme-option-text"><strong>Light</strong><small>Calm glass, light</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="dark" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#070A12"></i><i style="background:#161C2D"></i><i style="background:#8B97FF"></i></span>
+                                <span class="theme-option-text"><strong>Dark</strong><small>Calm glass, dark</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
+                                <span class="theme-option-text"><strong>True Black</strong><small>Smoothest, saves battery on phones</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="paper" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FBF6EA"></i><i style="background:#FFFDF7"></i><i style="background:#B3261E"></i></span>
+                                <span class="theme-option-text"><strong>Paper</strong><small>Like writing in a notebook</small></span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="card security-card clickable-card" id="btn-go-security">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></span>

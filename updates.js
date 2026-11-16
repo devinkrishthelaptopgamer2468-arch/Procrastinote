@@ -4,6 +4,12 @@
 // date: YYYY-MM-DD    title: a few words    text: one or two short sentences
 window.PROCRASTINOTE_UPDATES = [
     {
+        id: 'week-2026-11-16',
+        date: '2026-11-16',
+        title: 'This week: True Black and Paper themes',
+        text: 'Go to Settings > Themes to pick a new look. True Black is pure black with big, clear text and mint green highlights, easy on the eyes at night. Paper looks like a ruled notebook, with handwritten headings and a highlighter on the page you\'re on. Your theme follows you to every device you sign in on, and the light/dark button still works any time.'
+    },
+    {
         id: 'week-2026-11-09',
         date: '2026-11-11',
         title: 'This week: timetable from a photo',
