@@ -473,6 +473,65 @@ html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
     100% { transform: translate(-10vw, 5vh) scale(1); opacity: 0; }
 }
 
+/* 852 Hz: sound waves across the page (drawn by school-app.js in these two colours per theme) */
+.tone-waves-bg {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.45;
+    --tone-wave-1: #5B6CF0;
+    --tone-wave-2: #2CC9B5;
+}
+
+[data-theme="dark"] .tone-waves-bg {
+    opacity: 0.6;
+    --tone-wave-1: #8B97FF;
+    --tone-wave-2: #3DD6C1;
+}
+
+[data-skin="classic"] .tone-waves-bg {
+    --tone-wave-1: #3B82F6;
+    --tone-wave-2: #10B981;
+}
+
+[data-skin="trueblack"] .tone-waves-bg {
+    opacity: 0.55;
+    --tone-wave-1: #3DE0A8;
+    --tone-wave-2: #1F8F69;
+}
+
+[data-skin="paper"] .tone-waves-bg {
+    opacity: 0.5;
+    --tone-wave-1: #1F2A44;
+    --tone-wave-2: #B3261E;
+}
+
+[data-skin="blossom"] .tone-waves-bg {
+    opacity: 0.55;
+    --tone-wave-1: #E26A9B;
+    --tone-wave-2: #B9A3FF;
+}
+
+[data-skin="minimal"] .tone-waves-bg {
+    opacity: 0.35;
+    --tone-wave-1: #141414;
+    --tone-wave-2: #8F8F8A;
+}
+
+[data-skin="minimal"][data-theme="dark"] .tone-waves-bg {
+    --tone-wave-1: #F2F2F0;
+    --tone-wave-2: #8F8F8A;
+}
+
+[data-skin="exam"] .tone-waves-bg {
+    opacity: 0.4;
+    --tone-wave-1: #3E4F6E;
+    --tone-wave-2: #8FA3C8;
+}
+
 .rain-particle {
     position: fixed;
     top: -10vh;
@@ -9398,15 +9457,264 @@ body.external-pip-body .pip-header {
     display: none;
 }
 
+/* Exam Mode's personality: a revision HQ. A countdown board for the next exam, exams first,
+   graph paper, distractions muted, and an exam-hall clock in Zen */
+
+/* The countdown board: big on the dashboard, a slim strip on other pages */
 [data-skin="exam"] .exam-mode-bar:not(:empty) {
-    display: block;
-    margin: 0 0 1.1rem;
-    padding: 0.7rem 1rem;
-    border-radius: 12px;
-    background: #DADEE4;
-    color: #3A4252;
-    font-size: 0.9rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1.5rem;
+    margin: 0 0 1.5rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 16px;
+    background: #23272F;
+    color: #FFFFFF;
+}
+
+[data-skin="exam"] .emb-empty {
+    grid-column: 1 / -1;
     font-weight: 600;
+}
+
+[data-skin="exam"] .emb-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 5.5rem;
+    padding-right: 1.5rem;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+[data-skin="exam"] .emb-count strong {
+    font-size: 4.2rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-skin="exam"] .emb-count span {
+    margin-top: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #B8C0CF;
+}
+
+[data-skin="exam"] .emb-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9AA5B8;
+}
+
+[data-skin="exam"] .emb-title {
+    margin-top: 0.2rem;
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+[data-skin="exam"] .emb-when,
+[data-skin="exam"] .emb-portions {
+    margin-top: 0.15rem;
+    font-size: 0.95rem;
+    color: #D4D9E2;
+}
+
+[data-skin="exam"] .emb-series {
+    margin-top: 0.8rem;
+    max-width: 26rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #B8C0CF;
+}
+
+[data-skin="exam"] .emb-track {
+    height: 8px;
+    margin-top: 0.35rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.14);
+    overflow: hidden;
+}
+
+[data-skin="exam"] .emb-track i {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: #8FA3C8;
+}
+
+[data-skin="exam"] .emb-after ul {
+    list-style: none;
+    margin-top: 0.4rem;
+    display: grid;
+    gap: 0.3rem;
+}
+
+[data-skin="exam"] .emb-after li {
+    font-size: 0.92rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+[data-skin="exam"] .emb-after li span {
+    font-weight: 500;
+    color: #9AA5B8;
+}
+
+/* Away from the dashboard, the board shrinks to one line */
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) .exam-mode-bar:not(:empty) {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 1rem;
+    padding: 0.7rem 1.1rem;
+    border-radius: 12px;
+}
+
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) .emb-count {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+    min-width: 0;
+    padding-right: 1rem;
+}
+
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) .emb-count strong {
+    font-size: 1.6rem;
+}
+
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) .emb-count span {
+    margin: 0;
+}
+
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) .emb-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+[data-skin="exam"] .content-area:not(:has(#dashboard.active-view)) :is(.emb-label, .emb-when, .emb-portions, .emb-series, .emb-after) {
+    display: none;
+}
+
+@media (max-width: 700px) {
+    [data-skin="exam"] .exam-mode-bar:not(:empty) {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 1rem;
+        padding: 1.1rem;
+    }
+
+    [data-skin="exam"] .emb-count {
+        min-width: 0;
+        padding-right: 1rem;
+    }
+
+    [data-skin="exam"] .emb-count strong {
+        font-size: 3rem;
+    }
+
+    [data-skin="exam"] .emb-after {
+        grid-column: 1 / -1;
+        padding-top: 0.8rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    [data-skin="exam"] .emb-after ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 1rem;
+    }
+}
+
+/* Graph paper, faint, like a maths answer sheet */
+[data-skin="exam"] .fluid-bg {
+    background-color: #ECEEF1;
+    background-image:
+        linear-gradient(rgba(62, 79, 110, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(62, 79, 110, 0.07) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* Exams first: the Upcoming exams card leads the dashboard, full width */
+[data-skin="exam"] .exams-card {
+    order: -1;
+    grid-column: 1 / -1;
+    border-top: 4px solid #3E4F6E;
+}
+
+/* Card titles read like section headings on a question paper */
+[data-skin="exam"] .card-title-wrap h3 {
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #3E4F6E;
+}
+
+[data-skin="exam"] .card-title-wrap .tile-icon {
+    width: 28px;
+    height: 28px;
+    background: #E8EBF0;
+    color: #3E4F6E;
+    border-radius: 8px;
+}
+
+/* Distractions muted: no messages, streaks or setup list; Friends and Classes fade back */
+[data-skin="exam"] .notif-wrap,
+[data-skin="exam"] #dash-streak,
+[data-skin="exam"] .onboarding-card {
+    display: none !important;
+}
+
+[data-skin="exam"] .dock-item[data-tab="friends"],
+[data-skin="exam"] .dock-item[data-tab="classes"] {
+    opacity: 0.4;
+}
+
+[data-skin="exam"] .dock-item[data-tab="friends"]:hover,
+[data-skin="exam"] .dock-item[data-tab="classes"]:hover,
+[data-skin="exam"] .dock-item[data-tab="friends"].active,
+[data-skin="exam"] .dock-item[data-tab="classes"].active {
+    opacity: 1;
+}
+
+/* Zen: an exam-hall clock. Big plain numbers and a "time left" bar that runs down */
+[data-skin="exam"] .timer-display {
+    width: min(340px, 100%);
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.9rem;
+    margin: 1.5rem auto;
+}
+
+[data-skin="exam"] .timer-progress-svg {
+    display: none;
+}
+
+[data-skin="exam"] .timer-text {
+    position: static;
+    font-size: 4.6rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #23272F;
+}
+
+[data-skin="exam"] .timer-display::after {
+    content: '';
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(to right, #3E4F6E calc((1 - var(--done, 0)) * 100%), #D3D7DE 0);
+    transition: background 0.4s;
+}
+
+[data-skin="exam"] .timer-type-toggle span {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.75rem;
+    font-weight: 800;
 }
 
 /* ---------- Classic: Procrastinote before the 19 Oct 2026 redesign (commit 87ef882) ----------
