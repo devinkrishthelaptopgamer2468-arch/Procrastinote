@@ -5939,11 +5939,76 @@ let bgAnimationInterval = null;
 
 function clearBackgroundAnimations() {
     clearInterval(bgAnimationInterval);
+    cancelAnimationFrame(toneWavesFrame);
+    toneWavesFrame = null;
     const fluidBg = document.querySelector('.fluid-bg');
     if (fluidBg) {
         fluidBg.classList.remove('ocean-mode');
     }
-    document.querySelectorAll('.bird-particle, .rain-particle').forEach(el => el.remove());
+    document.querySelectorAll('.bird-particle, .rain-particle, .tone-waves-bg').forEach(el => el.remove());
+}
+
+// 852 Hz: sound waves rippling across the page background, in the theme's two wave colours
+// (--tone-wave-1 and --tone-wave-2 on .tone-waves-bg). They grow in with the real sound (read
+// from the same listening tap as the player's wave) and settle flat when it stops. About 30 frames
+// a second is plenty for slow waves and easier on phones.
+let toneWavesFrame = null;
+
+function startToneWaves() {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'tone-waves-bg';
+    canvas.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(canvas);
+    const g = canvas.getContext('2d');
+    const start = performance.now();
+    let last = 0;
+    let level = 0;
+    const lines = [
+        { y: 0.3, amp: 0.05, waves: 1.2, speed: 0.05, width: 2, alpha: 0.45, color: 2 },
+        { y: 0.48, amp: 0.1, waves: 1.8, speed: 0.09, width: 3, alpha: 0.9, color: 1 },
+        { y: 0.52, amp: 0.07, waves: 2.6, speed: -0.07, width: 2, alpha: 0.55, color: 2 },
+        { y: 0.72, amp: 0.045, waves: 3.4, speed: 0.12, width: 1.5, alpha: 0.4, color: 1 }
+    ];
+    const draw = now => {
+        toneWavesFrame = requestAnimationFrame(draw);
+        if (now - last < 33) return;
+        last = now;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.round(innerWidth * dpr);
+        const h = Math.round(innerHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+
+        // How loud the sound is right now: the waves rise as the tone fades in, and settle when it stops
+        let peak = 0;
+        if (scopeAnalyser) {
+            const samples = new Float32Array(scopeAnalyser.fftSize);
+            scopeAnalyser.getFloatTimeDomainData(samples);
+            for (let i = 0; i < samples.length; i += 4) peak = Math.max(peak, Math.abs(samples[i]));
+        }
+        level += ((peak > 0.002 ? 1 : 0) - level) * 0.06;
+
+        const style = getComputedStyle(canvas);
+        const colors = { 1: style.getPropertyValue('--tone-wave-1').trim(), 2: style.getPropertyValue('--tone-wave-2').trim() };
+        const t = reducedMotion.matches ? 0 : (now - start) / 1000;
+        g.clearRect(0, 0, w, h);
+        g.lineCap = 'round';
+        lines.forEach(line => {
+            g.globalAlpha = line.alpha;
+            g.strokeStyle = colors[line.color];
+            g.lineWidth = line.width * dpr;
+            g.beginPath();
+            for (let x = 0; x <= w; x += 4 * dpr) {
+                const across = x / w;
+                const taper = Math.pow(Math.sin(Math.PI * across), 0.8); // calm at the edges, biggest in the middle
+                const wave = Math.sin((across * line.waves + t * line.speed) * Math.PI * 2);
+                const y = h * line.y + wave * h * line.amp * level * taper;
+                x ? g.lineTo(x, y) : g.moveTo(x, y);
+            }
+            g.stroke();
+        });
+        g.globalAlpha = 1;
+    };
+    toneWavesFrame = requestAnimationFrame(draw);
 }
 
 function spawnBird() {
@@ -6015,6 +6080,8 @@ function updateBackgroundAnimation() {
         if (fluidBg) {
             fluidBg.classList.add('ocean-mode');
         }
+    } else if (currentSound === 'tone852') {
+        startToneWaves();
     }
 }
 
