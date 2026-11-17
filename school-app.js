@@ -4144,14 +4144,40 @@ function updateExamModeBar() {
     if (!bar) return;
     // Reads the page's attribute (not THEME_SKINS) because renderExams can run before this part of the file
     if (document.documentElement.dataset.skin !== 'exam') { bar.textContent = ''; return; }
-    const next = upcomingExams()[0];
+    const upcoming = upcomingExams();
+    const next = upcoming[0];
     if (!next) {
-        bar.textContent = 'Exam Mode is on. Add your exams on the Exams page to see a countdown here.';
+        bar.innerHTML = '<p class="emb-empty">Exam Mode is on. Add your exams on the Exams page to see a countdown here.</p>';
         return;
     }
-    const daysLeft = Math.round((parseDay(next.date) - parseDay(formatDateString(new Date()))) / 86400000);
-    const when = daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`;
-    bar.textContent = `Exam Mode is on. Next exam: ${examTitle(next)}, ${when}.`;
+    const today = parseDay(formatDateString(new Date()));
+    const daysUntil = exam => Math.round((parseDay(exam.date) - today) / 86400000);
+    const daysLeft = daysUntil(next);
+    const bigNumber = daysLeft === 0 ? 'Today' : daysLeft === 1 ? '1' : String(daysLeft);
+    const bigLabel = daysLeft === 0 ? 'good luck!' : daysLeft === 1 ? 'day to go' : 'days to go';
+    const dateText = new Date(parseDay(next.date)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    const after = upcoming.slice(1, 4).map(exam => {
+        const d = daysUntil(exam);
+        return `<li>${escapeHTML(exam.subject || examTitle(exam))} <span>${d === 1 ? 'tomorrow' : `in ${d} days`}</span></li>`;
+    }).join('');
+    // How far through this exam series (papers already written out of all of them)
+    let seriesHtml = '';
+    if (next.series) {
+        const papers = (appState.exams || []).filter(e => e.series === next.series);
+        const done = papers.filter(e => parseDay(e.date) < today).length;
+        const pct = papers.length ? Math.round(done / papers.length * 100) : 0;
+        seriesHtml = `<div class="emb-series"><span>${escapeHTML(next.series)}: ${done} of ${papers.length} papers done</span><div class="emb-track" role="progressbar" aria-label="${escapeHTML(next.series)} papers done" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div></div>`;
+    }
+    bar.innerHTML = `
+        <div class="emb-count"><strong>${bigNumber}</strong><span>${bigLabel}</span></div>
+        <div class="emb-main">
+            <p class="emb-label">Next exam</p>
+            <p class="emb-title">${escapeHTML(examTitle(next))}</p>
+            <p class="emb-when">${escapeHTML(dateText)}${next.time ? ` · ${escapeHTML(next.time)}` : ''}</p>
+            ${next.portions ? `<p class="emb-portions">Portions: ${escapeHTML(next.portions)}</p>` : ''}
+            ${seriesHtml}
+        </div>
+        ${after ? `<div class="emb-after"><p class="emb-label">After that</p><ul>${after}</ul></div>` : ''}`;
 }
 
 const currentSkin = () => (THEME_SKINS[appState.settings?.skin] ? appState.settings.skin : '');
