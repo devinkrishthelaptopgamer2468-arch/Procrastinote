@@ -4215,7 +4215,6 @@ function applyTheme() {
     if (toggleSwitch) toggleSwitch.checked = (theme === 'light');
 
     updateExamModeBar();
-    document.dispatchEvent(new Event('procrastinote:theme')); // e.g. Exam Mode's sound-wave line
 
     // Settings > Themes: mark the chosen one
     const choice = skin || 'procrastinote';
@@ -5562,8 +5561,7 @@ let beatTimeoutId = null;
 let birdTimeoutId = null;
 let dropTimeoutId = null;
 let currentSound = 'tone852';
-let scopeAnalyser = null; // see "Exam Mode's sound-wave line"
-let scopeFrame = null;
+let scopeAnalyser = null; // listens to the sound so the 852 Hz background waves follow it (see startToneWaves)
 
 const musicToggleBtn = document.getElementById('music-toggle');
 const musicPlayIcon = document.getElementById('music-play-icon');
@@ -5590,7 +5588,7 @@ function getAudioCtx() {
         masterGain.connect(soften);
         soften.connect(limiter);
         limiter.connect(audioCtx.destination);
-        // A listening tap for Exam Mode's sound-wave line (it only reads the sound, it plays nothing)
+        // A listening tap for the 852 Hz background waves (it only reads the sound, it plays nothing)
         scopeAnalyser = audioCtx.createAnalyser();
         scopeAnalyser.fftSize = 2048;
         masterGain.connect(scopeAnalyser);
@@ -6115,74 +6113,7 @@ function setPlayingUI(playing) {
     updateBackgroundAnimation();
     // Sync PiP music display
     if (typeof updatePipMusicDisplay === 'function') updatePipMusicDisplay();
-    updateWaveScope();
 }
-
-// --- The sound-wave line ---
-// While a sound plays, the player shows the real sound as a moving wave, like an oscilloscope:
-// the 852 Hz tone is a smooth, steady wave; rain, forest and ocean are rougher. Each frame starts
-// where the wave crosses the middle going up, so a steady tone stands still. Exam Mode shows it on
-// its own little screen; every other theme draws it softly behind the player, in the theme's colour
-// (the canvas's CSS colour, --wave-color).
-function drawWaveScope(live) {
-    const canvas = document.querySelector('.wave-scope');
-    if (!canvas || !canvas.offsetWidth) return false;
-    const onScreen = document.documentElement.dataset.skin === 'exam';
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.round(canvas.offsetWidth * dpr);
-    const h = Math.round(canvas.offsetHeight * dpr);
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    const g = canvas.getContext('2d');
-    g.clearRect(0, 0, w, h);
-    if (onScreen) {
-        g.lineWidth = 1 * dpr;
-        g.strokeStyle = 'rgba(62, 79, 110, 0.18)';
-        g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
-    }
-
-    let samples = null;
-    if (live && scopeAnalyser) {
-        samples = new Float32Array(scopeAnalyser.fftSize);
-        scopeAnalyser.getFloatTimeDomainData(samples);
-    }
-    const shown = 260; // about 5 waves of the 852 Hz tone
-    let start = 0;
-    let peak = 0;
-    if (samples) {
-        for (let i = 1; i < 700; i++) {
-            if (samples[i - 1] < 0 && samples[i] >= 0) { start = i; break; }
-        }
-        for (let i = start; i < start + shown; i++) peak = Math.max(peak, Math.abs(samples[i]));
-    }
-    const scale = peak > 0.002 ? (onScreen ? 0.85 : 0.6) / peak : 0; // fill the height at any volume; silence is a flat line
-    g.lineWidth = (onScreen ? 2.5 : 3) * dpr;
-    g.lineJoin = 'round';
-    g.strokeStyle = getComputedStyle(canvas).color;
-    g.beginPath();
-    for (let x = 0; x <= w; x++) {
-        const value = samples ? samples[start + Math.floor(x / w * (shown - 1))] * scale : 0;
-        const y = h / 2 - value * (h / 2 - 3 * dpr);
-        x ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.stroke();
-    return true;
-}
-
-function updateWaveScope() {
-    cancelAnimationFrame(scopeFrame);
-    scopeFrame = null;
-    if (!isMusicPlaying) { drawWaveScope(false); return; }
-    const tick = () => {
-        if (!isMusicPlaying) { drawWaveScope(false); scopeFrame = null; return; }
-        drawWaveScope(true); // does nothing while the Zen page isn't showing
-        scopeFrame = requestAnimationFrame(tick);
-    };
-    tick();
-}
-
-document.addEventListener('procrastinote:theme', updateWaveScope);
-window.addEventListener('resize', () => { if (!scopeFrame) updateWaveScope(); });
-updateWaveScope();
 
 function toggleMusic() {
     const ctx = getAudioCtx();
