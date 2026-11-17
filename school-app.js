@@ -6051,22 +6051,27 @@ function setPlayingUI(playing) {
     updateWaveScope();
 }
 
-// --- Exam Mode's sound-wave line ---
-// While a sound plays in Exam Mode, the player shows the real sound as a moving wave, like an
-// oscilloscope: the 852 Hz tone is a smooth, steady wave; rain, forest and ocean are rougher.
-// Each frame starts where the wave crosses the middle going up, so a steady tone stands still.
+// --- The sound-wave line ---
+// While a sound plays, the player shows the real sound as a moving wave, like an oscilloscope:
+// the 852 Hz tone is a smooth, steady wave; rain, forest and ocean are rougher. Each frame starts
+// where the wave crosses the middle going up, so a steady tone stands still. Exam Mode shows it on
+// its own little screen; every other theme draws it softly behind the player, in the theme's colour
+// (the canvas's CSS colour, --wave-color).
 function drawWaveScope(live) {
     const canvas = document.querySelector('.wave-scope');
     if (!canvas || !canvas.offsetWidth) return false;
+    const onScreen = document.documentElement.dataset.skin === 'exam';
     const dpr = window.devicePixelRatio || 1;
     const w = Math.round(canvas.offsetWidth * dpr);
     const h = Math.round(canvas.offsetHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const g = canvas.getContext('2d');
     g.clearRect(0, 0, w, h);
-    g.lineWidth = 1 * dpr;
-    g.strokeStyle = 'rgba(62, 79, 110, 0.18)';
-    g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    if (onScreen) {
+        g.lineWidth = 1 * dpr;
+        g.strokeStyle = 'rgba(62, 79, 110, 0.18)';
+        g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    }
 
     let samples = null;
     if (live && scopeAnalyser) {
@@ -6082,10 +6087,10 @@ function drawWaveScope(live) {
         }
         for (let i = start; i < start + shown; i++) peak = Math.max(peak, Math.abs(samples[i]));
     }
-    const scale = peak > 0.002 ? 0.85 / peak : 0; // fill the height at any volume; silence is a flat line
-    g.lineWidth = 2.5 * dpr;
+    const scale = peak > 0.002 ? (onScreen ? 0.85 : 0.6) / peak : 0; // fill the height at any volume; silence is a flat line
+    g.lineWidth = (onScreen ? 2.5 : 3) * dpr;
     g.lineJoin = 'round';
-    g.strokeStyle = '#3E4F6E';
+    g.strokeStyle = getComputedStyle(canvas).color;
     g.beginPath();
     for (let x = 0; x <= w; x++) {
         const value = samples ? samples[start + Math.floor(x / w * (shown - 1))] * scale : 0;
@@ -6099,12 +6104,10 @@ function drawWaveScope(live) {
 function updateWaveScope() {
     cancelAnimationFrame(scopeFrame);
     scopeFrame = null;
-    const on = document.documentElement.dataset.skin === 'exam';
-    if (!on) return;
     if (!isMusicPlaying) { drawWaveScope(false); return; }
     const tick = () => {
-        if (!isMusicPlaying || document.documentElement.dataset.skin !== 'exam') { drawWaveScope(false); scopeFrame = null; return; }
-        drawWaveScope(true);
+        if (!isMusicPlaying) { drawWaveScope(false); scopeFrame = null; return; }
+        drawWaveScope(true); // does nothing while the Zen page isn't showing
         scopeFrame = requestAnimationFrame(tick);
     };
     tick();

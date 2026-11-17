@@ -9651,9 +9651,43 @@ body.external-pip-body .pip-header {
     transition: background 0.4s;
 }
 
-/* The player shows the playing sound as a live wave line (drawn by school-app.js) */
+/* The player shows the playing sound as a live wave (drawn by school-app.js in the canvas's colour).
+   Every theme: softly behind the player. Exam Mode: on its own little graph-paper screen. */
+.player-info {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.player-info > :not(.wave-scope) {
+    position: relative;
+    z-index: 1;
+}
+
 .wave-scope {
-    display: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    color: var(--wave-color, var(--accent));
+    opacity: 0.3;
+}
+
+[data-skin="blossom"] .wave-scope {
+    --wave-color: #E26A9B;
+    opacity: 0.38;
+}
+
+[data-skin="trueblack"] .wave-scope {
+    opacity: 0.35;
+}
+
+/* Paper: a red-pen wave across the cassette */
+[data-skin="paper"] .wave-scope {
+    --wave-color: #F28B82;
+    opacity: 0.5;
 }
 
 [data-skin="exam"] .player-info {
@@ -9677,9 +9711,12 @@ body.external-pip-body .pip-header {
 
 [data-skin="exam"] .wave-scope {
     display: block;
+    position: static;
     grid-area: wave;
     width: 100%;
     height: 56px;
+    opacity: 1;
+    color: #3E4F6E;
     border-radius: 10px;
     background-color: #FFFFFF;
     background-image:
