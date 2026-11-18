@@ -511,6 +511,16 @@
                         <ol id="onboarding-list" class="onboarding-list"></ol>
                     </div>
 
+                    <!-- Your progress: level and XP, the study streak, this week's goals and personal bests
+                         (school-app.js "Rewards"). Hidden when switched off in Settings. -->
+                    <div class="card tile progress-card" id="progress-card" hidden>
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6 .9-4.4 4.3 1 6L12 16.9 6.7 19.7l1-6L3.3 9.4l6-.9z"/></svg></span>
+                            <h3>Your progress</h3>
+                        </div>
+                        <div class="progress-body"></div>
+                    </div>
+
                     <div class="card tile uniform-card">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.5 4 6l1.8 4.2L8 9.5V20h8V9.5l2.2.7L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/></svg></span>
@@ -764,6 +774,18 @@
                         <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
                     </div>
 
+                    <div class="card rewards-settings-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6 .9-4.4 4.3 1 6L12 16.9 6.7 19.7l1-6L3.3 9.4l6-.9z"/></svg></span>
+                            <h3>XP and streaks</h3>
+                        </div>
+                        <p class="subtitle card-sub">Earn XP for homework and focus time, keep a study streak and complete small goals each week. You never lose XP, and missing a day now and then is fine.</p>
+                        <label class="rewards-switch" for="rewards-toggle">
+                            <input type="checkbox" id="rewards-toggle" checked>
+                            <span>Show XP, streaks and goals</span>
+                        </label>
+                    </div>
+
                     <div class="card invite-card">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg></span>
@@ -792,6 +814,10 @@
                             <button type="button" class="theme-option" role="radio" data-theme-choice="minimal" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#FAFAF8"></i><i style="background:#111111"></i><i style="background:#141414"></i></span>
                                 <span class="theme-option-text"><strong>Minimalist</strong><small>Just big, clear words and thin lines. Light or dark too</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="quest" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FFF6E5"></i><i style="background:#FFC531"></i><i style="background:#6D3DF5"></i></span>
+                                <span class="theme-option-text"><strong>Quest</strong><small>Bright, bouncy and fun, with confetti for your wins. Light or dark too</small></span>
                             </button>
                             <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
                                 <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>

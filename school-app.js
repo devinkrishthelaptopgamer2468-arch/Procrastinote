@@ -95,7 +95,7 @@ const cloud = (function createCloudClient() {
 // Planner sync state (see "Planner sync" near the friends chat code)
 const PLANNER_SYNC_FIELDS = ['settings', 'notebooks', 'activeNotebookId', 'uniforms', 'timetable', 'homeTimetable',
     'homeSchedule', 'homework', 'friendsList', 'holidays', 'halfdayDates', 'occasions', 'exams', 'streak', 'marks', 'focusLog',
-    'classFollow', 'classTimetableImported', 'classHomeworkAdded', 'notifSeen'];
+    'classFollow', 'classTimetableImported', 'classHomeworkAdded', 'notifSeen', 'rewards'];
 let swRegistration = null;    // the notification helper (sw.js), see "Phone notifications"
 let plannerReady = false;     // false until this device has loaded the online copy after logging in
 let plannerDirty = false;     // local changes not saved online yet
@@ -129,6 +129,7 @@ let defaultState = {
     marks: [], // e.g. [{ id, subject: "Physics", test: "Revision Exam 3", score: 42, outOf: 50, date: "2026-11-12" }]
     focusLog: {}, // study minutes from the Zen timer: { "2026-10-27": { "Physics": 50, "General": 25 } }
     notifSeen: {}, // what Messages and Updates you've seen (see "Notifications"), on every device
+    rewards: null, // XP, streaks and achievements (see "Rewards"); filled in on first use
     // Classes (classes.js)
     classFollow: {}, // { classId: true }: class homework is added to your homework automatically
     classTimetableImported: {}, // { classId: timetable_updated_at of the class timetable you imported }
@@ -178,6 +179,7 @@ function saveState() {
                 marks: appState.marks || [],
                 focusLog: appState.focusLog || {},
                 notifSeen: appState.notifSeen || {},
+                rewards: appState.rewards || null,
                 classFollow: appState.classFollow || {},
                 classTimetableImported: appState.classTimetableImported || {},
                 classHomeworkAdded: appState.classHomeworkAdded || {},
@@ -1904,6 +1906,9 @@ function showSetupSaved(stepId) {
 }
 
 function renderSettings() {
+    const rewardsToggle = document.getElementById('rewards-toggle');
+    if (rewardsToggle) rewardsToggle.checked = !appState.settings?.rewardsOff;
+
     // Setup Custom Dropdowns for School Setup
     setupCustomDropdown('total-days-display', 'total-days-options', 'total-days',
         Array.from({length: 10}, (_, i) => ({label: (i+1).toString(), value: (i+1).toString()})),
@@ -2540,6 +2545,7 @@ function renderDashboard() {
 
     renderHomeworkStreak();
     renderOnboarding();
+    renderProgress();
 
     renderExams();
     renderStudyPlan();
@@ -2653,6 +2659,245 @@ function renderHomeworkStreak() {
         el.innerText = `🔥 ${days} days in a row with nothing overdue${streak.best > days ? ` · best ${streak.best}` : ''}`;
     }
 }
+
+// --- Rewards: XP, levels, a forgiving study streak, weekly goals and personal bests ---
+// Made to feel good, never stressful: XP only ever goes up, the streak lets you miss one day a
+// week, weekly goals simply start fresh on Monday, and it can be hidden in Settings.
+// appState.rewards = {
+//   log: { "YYYY-MM-DD": { xp, focus (minutes), hw (homework done), session (longest session, min) } },
+//   bestSession, bestStreak,            // personal bests that can't be worked out from the log
+//   badges: { "<Monday>": ["focus60", ...] }  // weekly goals already celebrated
+// }
+// The log is kept forever (one small entry per day), so XP never shrinks.
+const LEVEL_NAMES = ['Fresh Start', 'Page Turner', 'Note Taker', 'Focus Finder', 'Steady Climber',
+    'Deep Diver', 'Brain Builder', 'Study Star', 'Knowledge Knight', 'Scholar', 'Mastermind', 'Legend'];
+const STREAK_MIN_FOCUS = 10; // minutes of focus that count as a study day (or finishing any homework)
+
+function rewardsState() {
+    let r = appState.rewards;
+    if (!r || typeof r !== 'object') {
+        // First time: turn the focus minutes already saved into XP, so nobody starts from zero
+        r = { log: {}, bestSession: 0, bestStreak: 0, badges: {} };
+        Object.entries(appState.focusLog || {}).forEach(([day, subjects]) => {
+            const minutes = Object.values(subjects || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+            if (minutes > 0) r.log[day] = { xp: minutes, focus: minutes, hw: 0, session: 0 };
+        });
+        appState.rewards = r;
+        // Goals already reached before rewards existed don't pop up as new
+        r.badges[mondayOf(formatDateString(new Date()))] = weeklyGoals(r).filter(g => g.value >= g.goal).map(g => g.id);
+    }
+    r.log ||= {};
+    r.badges ||= {};
+    return r;
+}
+
+const rewardDay = (r, day) => (r.log[day] ||= { xp: 0, focus: 0, hw: 0, session: 0 });
+const totalXp = r => Object.values(r.log).reduce((sum, e) => sum + (e.xp || 0), 0);
+
+// 100 XP for level 2, then each level needs 50 more than the last
+function levelInfo(xp) {
+    let level = 1, need = 100, into = xp;
+    while (into >= need) { into -= need; level++; need = 100 + 50 * (level - 1); }
+    const name = LEVEL_NAMES[Math.min(level, LEVEL_NAMES.length) - 1] + (level > LEVEL_NAMES.length ? ` ${level - LEVEL_NAMES.length + 1}` : '');
+    return { level, into, need, name };
+}
+
+const isStudyDay = e => !!e && ((e.focus || 0) >= STREAK_MIN_FOCUS || (e.hw || 0) > 0);
+
+function mondayOf(day) {
+    const d = parseDay(day);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return formatDateString(d);
+}
+
+// Days in a row with some studying. Today only counts once it's done, so the streak never "breaks"
+// in the morning, and one missed day per week (Monday to Sunday) is forgiven as a rest day.
+function studyStreak(r) {
+    const today = formatDateString(new Date());
+    const d = parseDay(today);
+    if (!isStudyDay(r.log[today])) d.setDate(d.getDate() - 1);
+    let days = 0;
+    const restUsed = {};
+    for (let i = 0; i < 400; i++) {
+        const key = formatDateString(d);
+        if (isStudyDay(r.log[key])) days++;
+        else {
+            const week = mondayOf(key);
+            if (restUsed[week]) break;
+            restUsed[week] = true;
+        }
+        d.setDate(d.getDate() - 1);
+    }
+    return { days, restUsedThisWeek: !!restUsed[mondayOf(today)] };
+}
+
+function weeklyGoals(r) {
+    const week = thisWeekDays();
+    const entries = week.map(day => r.log[day] || {});
+    const focus = entries.reduce((a, e) => a + (e.focus || 0), 0);
+    const hw = entries.reduce((a, e) => a + (e.hw || 0), 0);
+    const studyDays = entries.filter(isStudyDay).length;
+    const longest = Math.max(0, ...entries.map(e => e.session || 0));
+    return [
+        { id: 'focus60', icon: '⏱️', label: 'Focus for an hour', value: focus, goal: 60, unit: ' min' },
+        { id: 'hw3', icon: '✅', label: 'Finish 3 homework', value: hw, goal: 3, unit: '' },
+        { id: 'days4', icon: '📅', label: 'Study on 4 days', value: studyDays, goal: 4, unit: '' },
+        { id: 'deep25', icon: '🎯', label: 'One 25-minute session', value: longest, goal: 25, unit: ' min' }
+    ];
+}
+
+function personalBests(r, currentStreak = 0) {
+    const entries = Object.values(r.log);
+    const longestStreak = Math.max(r.bestStreak || 0, currentStreak);
+    const weeks = {};
+    Object.entries(r.log).forEach(([day, e]) => { const w = mondayOf(day); weeks[w] = (weeks[w] || 0) + (e.xp || 0); });
+    return [
+        { label: 'Longest focus', value: r.bestSession ? formatMinutes(r.bestSession) : '–' },
+        { label: 'Best focus day', value: (() => { const m = Math.max(0, ...entries.map(e => e.focus || 0)); return m ? formatMinutes(m) : '–'; })() },
+        { label: 'Longest streak', value: longestStreak ? `${longestStreak} day${longestStreak === 1 ? '' : 's'}` : '–' },
+        { label: 'Best week', value: (() => { const x = Math.max(0, ...Object.values(weeks)); return x ? `${x} XP` : '–'; })() }
+    ];
+}
+
+const rewardsOn = () => !appState.settings?.rewardsOff;
+
+// Add XP for today, then celebrate anything new: a level, a weekly goal, a longer streak
+function grantXp(xp, reason, from) {
+    const r = rewardsState();
+    const before = levelInfo(totalXp(r));
+    const today = rewardDay(r, formatDateString(new Date()));
+    today.xp += xp;
+    const after = levelInfo(totalXp(r));
+
+    const streak = studyStreak(r).days;
+    if (streak > (r.bestStreak || 0)) r.bestStreak = streak;
+
+    const weekId = mondayOf(formatDateString(new Date()));
+    const celebrated = (r.badges[weekId] ||= []);
+    const newGoals = weeklyGoals(r).filter(g => g.value >= g.goal && !celebrated.includes(g.id));
+    newGoals.forEach(g => celebrated.push(g.id));
+    // Only this week's goals are kept
+    Object.keys(r.badges).forEach(w => { if (w !== weekId) delete r.badges[w]; });
+
+    if (!rewardsOn()) return;
+    // The XP first, then anything bigger right after it
+    const big = after.level > before.level ? `Level ${after.level}: ${after.name}!`
+        : newGoals.length ? `${newGoals[0].icon} Weekly goal done: ${newGoals[0].label}` : null;
+    if (reason) celebrate(`+${xp} XP · ${reason}`, 'small', from);
+    if (big) setTimeout(() => celebrate(big, 'big', from), reason ? 1300 : 0);
+}
+
+// Homework: 10 XP, or 15 when it's finished before the day it's due
+function rewardHomework(task, from) {
+    if (!task || !appState.user) return;
+    const r = rewardsState();
+    rewardDay(r, formatDateString(new Date())).hw += 1;
+    const early = task.date && formatDateString(parseDay(task.date)) > formatDateString(new Date());
+    grantXp(early ? 15 : 10, early ? 'Homework done early' : 'Homework done', from);
+}
+
+// Focus: 1 XP a minute, counted quietly; it celebrates every 25 minutes of a session
+let focusSession = { minutes: 0, last: 0 };
+function rewardFocus(minutes) {
+    if (!appState.user) return;
+    const r = rewardsState();
+    const now = Date.now();
+    if (now - focusSession.last > 3 * 60000) focusSession.minutes = 0; // a new session
+    focusSession.last = now;
+    const beforeSession = focusSession.minutes;
+    focusSession.minutes += minutes;
+    const day = rewardDay(r, formatDateString(new Date()));
+    day.focus += minutes;
+    day.session = Math.max(day.session || 0, focusSession.minutes);
+    r.bestSession = Math.max(r.bestSession || 0, focusSession.minutes);
+    const milestone = Math.floor(focusSession.minutes / 25) > Math.floor(beforeSession / 25);
+    grantXp(minutes, milestone ? `${focusSession.minutes} minutes of focus` : null);
+    saveState();
+}
+
+// A small "+XP" pop, or a bigger one with confetti for levels and weekly goals
+function celebrate(text, size, from) {
+    document.querySelectorAll('.xp-toast').forEach(t => t.remove()); // one at a time
+    const toast = document.createElement('div');
+    toast.className = `xp-toast ${size}`;
+    toast.setAttribute('role', 'status');
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), size === 'big' ? 3200 : 2200);
+    if (size === 'big' || document.documentElement.dataset.skin === 'quest') confetti(from, size === 'big' ? 36 : 14);
+}
+
+function confetti(from, count) {
+    if (reducedMotion.matches || document.documentElement.dataset.skin === 'exam') return;
+    const rect = from?.getBoundingClientRect?.();
+    const x = rect ? rect.left + rect.width / 2 : innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : innerHeight * 0.35;
+    const layer = document.createElement('div');
+    layer.className = 'confetti-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < count; i++) {
+        const bit = document.createElement('i');
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 60 + Math.random() * 120;
+        bit.style.left = `${x}px`;
+        bit.style.top = `${y}px`;
+        bit.style.setProperty('--dx', `${Math.cos(angle) * distance}px`);
+        bit.style.setProperty('--dy', `${Math.sin(angle) * distance - 60}px`);
+        bit.style.setProperty('--spin', `${Math.round(Math.random() * 720 - 360)}deg`);
+        bit.style.setProperty('--c', `var(--confetti-${(i % 4) + 1})`);
+        bit.style.animationDelay = `${Math.random() * 80}ms`;
+        layer.appendChild(bit);
+    }
+    document.body.appendChild(layer);
+    setTimeout(() => layer.remove(), 1800);
+}
+
+// Dashboard: the "Your progress" card
+function renderProgress() {
+    const card = document.getElementById('progress-card');
+    if (!card) return;
+    card.hidden = !rewardsOn() || !appState.user;
+    if (card.hidden) return;
+    const r = rewardsState();
+    const xp = totalXp(r);
+    const lvl = levelInfo(xp);
+    const streak = studyStreak(r);
+    const goals = weeklyGoals(r);
+    const done = goals.filter(g => g.value >= g.goal).length;
+    const pct = Math.round(lvl.into / lvl.need * 100);
+    const streakText = streak.days === 0
+        ? 'Study for 10 minutes or finish a homework to start a streak.'
+        : `<strong>${streak.days}-day study streak</strong>`;
+    card.querySelector('.progress-body').innerHTML = `
+        <div class="prog-level">
+            <span class="prog-badge" aria-hidden="true">${lvl.level}</span>
+            <div class="prog-level-text">
+                <strong>Level ${lvl.level} · ${escapeHTML(lvl.name)}</strong>
+                <span>${lvl.into} / ${lvl.need} XP to level ${lvl.level + 1} · ${xp} XP in total</span>
+                <div class="prog-bar" role="progressbar" aria-label="XP to the next level" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+            </div>
+        </div>
+        <p class="prog-streak"><span aria-hidden="true">🔥</span> ${streakText}
+            <small>${streak.restUsedThisWeek ? 'Rest day used this week, no worries.' : 'Missing one day a week is fine: your streak stays.'}</small></p>
+        <div class="prog-section-head"><h4>This week</h4><span>${done} of ${goals.length} · new goals every Monday</span></div>
+        <ul class="prog-goals">${goals.map(g => {
+            const complete = g.value >= g.goal;
+            const shown = Math.min(g.value, g.goal);
+            return `<li class="${complete ? 'done' : ''}">
+                <span class="prog-goal-icon" aria-hidden="true">${g.icon}</span>
+                <span class="prog-goal-text"><b>${g.label}</b><small>${complete ? 'Done!' : `${shown}${g.unit} of ${g.goal}${g.unit}`}</small></span>
+                <span class="prog-goal-bar" aria-hidden="true"><i style="width:${Math.round(shown / g.goal * 100)}%"></i></span>
+            </li>`;
+        }).join('')}</ul>
+        <div class="prog-section-head"><h4>Personal bests</h4></div>
+        <dl class="prog-bests">${personalBests(r, streak.days).map(b => `<div><dt>${b.label}</dt><dd>${b.value}</dd></div>`).join('')}</dl>`;
+}
+
+// Settings: the rewards can be switched off (they keep counting quietly, in case they come back on)
+document.getElementById('rewards-toggle')?.addEventListener('change', (e) => {
+    appState.settings.rewardsOff = !e.target.checked;
+    saveState();
+});
 
 // --- Dashboard: today's home study blocks ---
 // Which Home Study Plan category applies today: weekday, halfday, weekend or holiday (uses weekend blocks)
@@ -2939,12 +3184,14 @@ document.getElementById('homework-form').addEventListener('submit', (e) => {
 window.completeHomework = function(index, button) {
     const li = button?.closest('li');
     if (!li || reducedMotion.matches) {
+        rewardHomework(appState.homework[index]);
         appState.homework.splice(index, 1);
         saveState();
         return;
     }
     if (li.classList.contains('completing')) return; // already on its way out
     const task = appState.homework[index];
+    rewardHomework(task, button);
     li.classList.add('completing');
     setTimeout(() => {
         li.style.height = `${li.offsetHeight}px`;
@@ -4111,6 +4358,8 @@ const THEME_SKINS = {
     // The look before the 19 Oct 2026 redesign; like Procrastinote it has light and dark (mode: null)
     classic: { mode: null, bar: { dark: '#0F172A', light: '#E9EEF5' }, fonts: 'family=Quicksand:wght@400;500;600;700&family=Montserrat:wght@600;700;800' },
     blossom: { mode: 'light', bar: '#FFF5F8', fonts: 'family=Quicksand:wght@500;600;700' },
+    // Bright, bouncy and sticker-like, made for the XP and streaks; light and dark
+    quest: { mode: null, bar: { dark: '#16132B', light: '#FFF6E5' }, fonts: 'family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800' },
     // Plain page, big clear words, thin lines instead of boxes; light and dark
     minimal: { mode: null, bar: { dark: '#111111', light: '#FAFAF8' }, fonts: 'family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700' }
 };
@@ -5240,7 +5489,7 @@ function addFocusMinutes(minutes) {
     // Keep about four months, so it never grows forever
     const cutoff = formatDateString(new Date(Date.now() - 120 * 86400000));
     Object.keys(log).forEach(d => { if (d < cutoff) delete log[d]; });
-    saveState();
+    rewardFocus(minutes); // saves
 }
 
 const formatMinutes = m => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`);

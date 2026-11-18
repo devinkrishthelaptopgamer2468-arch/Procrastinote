@@ -2339,7 +2339,7 @@ li.empty-state::before {
 }
 
 /* True Black, Paper and Exam Mode each have one fixed look, so only Procrastinote, Classic and Minimalist get the light/dark button */
-[data-skin]:not([data-skin="classic"]):not([data-skin="minimal"]) .theme-toggle {
+[data-skin]:not([data-skin="classic"]):not([data-skin="minimal"]):not([data-skin="quest"]) .theme-toggle {
     display: none;
 }
 
@@ -10820,4 +10820,537 @@ body.external-pip-body .pip-header {
     .view.active-view {
         animation-duration: 0.2s;
     }
+}
+
+/* ---------- Rewards: the Your progress card, "+XP" pops and confetti (every theme) ---------- */
+:root {
+    --confetti-1: #FFC531;
+    --confetti-2: #6D3DF5;
+    --confetti-3: #FF5C9A;
+    --confetti-4: #19B89A;
+}
+
+@media (min-width: 901px) {
+    .dashboard-grid .progress-card {
+        grid-column: span 2;
+    }
+}
+
+.prog-level {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.prog-badge {
+    flex: none;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--grad);
+    color: #FFFFFF;
+    font-size: 1.55rem;
+    font-weight: 800;
+    box-shadow: var(--shadow-accent);
+}
+
+.prog-level-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.prog-level-text strong {
+    font-size: 1.05rem;
+}
+
+.prog-level-text span {
+    font-size: 0.84rem;
+    color: var(--text-2);
+}
+
+.prog-bar,
+.prog-goal-bar {
+    display: block;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--inset-hover);
+}
+
+.prog-bar {
+    height: 10px;
+    margin-top: 0.35rem;
+}
+
+.prog-bar i,
+.prog-goal-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--grad);
+    transition: width 0.6s var(--ease-out);
+}
+
+.prog-streak {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2rem 0.5rem;
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--radius);
+    background: var(--amber-soft);
+}
+
+.prog-streak small {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    color: var(--text-2);
+}
+
+.prog-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 1.1rem 0 0.5rem;
+}
+
+.prog-section-head h4 {
+    font-size: 0.92rem;
+    font-weight: 800;
+}
+
+.prog-section-head span {
+    font-size: 0.78rem;
+    color: var(--text-3);
+    text-align: right;
+}
+
+.prog-goals {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.prog-goals li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.25rem 0.65rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--inset);
+}
+
+.prog-goal-icon {
+    grid-row: span 2;
+    font-size: 1.3rem;
+}
+
+.prog-goal-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.prog-goal-text b {
+    font-size: 0.86rem;
+}
+
+.prog-goal-text small {
+    font-size: 0.76rem;
+    color: var(--text-2);
+}
+
+.prog-goal-bar {
+    height: 5px;
+}
+
+.prog-goals li.done {
+    background: var(--success-soft);
+}
+
+.prog-goals li.done .prog-goal-bar i {
+    background: var(--success);
+}
+
+.prog-goals li.done small {
+    color: var(--success);
+    font-weight: 700;
+}
+
+.prog-bests {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.prog-bests div {
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--hairline);
+}
+
+.prog-bests dt {
+    font-size: 0.72rem;
+    color: var(--text-3);
+}
+
+.prog-bests dd {
+    margin: 0.1rem 0 0;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+    .prog-goals {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .prog-bests {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.rewards-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.rewards-switch input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+}
+
+/* "+10 XP · Homework done" floats up above the dock, then fades */
+.xp-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom) + 112px);
+    z-index: 3000;
+    max-width: calc(100vw - 32px);
+    padding: 0.6rem 1.15rem;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-weight: 700;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    box-shadow: var(--shadow-lg);
+    animation: xp-pop 2.2s var(--ease-out) forwards;
+}
+
+.xp-toast.big {
+    padding: 0.8rem 1.4rem;
+    background: var(--grad);
+    color: #FFFFFF;
+    font-size: 1.05rem;
+    animation-duration: 3.2s;
+}
+
+@keyframes xp-pop {
+    0% { opacity: 0; transform: translate(-50%, 14px) scale(0.9); }
+    10% { opacity: 1; transform: translate(-50%, 0) scale(1.05); }
+    16% { transform: translate(-50%, 0) scale(1); }
+    85% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -12px); }
+}
+
+.confetti-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 3001;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.confetti-layer i {
+    position: absolute;
+    width: 8px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--c);
+    animation: confetti-burst 1.5s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes confetti-burst {
+    0% { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 170px)) rotate(var(--spin)); opacity: 0; }
+}
+
+/* ---------- Quest: a fun study theme. Bright, bouncy and sticker-like, light and dark ---------- */
+[data-skin="quest"] {
+    --font-sans: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-serif: 'Fredoka', 'Nunito', system-ui, sans-serif;
+    --quest-ink: #1E1B3A;
+    --quest-line: #1E1B3A;
+    --quest-dot: rgba(30, 27, 58, 0.13);
+    --quest-yellow: #FFC531;
+    --quest-pink: #FF5C9A;
+    --quest-teal: #19B89A;
+    --bg: #FFF6E5;
+    --glow-opacity: 0;
+    --surface: #FFFFFF;
+    --surface-strong: #FFFFFF;
+    --surface-solid: #FFFFFF;
+    --surface-border: var(--quest-line);
+    --hairline: rgba(30, 27, 58, 0.14);
+    --hairline-strong: rgba(30, 27, 58, 0.24);
+    --inset: #FFF1D6;
+    --inset-hover: #FFE6B5;
+    --field: #FFFFFF;
+    --field-border: var(--quest-line);
+    --text: #1E1B3A;
+    --text-2: #4D4870;
+    --text-3: #6E6990;
+    --accent: #6D3DF5;
+    --accent-strong: #5427E0;
+    --accent-soft: rgba(109, 61, 245, 0.12);
+    --accent-ring: rgba(109, 61, 245, 0.35);
+    --success: #12A07F;
+    --success-soft: rgba(25, 184, 154, 0.16);
+    --amber-soft: rgba(255, 197, 49, 0.28);
+    --grad: linear-gradient(135deg, #6D3DF5 0%, #FF5C9A 100%);
+    --grad-soft: linear-gradient(135deg, rgba(109, 61, 245, 0.1), rgba(255, 92, 154, 0.1));
+    --shadow-sm: 2px 2px 0 var(--quest-ink);
+    --shadow-md: 4px 4px 0 var(--quest-ink);
+    --shadow-lg: 6px 6px 0 var(--quest-ink);
+    --shadow-accent: 3px 3px 0 var(--quest-ink);
+    --blur: none;
+    --radius-sm: 12px;
+    --radius: 16px;
+    --radius-lg: 20px;
+    --radius-xl: 26px;
+}
+
+[data-skin="quest"][data-theme="dark"] {
+    --quest-ink: #07060F;
+    --quest-line: #4A4280;
+    --quest-dot: rgba(255, 255, 255, 0.07);
+    --bg: #16132B;
+    --surface: #231F42;
+    --surface-strong: #231F42;
+    --surface-solid: #231F42;
+    --hairline: rgba(255, 255, 255, 0.1);
+    --hairline-strong: rgba(255, 255, 255, 0.18);
+    --inset: #2C2752;
+    --inset-hover: #37305F;
+    --field: #1C1838;
+    --text: #F6F3FF;
+    --text-2: #C9C3EA;
+    --text-3: #9C95C6;
+    --accent: #A98BFF;
+    --accent-strong: #C2ADFF;
+    --accent-soft: rgba(169, 139, 255, 0.16);
+    --success: #3FD9B8;
+    --grad: linear-gradient(135deg, #8F6BFF 0%, #FF6FA8 100%);
+}
+
+/* A polka-dot page */
+[data-skin="quest"] .fluid-bg {
+    background-color: var(--bg);
+    background-image: radial-gradient(var(--quest-dot) 1.6px, transparent 1.8px);
+    background-size: 22px 22px;
+}
+
+[data-skin="quest"] .fluid-blob,
+[data-skin="quest"] .fluid-bg::after {
+    display: none;
+}
+
+[data-skin="quest"] h1,
+[data-skin="quest"] h2,
+[data-skin="quest"] h3,
+[data-skin="quest"] h4,
+[data-skin="quest"] .brand-name,
+[data-skin="quest"] .prog-badge,
+[data-skin="quest"] .xp-toast {
+    font-family: 'Fredoka', 'Nunito', system-ui, sans-serif;
+    letter-spacing: 0;
+}
+
+[data-skin="quest"] .view-header h2 {
+    font-weight: 700;
+}
+
+/* Your name gets a yellow marker stroke (in dark: yellow letters) */
+[data-skin="quest"] .highlight {
+    font-family: 'Fredoka', 'Nunito', system-ui, sans-serif;
+    font-style: normal;
+    font-weight: 700;
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+    background: linear-gradient(transparent 55%, var(--quest-yellow) 55%, var(--quest-yellow) 90%, transparent 90%);
+    padding: 0 4px;
+}
+
+[data-skin="quest"][data-theme="dark"] .highlight {
+    color: var(--quest-yellow);
+    background: none;
+}
+
+/* Little labels are yellow stickers */
+[data-skin="quest"] .eyebrow {
+    display: inline-block;
+    padding: 0.15rem 0.75rem;
+    border: 2px solid var(--quest-ink);
+    border-radius: 999px;
+    background: var(--quest-yellow);
+    color: #1E1B3A;
+    font-family: 'Fredoka', 'Nunito', system-ui, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    box-shadow: 2px 2px 0 var(--quest-ink);
+}
+
+/* Chunky cards that hop up a little when you point at them */
+[data-skin="quest"] .card {
+    border: 2.5px solid var(--quest-line);
+    box-shadow: var(--shadow-md);
+}
+
+@media (hover: hover) {
+    [data-skin="quest"] .tile:hover,
+    [data-skin="quest"] .clickable-card:hover {
+        transform: translate(-2px, -2px);
+        box-shadow: var(--shadow-lg);
+    }
+}
+
+[data-skin="quest"] .tile-icon {
+    border: 2px solid var(--quest-ink);
+    border-radius: 12px;
+    background: var(--quest-yellow);
+    color: #1E1B3A;
+}
+
+[data-skin="quest"] .card-title-wrap h3 {
+    font-weight: 600;
+}
+
+/* Buttons press down like real keys */
+[data-skin="quest"] .btn,
+[data-skin="quest"] .notif-btn,
+[data-skin="quest"] .planning-chip {
+    border: 2.5px solid var(--quest-ink);
+    box-shadow: 3px 3px 0 var(--quest-ink);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+[data-skin="quest"] .btn:active,
+[data-skin="quest"] .notif-btn:active {
+    transform: translate(3px, 3px);
+    box-shadow: 0 0 0 var(--quest-ink);
+}
+
+[data-skin="quest"] .primary-btn,
+[data-skin="quest"] .primary-btn:hover {
+    background: var(--accent);
+    color: #FFFFFF;
+}
+
+[data-skin="quest"][data-theme="dark"] .primary-btn,
+[data-skin="quest"][data-theme="dark"] .primary-btn:hover {
+    color: #16132B;
+}
+
+/* Tick boxes: chunky squares that pop green with a white tick */
+[data-skin="quest"] input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    flex-shrink: 0;
+    border: 2.5px solid var(--quest-ink);
+    border-radius: 7px;
+    background: var(--surface-solid);
+    cursor: pointer;
+}
+
+[data-skin="quest"] input[type="checkbox"]:checked {
+    background: var(--quest-teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat;
+    animation: quest-pop 0.3s var(--ease-spring);
+}
+
+@keyframes quest-pop {
+    0% { transform: scale(0.6); }
+    100% { transform: scale(1); }
+}
+
+/* The dock: a chunky bar; the open page is a yellow sticker */
+[data-skin="quest"] .dock {
+    border: 2.5px solid var(--quest-ink);
+    background: var(--surface-solid);
+    box-shadow: 4px 4px 0 var(--quest-ink);
+}
+
+[data-skin="quest"] .dock-item.active {
+    background: var(--quest-yellow);
+    color: #1E1B3A;
+    box-shadow: inset 0 0 0 2px var(--quest-ink);
+}
+
+[data-skin="quest"] .dock-item.active::after {
+    display: none;
+}
+
+/* Your progress, Quest-style: a gold level badge and a yellow XP bar */
+[data-skin="quest"] .prog-badge {
+    background: var(--quest-yellow);
+    color: #1E1B3A;
+    border: 2.5px solid var(--quest-ink);
+    box-shadow: 3px 3px 0 var(--quest-ink);
+}
+
+[data-skin="quest"] .prog-bar {
+    height: 14px;
+    border: 2px solid var(--quest-ink);
+}
+
+[data-skin="quest"] .prog-bar i {
+    background: var(--quest-yellow);
+}
+
+[data-skin="quest"] .prog-goals li {
+    border: 2px solid var(--quest-line);
+}
+
+[data-skin="quest"] .prog-goals li.done {
+    background: rgba(25, 184, 154, 0.18);
+}
+
+[data-skin="quest"] .prog-bests div {
+    border: 2px dashed var(--quest-line);
+}
+
+[data-skin="quest"] .xp-toast {
+    background: var(--quest-yellow);
+    color: #1E1B3A;
+    border: 2.5px solid var(--quest-ink);
+    box-shadow: 4px 4px 0 var(--quest-ink);
+}
+
+[data-skin="quest"] .xp-toast.big {
+    background: var(--quest-pink);
+    color: #FFFFFF;
 }
