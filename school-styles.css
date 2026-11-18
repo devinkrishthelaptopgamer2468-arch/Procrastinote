@@ -10997,6 +10997,12 @@ body.external-pip-body .pip-header {
     white-space: nowrap;
 }
 
+.idea-credit {
+    margin-top: 0.8rem;
+    font-size: 0.8rem;
+    color: var(--text-3);
+}
+
 /* Themes get the whole row, laid out as a grid of choices */
 .settings-grid .themes-card {
     grid-column: 1 / -1;
