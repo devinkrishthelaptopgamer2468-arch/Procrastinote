@@ -747,7 +747,7 @@
                 <nav class="settings-jump" aria-label="Settings sections">
                     <button type="button" data-jump="set-account">Account</button>
                     <button type="button" data-jump="set-look">Look and feel</button>
-                    <button type="button" data-jump="set-notifications">Notifications</button>
+                    <button type="button" data-jump="set-notifications">XP and notifications</button>
                     <button type="button" data-jump="set-app">App and sharing</button>
                 </nav>
 
@@ -807,7 +807,7 @@
                 <section class="settings-group" id="set-look" aria-labelledby="set-look-title">
                     <div class="settings-group-head">
                         <h3 id="set-look-title">Look and feel</h3>
-                        <p>Pick a theme, and choose whether to see XP and streaks</p>
+                        <p>Pick how Procrastinote looks</p>
                     </div>
                 <div class="settings-grid">
                     <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
@@ -852,27 +852,35 @@
                             </button>
                         </div>
                     </div>
+                </div>
+                </section>
 
+                <section class="settings-group" id="set-notifications" aria-labelledby="set-notifications-title">
+                    <div class="settings-group-head">
+                        <h3 id="set-notifications-title">XP and notifications</h3>
+                        <p>Study rewards, and what your phone tells you about</p>
+                    </div>
+                <div class="settings-grid">
                     <div class="card rewards-settings-card">
                         <div class="card-title-wrap">
                             <span class="tile-icon tint-amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6 .9-4.4 4.3 1 6L12 16.9 6.7 19.7l1-6L3.3 9.4l6-.9z"/></svg></span>
                             <h3>XP and streaks</h3>
                         </div>
                         <p class="subtitle card-sub">Earn XP for homework and focus time, keep a study streak and complete small goals each week. You never lose XP, and missing a day now and then is fine.</p>
+                        <!-- Where you are now (filled in by renderSettings) -->
+                        <p class="rewards-summary" id="rewards-summary"></p>
+                        <ul class="xp-rules">
+                            <li><span>Finish a homework</span><b>+10 XP</b></li>
+                            <li><span>Finish it before it's due</span><b>+15 XP</b></li>
+                            <li><span>Each minute in the Zen timer</span><b>+1 XP</b></li>
+                            <li><span>Weekly goals</span><b>New every Monday</b></li>
+                        </ul>
                         <label class="rewards-switch" for="rewards-toggle">
                             <input type="checkbox" id="rewards-toggle" checked>
                             <span>Show XP, streaks and goals</span>
                         </label>
                     </div>
-                </div>
-                </section>
 
-                <section class="settings-group" id="set-notifications" aria-labelledby="set-notifications-title">
-                    <div class="settings-group-head">
-                        <h3 id="set-notifications-title">Notifications</h3>
-                        <p>What your phone tells you about, and when</p>
-                    </div>
-                <div class="settings-grid">
                     <!-- Phone notifications (school-app.js: "Phone notifications") -->
                     <div class="card push-card" id="push-card">
                         <div class="card-title-wrap">

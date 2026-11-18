@@ -1908,6 +1908,14 @@ function showSetupSaved(stepId) {
 function renderSettings() {
     const rewardsToggle = document.getElementById('rewards-toggle');
     if (rewardsToggle) rewardsToggle.checked = !appState.settings?.rewardsOff;
+    const rewardsSummary = document.getElementById('rewards-summary');
+    if (rewardsSummary && appState.user) {
+        const r = rewardsState();
+        const lvl = levelInfo(totalXp(r));
+        const streak = studyStreak(r).days;
+        rewardsSummary.textContent = `You're Level ${lvl.level} (${lvl.name}) with ${totalXp(r)} XP` +
+            (streak ? ` and a ${streak}-day streak 🔥` : '.');
+    }
 
     // Setup Custom Dropdowns for School Setup
     setupCustomDropdown('total-days-display', 'total-days-options', 'total-days',

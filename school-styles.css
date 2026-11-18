@@ -10957,6 +10957,46 @@ body.external-pip-body .pip-header {
     }
 }
 
+/* XP and notifications sit side by side at the same height */
+#set-notifications .settings-grid {
+    align-items: stretch;
+}
+
+.rewards-summary:not(:empty) {
+    margin-top: 0.9rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.xp-rules {
+    list-style: none;
+    margin-top: 0.8rem;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.xp-rules li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px dashed var(--hairline-strong);
+    font-size: 0.88rem;
+    color: var(--text-2);
+}
+
+.xp-rules li:last-child {
+    border-bottom: 0;
+}
+
+.xp-rules b {
+    color: var(--text);
+    white-space: nowrap;
+}
+
 /* Themes get the whole row, laid out as a grid of choices */
 .settings-grid .themes-card {
     grid-column: 1 / -1;
