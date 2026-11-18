@@ -2997,6 +2997,142 @@ document.querySelectorAll('.settings-jump [data-jump]').forEach(btn => btn.addEv
 }));
 document.getElementById('settings-logout-btn')?.addEventListener('click', () => document.getElementById('logout-btn')?.click());
 
+// --- Delete account ---
+// Settings > Delete my account. Online accounts are deleted by the delete-account Edge Function
+// (it hands over classes, removes uploaded files, then deletes the account and every row that
+// belongs to it). Then this device forgets the account too and goes back to the welcome page.
+const deleteDialog = document.getElementById('delete-account-dialog');
+const deleteInput = document.getElementById('delete-account-input');
+const deleteMessage = document.getElementById('delete-account-message');
+
+function showDeleteMessage(text) {
+    deleteMessage.textContent = text;
+    deleteMessage.hidden = !text;
+}
+
+document.getElementById('btn-delete-account')?.addEventListener('click', () => {
+    if (!deleteDialog) return;
+    deleteInput.value = '';
+    showDeleteMessage('');
+    deleteDialog.showModal();
+    deleteInput.focus();
+});
+document.getElementById('delete-account-cancel')?.addEventListener('click', () => deleteDialog.close());
+deleteInput?.addEventListener('input', () => showDeleteMessage(''));
+
+// Forget the account on this device, without saving anything online (it's gone there)
+function forgetAccountHere() {
+    const email = (appState.user?.email || '').toLowerCase();
+    if (email) delete allUsers[email];
+    try {
+        localStorage.setItem(USERS_KEY, JSON.stringify(allUsers));
+    } catch (e) { /* storage full: the account is still removed from the list in memory */ }
+    localStorage.removeItem(SESSION_KEY);
+    groqKeyCache = null;
+    appState = JSON.parse(JSON.stringify(defaultState));
+    checkAuth();
+}
+
+document.getElementById('delete-account-go')?.addEventListener('click', async (e) => {
+    if (deleteInput.value.trim() !== 'DELETE') {
+        showDeleteMessage('Type DELETE in capital letters to confirm.');
+        deleteInput.focus();
+        return;
+    }
+    const button = e.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Deleting…';
+    try {
+        if (cloud && appState.user?.cloudId) {
+            const { data, error } = await cloud.functions.invoke('delete-account', { body: { confirm: 'DELETE' } });
+            if (error || !data?.ok) {
+                let body = null;
+                try { body = await error?.context?.json(); } catch (err) { /* not JSON */ }
+                showDeleteMessage(body?.message || data?.message || 'Couldn\'t delete your account just now. Check your internet and try again.');
+                return;
+            }
+            // Nothing more to save online: stop syncing, then sign out
+            plannerDirty = false;
+            stopCloudChat();
+            stopPlannerSync();
+            cloud.auth.signOut().catch(() => {});
+        }
+        deleteDialog.close();
+        forgetAccountHere();
+        alert('Your account has been deleted. Thanks for using Procrastinote.');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Delete for good';
+    }
+});
+
+// --- Report an AI reply ---
+// A "Report" button under AI answers (the AI helper and AI buddies) opens a short form. Reports
+// go to the ai_reports table, which only the site owner can read.
+const reportDialog = document.getElementById('ai-report-dialog');
+let reportTarget = null; // { source, question, reply, button }
+
+function openAiReport(target) {
+    if (!reportDialog) return;
+    reportTarget = target;
+    document.getElementById('ai-report-quote').textContent = target.reply.length > 300 ? `${target.reply.slice(0, 300)}…` : target.reply;
+    document.getElementById('ai-report-details').value = '';
+    const first = reportDialog.querySelector('input[name="ai-report-reason"]');
+    if (first) first.checked = true;
+    const message = document.getElementById('ai-report-message');
+    message.hidden = true;
+    document.getElementById('ai-report-send').hidden = false;
+    reportDialog.showModal();
+}
+
+// A small "Report" button to put under an AI answer
+function aiReportButton(source, question, reply) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ai-report-btn';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h11l-1.5 4L16 12H5"/></svg>Report';
+    btn.setAttribute('aria-label', 'Report this AI reply');
+    btn.addEventListener('click', () => openAiReport({ source, question, reply, button: btn }));
+    return btn;
+}
+
+document.getElementById('ai-report-cancel')?.addEventListener('click', () => reportDialog.close());
+document.getElementById('ai-report-send')?.addEventListener('click', async (e) => {
+    if (!reportTarget) return;
+    const sendBtn = e.currentTarget;
+    const message = document.getElementById('ai-report-message');
+    const reason = reportDialog.querySelector('input[name="ai-report-reason"]:checked')?.value || 'other';
+    const details = document.getElementById('ai-report-details').value.trim().slice(0, 500);
+    sendBtn.disabled = true;
+    try {
+        if (cloud && appState.user?.cloudId) {
+            const { error } = await cloud.from('ai_reports').insert({
+                reporter_id: appState.user.cloudId,
+                source: reportTarget.source,
+                question: (reportTarget.question || '').slice(0, 4000) || null,
+                reply: reportTarget.reply.slice(0, 8000),
+                reason,
+                details: details || null
+            });
+            if (error) {
+                message.textContent = 'Couldn\'t send the report just now. Check your internet and try again.';
+                message.hidden = false;
+                return;
+            }
+        }
+        message.textContent = 'Thanks. Your report was sent, and it helps keep the AI safe for everyone.';
+        message.hidden = false;
+        sendBtn.hidden = true;
+        if (reportTarget.button) {
+            reportTarget.button.textContent = 'Reported';
+            reportTarget.button.disabled = true;
+        }
+        setTimeout(() => { if (reportDialog.open) reportDialog.close(); }, 1600);
+    } finally {
+        sendBtn.disabled = false;
+    }
+});
+
 // --- Action Bindings ---
 
 // School setup, uniforms and the timetable save by themselves when something is picked
@@ -6457,13 +6593,15 @@ const AI_CONFIG = {
 let activeGroqModel = AI_CONFIG.models[0];
 const groqBusyUntil = {}; // model -> time (ms) until which Groq said its limit is used up
 
-function addMessage(text, isBot = true) {
+// report: { question } for answers from the AI, which get a Report button
+function addMessage(text, isBot = true, report = null) {
     const chatMessages = document.getElementById('ai-chat-messages');
     if (!chatMessages) return;
-    
+
     const msg = document.createElement('div');
     msg.className = `ai-message ${isBot ? 'bot-message' : 'user-message'}`;
     msg.innerText = text;
+    if (isBot && report) msg.appendChild(aiReportButton('assistant', report.question, text));
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -6885,7 +7023,7 @@ async function processAIInput() {
     const history = aiChatHistory.slice();
     const botResponse = await callGroq(text, null, { history });
     rememberAiTurn(text, botResponse);
-    addMessage(botResponse, true);
+    addMessage(botResponse, true, isAiProblemReply(botResponse) ? null : { question: text });
     if (statusText) statusText.innerText = "Online";
 }
 
@@ -9457,7 +9595,7 @@ function renderChatWindow() {
     
     const currentUserEmail = appState.user.email.toLowerCase();
     
-    messages.forEach(msg => {
+    messages.forEach((msg, msgIndex) => {
         const isOutgoing = msg.sender.toLowerCase() === currentUserEmail;
         const msgWrapper = document.createElement('div');
         msgWrapper.className = `chat-msg-bubble-wrapper ${isOutgoing ? 'outgoing' : 'incoming'}`;
@@ -9490,6 +9628,11 @@ function renderChatWindow() {
             </div>
         `;
         if (msg.file) msgWrapper.querySelector('.chat-msg-bubble > div').appendChild(buildChatFile(msg.file));
+        // AI buddies' answers can be reported (with the student's message before it)
+        if (buddy && !isOutgoing && !msg.file && msg.text) {
+            const asked = messages.slice(0, msgIndex).reverse().find(m => m.sender.toLowerCase() === currentUserEmail);
+            msgWrapper.querySelector('.chat-msg-bubble').appendChild(aiReportButton('buddy', asked?.text || '', msg.text));
+        }
         container.appendChild(msgWrapper);
     });
     

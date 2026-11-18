@@ -313,6 +313,28 @@ That's all: it makes the `board-photos` storage bucket by itself, and polls use 
 notifications you already have. Until it's run, the Lost & found tab says it isn't switched on
 yet, and the poll button says so too.
 
+## 14. Turn on deleting accounts and reporting AI replies
+
+Google Play needs both. **Delete my account** (bottom of Settings) deletes the account and
+everything that belongs to it: classes it owns are handed to another admin or the member who
+joined first (a class with nobody else is deleted), and its uploaded files are removed from
+Storage. **Report** under an AI answer saves the reply, the question and a reason to the
+`ai_reports` table, which only the site owner can read.
+
+1. In **SQL Editor** → **New query**, paste all of `supabase/add-account-deletion.sql` and press
+   **Run**.
+2. **Edge Functions** → **Deploy a new function** → **Via Editor**. Name it exactly
+   `delete-account`, delete the example code, paste all of
+   `supabase/functions/delete-account/index.ts`, and press **Deploy function**. Leave
+   **"Enforce JWT verification" ON** (it only ever deletes the account that's logged in). It
+   needs no secrets.
+3. Test it with a spare test account, **not** your own: sign up, add a homework, then
+   **Settings → Delete my account** and type DELETE. In **Authentication → Users** that account
+   is gone. To see AI reports: **Table Editor** → `ai_reports`.
+
+Until both are done, deleting says it couldn't delete the account, and reports say they couldn't be
+sent.
+
 ## If something goes wrong
 
 - **"No Procrastinote account uses that email yet"**: your friend hasn't signed up (and
