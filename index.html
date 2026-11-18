@@ -306,10 +306,7 @@
 
             <h3>Special thanks</h3>
             <ul class="about-me-thanks">
-                <li>Sarvesh Senthilkumar</li>
-                <li>Ashwin Nagulan</li>
-                <li>Kaushik Ram . B</li>
-                <li>Siddarth Senthilkumar</li>
+                <li>Siddarth Senthilkumar (10 C), for the idea of XP, streaks and weekly goals</li>
             </ul>
 
             <h3>Say hi</h3>
@@ -509,6 +506,16 @@
                             <button type="button" id="onboarding-hide" class="study-halfday-btn onboarding-hide">Hide</button>
                         </div>
                         <ol id="onboarding-list" class="onboarding-list"></ol>
+                    </div>
+
+                    <!-- Your progress: level and XP, the study streak, this week's goals and personal bests
+                         (school-app.js "Rewards"). Hidden when switched off in Settings. -->
+                    <div class="card tile progress-card" id="progress-card" hidden>
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6 .9-4.4 4.3 1 6L12 16.9 6.7 19.7l1-6L3.3 9.4l6-.9z"/></svg></span>
+                            <h3>Your progress</h3>
+                        </div>
+                        <div class="progress-body"></div>
                     </div>
 
                     <div class="card tile uniform-card">
@@ -730,13 +737,26 @@
                 <header class="view-header">
                     <p class="eyebrow">You</p>
                     <h2>Settings</h2>
-                    <p class="subtitle">Your profile and account</p>
+                    <p class="subtitle">Your account, how Procrastinote looks, and notifications</p>
                 </header>
 
+                <!-- Quick jumps to each group below -->
+                <nav class="settings-jump" aria-label="Settings sections">
+                    <button type="button" data-jump="set-account">Account</button>
+                    <button type="button" data-jump="set-look">Look and feel</button>
+                    <button type="button" data-jump="set-notifications">XP and notifications</button>
+                    <button type="button" data-jump="set-app">App and sharing</button>
+                </nav>
+
+                <section class="settings-group" id="set-account" aria-labelledby="set-account-title">
+                    <div class="settings-group-head">
+                        <h3 id="set-account-title">Your account</h3>
+                        <p>Who you are, your password and your privacy</p>
+                    </div>
                 <div class="settings-grid">
                     <div class="card profile-card">
                         <div class="card-title-wrap">
-                            <span class="tile-icon tint-indigo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></span>
+                            <span class="profile-avatar" id="profile-avatar" aria-hidden="true">?</span>
                             <h3>Profile</h3>
                         </div>
                         <div class="profile-info">
@@ -752,63 +772,6 @@
                                 <span class="info-label">Email</span>
                                 <span class="info-value" id="profile-email">--</span>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="card install-card">
-                        <div class="card-title-wrap">
-                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span>
-                            <h3>Get the app</h3>
-                        </div>
-                        <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
-                        <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
-                    </div>
-
-                    <div class="card invite-card">
-                        <div class="card-title-wrap">
-                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg></span>
-                            <h3>Invite friends</h3>
-                        </div>
-                        <p class="subtitle card-sub">Show them a QR code to scan, or send the link on WhatsApp.</p>
-                        <button type="button" class="btn primary-btn btn-block" data-invite>Invite friends</button>
-                    </div>
-
-                    <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
-                    <div class="card themes-card">
-                        <div class="card-title-wrap">
-                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></span>
-                            <h3>Themes</h3>
-                        </div>
-                        <p class="subtitle card-sub">Pick how Procrastinote looks. It follows you to your other devices.</p>
-                        <div class="theme-options" role="radiogroup" aria-label="Theme">
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="procrastinote" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#070A12"></i><i style="background:#5B6CF0"></i></span>
-                                <span class="theme-option-text"><strong>Procrastinote</strong><small>The usual colours. Light or dark with the moon/sun button</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="classic" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#0F172A"></i><i style="background:#1E293B"></i><i style="background:#3B82F6"></i></span>
-                                <span class="theme-option-text"><strong>Classic</strong><small>The original look, with the sidebar. Light or dark too</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="minimal" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FAFAF8"></i><i style="background:#111111"></i><i style="background:#141414"></i></span>
-                                <span class="theme-option-text"><strong>Minimalist</strong><small>Just big, clear words and thin lines. Light or dark too</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
-                                <span class="theme-option-text"><strong>True Black</strong><small>Smoothest, saves battery on phones</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="paper" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FBF6EA"></i><i style="background:#FFFDF7"></i><i style="background:#B3261E"></i></span>
-                                <span class="theme-option-text"><strong>Paper</strong><small>Like writing in a notebook</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="blossom" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FFF5F8"></i><i style="background:#E6DCFF"></i><i style="background:#E26A9B"></i></span>
-                                <span class="theme-option-text"><strong>Blossom</strong><small>Soft pinks and lilac, round and bubbly</small></span>
-                            </button>
-                            <button type="button" class="theme-option" role="radio" data-theme-choice="exam" aria-checked="false">
-                                <span class="theme-swatch" aria-hidden="true"><i style="background:#ECEEF1"></i><i style="background:#FFFFFF"></i><i style="background:#3E4F6E"></i></span>
-                                <span class="theme-option-text"><strong>Exam Mode</strong><small>Quiet and plain, with your next exam at the top</small></span>
-                            </button>
                         </div>
                     </div>
 
@@ -835,6 +798,86 @@
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                         </div>
                     </a>
+                </div>
+                </section>
+
+                <section class="settings-group" id="set-look" aria-labelledby="set-look-title">
+                    <div class="settings-group-head">
+                        <h3 id="set-look-title">Look and feel</h3>
+                        <p>Pick how Procrastinote looks</p>
+                    </div>
+                <div class="settings-grid">
+                    <!-- Themes: the look of the whole site. Saved with the account (settings), so it follows you. -->
+                    <div class="card themes-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></span>
+                            <h3>Themes</h3>
+                        </div>
+                        <p class="subtitle card-sub">Pick how Procrastinote looks. It follows you to your other devices. Themes marked Light + dark switch with the moon/sun button.</p>
+                        <div class="theme-options" role="radiogroup" aria-label="Theme">
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="procrastinote" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#EEF1F7"></i><i style="background:#070A12"></i><i style="background:#5B6CF0"></i></span>
+                                <span class="theme-option-text"><strong>Procrastinote</strong><small>The usual colours</small><span class="theme-tag">Light + dark</span></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="classic" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#0F172A"></i><i style="background:#1E293B"></i><i style="background:#3B82F6"></i></span>
+                                <span class="theme-option-text"><strong>Classic</strong><small>The original look, with the sidebar</small><span class="theme-tag">Light + dark</span></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="minimal" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FAFAF8"></i><i style="background:#111111"></i><i style="background:#141414"></i></span>
+                                <span class="theme-option-text"><strong>Minimalist</strong><small>Just big, clear words and thin lines</small><span class="theme-tag">Light + dark</span></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="quest" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FFF6E5"></i><i style="background:#FFC531"></i><i style="background:#6D3DF5"></i></span>
+                                <span class="theme-option-text"><strong>Quest</strong><small>Bright, bouncy and fun, with confetti for your wins</small><span class="theme-tag">Light + dark</span></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="trueblack" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#000000"></i><i style="background:#141414"></i><i style="background:#3DE0A8"></i></span>
+                                <span class="theme-option-text"><strong>True Black</strong><small>Smoothest, saves battery on phones</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="paper" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FBF6EA"></i><i style="background:#FFFDF7"></i><i style="background:#B3261E"></i></span>
+                                <span class="theme-option-text"><strong>Paper</strong><small>Like writing in a notebook</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="blossom" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#FFF5F8"></i><i style="background:#E6DCFF"></i><i style="background:#E26A9B"></i></span>
+                                <span class="theme-option-text"><strong>Blossom</strong><small>Soft pinks and lilac, round and bubbly</small></span>
+                            </button>
+                            <button type="button" class="theme-option" role="radio" data-theme-choice="exam" aria-checked="false">
+                                <span class="theme-swatch" aria-hidden="true"><i style="background:#ECEEF1"></i><i style="background:#FFFFFF"></i><i style="background:#3E4F6E"></i></span>
+                                <span class="theme-option-text"><strong>Exam Mode</strong><small>Quiet and plain, with your next exam at the top</small></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                </section>
+
+                <section class="settings-group" id="set-notifications" aria-labelledby="set-notifications-title">
+                    <div class="settings-group-head">
+                        <h3 id="set-notifications-title">XP and notifications</h3>
+                        <p>Study rewards, and what your phone tells you about</p>
+                    </div>
+                <div class="settings-grid">
+                    <div class="card rewards-settings-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.5 6 .9-4.4 4.3 1 6L12 16.9 6.7 19.7l1-6L3.3 9.4l6-.9z"/></svg></span>
+                            <h3>XP and streaks</h3>
+                        </div>
+                        <p class="subtitle card-sub">Earn XP for homework and focus time, keep a study streak and complete small goals each week. You never lose XP, and missing a day now and then is fine.</p>
+                        <!-- Where you are now (filled in by renderSettings) -->
+                        <p class="rewards-summary" id="rewards-summary"></p>
+                        <ul class="xp-rules">
+                            <li><span>Finish a homework</span><b>+10 XP</b></li>
+                            <li><span>Finish it before it's due</span><b>+15 XP</b></li>
+                            <li><span>Each minute in the Zen timer</span><b>+1 XP</b></li>
+                            <li><span>Weekly goals</span><b>New every Monday</b></li>
+                        </ul>
+                        <label class="rewards-switch" for="rewards-toggle">
+                            <input type="checkbox" id="rewards-toggle" checked>
+                            <span>Show XP, streaks and goals</span>
+                        </label>
+                        <p class="idea-credit">Idea by Siddarth Senthilkumar, 10 C</p>
+                    </div>
 
                     <!-- Phone notifications (school-app.js: "Phone notifications") -->
                     <div class="card push-card" id="push-card">
@@ -860,6 +903,42 @@
                             <button type="button" id="btn-push-disable" class="btn secondary-btn btn-sm" hidden>Turn off</button>
                         </div>
                     </div>
+                </div>
+                </section>
+
+                <section class="settings-group" id="set-app" aria-labelledby="set-app-title">
+                    <div class="settings-group-head">
+                        <h3 id="set-app-title">App and sharing</h3>
+                        <p>Install Procrastinote and bring your friends</p>
+                    </div>
+                <div class="settings-grid">
+                    <div class="card install-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-teal"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span>
+                            <h3>Get the app</h3>
+                        </div>
+                        <p class="subtitle card-sub" id="install-card-text">Install Procrastinote on this device: it gets its own icon and opens full screen, like any other app. It's free and updates by itself.</p>
+                        <button type="button" class="btn primary-btn btn-block" id="btn-install-card" data-install>Install Procrastinote</button>
+                    </div>
+
+                    <div class="card invite-card">
+                        <div class="card-title-wrap">
+                            <span class="tile-icon tint-violet"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg></span>
+                            <h3>Invite friends</h3>
+                        </div>
+                        <p class="subtitle card-sub">Show them a QR code to scan, or send the link on WhatsApp.</p>
+                        <button type="button" class="btn primary-btn btn-block" data-invite>Invite friends</button>
+                    </div>
+                </div>
+                </section>
+
+                <!-- Log out, easy to find at the end of Settings (the same as the dock's Log out) -->
+                <div class="settings-logout">
+                    <button type="button" class="btn secondary-btn" id="settings-logout-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h3.5A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14"/><path d="M10 16.5 5.5 12 10 7.5M5.5 12H15"/></svg>
+                        Log out
+                    </button>
+                    <button type="button" class="btn delete-account-btn" id="btn-delete-account">Delete my account</button>
                 </div>
             </section>
 
@@ -1782,6 +1861,46 @@
         <div class="confirm-actions">
             <button type="button" class="btn secondary-btn" id="install-dialog-later">Not now</button>
             <button type="button" class="btn primary-btn" id="install-dialog-ok">Got it</button>
+        </div>
+    </dialog>
+
+    <!-- Delete account (school-app.js "Delete account"; Supabase: delete-account Edge Function) -->
+    <dialog id="delete-account-dialog" class="classes-dialog delete-account-dialog" aria-labelledby="delete-account-title">
+        <h3 id="delete-account-title">Delete your account?</h3>
+        <p class="install-note">This can't be undone. These will be deleted for good:</p>
+        <ul class="delete-account-list">
+            <li>Your profile, timetable, homework, notes, exams, marks and XP</li>
+            <li>Messages you sent, and notes, files and photos you shared</li>
+            <li>Your class memberships and phone notifications</li>
+        </ul>
+        <p class="install-note">Classes you created are handed to another admin or member, so your classmates keep them. A class with nobody else in it is deleted.</p>
+        <label class="delete-account-confirm" for="delete-account-input">Type <b>DELETE</b> to confirm</label>
+        <input type="text" id="delete-account-input" autocomplete="off" autocapitalize="characters" spellcheck="false"
+            data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+        <p class="delete-account-message" id="delete-account-message" role="alert" hidden></p>
+        <div class="confirm-actions">
+            <button type="button" class="btn secondary-btn" id="delete-account-cancel">Keep my account</button>
+            <button type="button" class="btn danger-btn" id="delete-account-go">Delete for good</button>
+        </div>
+    </dialog>
+
+    <!-- Report an AI reply (school-app.js "Report an AI reply"; Supabase: ai_reports table) -->
+    <dialog id="ai-report-dialog" class="classes-dialog ai-report-dialog" aria-labelledby="ai-report-title">
+        <h3 id="ai-report-title">Report this AI reply</h3>
+        <blockquote class="ai-report-quote" id="ai-report-quote"></blockquote>
+        <fieldset class="ai-report-reasons">
+            <legend>What's wrong with it?</legend>
+            <label><input type="radio" name="ai-report-reason" value="harmful" checked> Harmful or unsafe</label>
+            <label><input type="radio" name="ai-report-reason" value="wrong"> Wrong or misleading</label>
+            <label><input type="radio" name="ai-report-reason" value="rude"> Rude or upsetting</label>
+            <label><input type="radio" name="ai-report-reason" value="other"> Something else</label>
+        </fieldset>
+        <label class="ai-report-details-label" for="ai-report-details">Anything else to add? (optional)</label>
+        <textarea id="ai-report-details" rows="2" maxlength="500"></textarea>
+        <p class="ai-report-message" id="ai-report-message" role="status" hidden></p>
+        <div class="confirm-actions">
+            <button type="button" class="btn secondary-btn" id="ai-report-cancel">Cancel</button>
+            <button type="button" class="btn primary-btn" id="ai-report-send">Send report</button>
         </div>
     </dialog>
 
