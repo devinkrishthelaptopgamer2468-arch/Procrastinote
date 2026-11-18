@@ -2975,8 +2975,19 @@ function renderProfile() {
         if (nameEl) nameEl.innerText = appState.user.name || '--';
         if (gradeEl) gradeEl.innerText = appState.user.class || '--';
         if (emailEl) emailEl.innerText = appState.user.email || '--';
+        const avatar = document.getElementById('profile-avatar');
+        if (avatar) avatar.textContent = (appState.user.name || '?').trim().charAt(0).toUpperCase() || '?';
     }
 }
+
+// Settings: the buttons at the top jump to each group; Log out at the bottom works like the dock's
+document.querySelectorAll('.settings-jump [data-jump]').forEach(btn => btn.addEventListener('click', () => {
+    const group = document.getElementById(btn.dataset.jump);
+    if (!group) return;
+    const top = group.getBoundingClientRect().top + window.scrollY - 90; // clear of the top bar
+    window.scrollTo({ top, behavior: reducedMotion.matches || phoneNav.matches ? 'auto' : 'smooth' });
+}));
+document.getElementById('settings-logout-btn')?.addEventListener('click', () => document.getElementById('logout-btn')?.click());
 
 // --- Action Bindings ---
 

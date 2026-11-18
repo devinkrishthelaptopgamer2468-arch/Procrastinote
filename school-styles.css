@@ -10822,6 +10822,128 @@ body.external-pip-body .pip-header {
     }
 }
 
+/* ---------- Settings: grouped into sections, with quick jumps at the top ---------- */
+.settings-jump {
+    display: flex;
+    gap: 0.5rem;
+    margin: -0.5rem 0 1.75rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+}
+
+.settings-jump::-webkit-scrollbar {
+    display: none;
+}
+
+.settings-jump button {
+    flex: none;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-strong);
+    background: var(--surface-strong);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.settings-jump button:hover {
+    border-color: var(--accent-ring);
+    background: var(--accent-soft);
+}
+
+.settings-group {
+    margin-bottom: 2.25rem;
+    scroll-margin-top: 90px;
+}
+
+.settings-group-head {
+    margin-bottom: 0.9rem;
+}
+
+.settings-group-head h3 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+.settings-group-head p {
+    margin-top: 0.15rem;
+    font-size: 0.9rem;
+    color: var(--text-2);
+}
+
+@media (min-width: 1101px) {
+    #set-account .settings-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+/* Themes get the whole row, laid out as a grid of choices */
+.settings-grid .themes-card {
+    grid-column: 1 / -1;
+}
+
+.themes-card .theme-options {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.theme-tag {
+    align-self: flex-start;
+    margin-top: 0.3rem;
+    padding: 0.08rem 0.5rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+/* Profile: your initial in a circle */
+.profile-avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--grad);
+    color: #FFFFFF;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.settings-logout {
+    display: flex;
+    justify-content: center;
+    margin: 0.5rem 0 1rem;
+}
+
+.settings-logout .btn {
+    gap: 0.5rem;
+}
+
+.settings-logout .btn:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+@media (max-width: 700px) {
+    .settings-jump {
+        margin-left: calc(-1 * var(--page-pad));
+        margin-right: calc(-1 * var(--page-pad));
+        padding-left: var(--page-pad);
+        padding-right: var(--page-pad);
+    }
+
+    .settings-logout .btn {
+        width: 100%;
+    }
+}
+
 /* ---------- Rewards: the Your progress card, "+XP" pops and confetti (every theme) ---------- */
 :root {
     --confetti-1: #FFC531;
