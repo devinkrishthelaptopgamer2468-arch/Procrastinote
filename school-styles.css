@@ -9092,6 +9092,152 @@ body.external-pip-body .pip-header {
     border-radius: 4px;
 }
 
+/* ---------- Paper's Notebook: a real notebook page ---------- */
+
+/* The page: punched holes down the left edge */
+[data-skin="paper"] .notebook-editor {
+    padding-left: 3.4rem;
+    background-color: #FFFEF9;
+}
+
+[data-skin="paper"] .notebook-editor::before {
+    content: '';
+    position: absolute;
+    top: 1.5rem;
+    bottom: 1.5rem;
+    left: 0.9rem;
+    width: 18px;
+    background: radial-gradient(circle at 9px 9px, #E9E0CB 0 7px, #D6CAAE 7px 8px, transparent 8.5px) 0 0 / 18px 92px repeat-y;
+    pointer-events: none;
+}
+
+/* The title is handwritten, on a red pen line */
+[data-skin="paper"] .notebook-title-row {
+    border-bottom: 2px solid rgba(179, 38, 30, 0.5);
+}
+
+[data-skin="paper"] #notebook-title {
+    font-family: var(--font-serif);
+    font-size: 1.9rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--ink);
+}
+
+/* The writing sits on ruled blue lines (they scroll with the text) with a red margin line */
+[data-skin="paper"] #notebook-content {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.04rem;
+    line-height: 32px;
+    padding: 2px 0.75rem 0 3.25rem;
+    margin-top: 0.4rem;
+    color: #1F2A44;
+    background-color: transparent;
+    background-image:
+        linear-gradient(to right, transparent 2.35rem, rgba(220, 120, 115, 0.75) 2.35rem, rgba(220, 120, 115, 0.75) calc(2.35rem + 2px), transparent calc(2.35rem + 2px)),
+        repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #CCD8EA 31px, #CCD8EA 32px);
+    background-attachment: local;
+    background-position: 0 2px;
+}
+
+/* The word count is written at the bottom like a page number */
+[data-skin="paper"] .nb-footer {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    color: #3A55A0;
+}
+
+[data-skin="paper"] .nb-footer span::before { content: '— '; }
+[data-skin="paper"] .nb-footer span::after { content: ' —'; }
+
+/* The notes list: index cards, and the open note is a yellow sticky note */
+[data-skin="paper"] .notebook-sidebar-head h3 {
+    font-family: var(--font-serif);
+    font-size: 1.4rem;
+    color: var(--ink);
+}
+
+[data-skin="paper"] .nb-search {
+    border: 0;
+    border-bottom: 1.5px dashed rgba(31, 42, 68, 0.45);
+    border-radius: 0;
+    background: transparent;
+    padding-left: 0.2rem;
+}
+
+/* (.card .notebook-list > li: stronger than the general "rows in a sheet are plain" rule above) */
+[data-skin="paper"] .card .notebook-list > li.notebook-list-item {
+    margin-bottom: 0.55rem;
+    border: 1px solid #E6DCC6;
+    border-top: 3px solid rgba(179, 38, 30, 0.45);
+    border-radius: 3px;
+    background-color: #FFFDF7;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 21px, #E3EAF3 21px, #E3EAF3 22px);
+    box-shadow: 1px 2px 0 rgba(31, 42, 68, 0.08);
+}
+
+[data-skin="paper"] .card .notebook-list > li.notebook-list-item:hover {
+    background-color: #FFFAEC;
+}
+
+[data-skin="paper"] .card .notebook-list > li.notebook-list-item.active {
+    background: #FFF1A6;
+    border-color: #F1DE84;
+    border-top-color: #F1DE84;
+    transform: rotate(-0.6deg);
+    box-shadow: 2px 5px 10px -6px rgba(31, 42, 68, 0.45);
+}
+
+/* Toolbar buttons are pencil-drawn tags */
+[data-skin="paper"] .notebook-toolbar .btn {
+    border-style: dashed;
+}
+
+/* Pictures in a note are photo prints, tilted a little this way and that */
+[data-skin="paper"] .gallery-img-container {
+    padding: 6px 6px 20px;
+    border: 1px solid #E6DCC6;
+    border-radius: 2px;
+    background: #FFFFFF;
+    box-shadow: 0 6px 12px -8px rgba(31, 42, 68, 0.5);
+    transform: rotate(-1.5deg);
+}
+
+[data-skin="paper"] .gallery-img-container:nth-child(even) {
+    transform: rotate(1.2deg);
+}
+
+[data-skin="paper"] .gallery-img-container img {
+    border-radius: 1px;
+}
+
+/* Full screen: the whole screen is the notebook page */
+[data-skin="paper"] .notebook-editor.fullscreen {
+    background-color: #FFFEF9 !important;
+    background-image: var(--paper-grain) !important;
+    padding-left: max(3.4rem, 4vw) !important;
+}
+
+@media (max-width: 600px) {
+    [data-skin="paper"] .notebook-editor {
+        padding-left: 2.6rem;
+    }
+
+    [data-skin="paper"] .notebook-editor::before {
+        left: 0.55rem;
+        width: 14px;
+        background-size: 14px 80px;
+        background-image: radial-gradient(circle at 7px 7px, #E9E0CB 0 5.5px, #D6CAAE 5.5px 6.5px, transparent 7px);
+    }
+
+    [data-skin="paper"] #notebook-content {
+        padding-left: 1.6rem;
+        background-image:
+            linear-gradient(to right, transparent 1rem, rgba(220, 120, 115, 0.75) 1rem, rgba(220, 120, 115, 0.75) calc(1rem + 2px), transparent calc(1rem + 2px)),
+            repeating-linear-gradient(to bottom, transparent 0, transparent 31px, #CCD8EA 31px, #CCD8EA 32px);
+    }
+}
+
 /* ---------- Paper's Zen page: a classroom wall clock and a classroom cassette player ---------- */
 .wall-clock,
 .cassette-reels {
