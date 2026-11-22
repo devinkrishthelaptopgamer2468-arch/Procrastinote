@@ -475,9 +475,21 @@ function updateDayOrderIfNeeded() {
     return false;
 }
 
+// Before this hour on a school day, the dashboard plans for today (it's still time to pack and get
+// dressed); from this hour on, it plans for the next school day
+const PLAN_TODAY_UNTIL_HOUR = 8;
+
+// The day the dashboard plans for: today before 8 AM on a school day, otherwise the next school day
+function getPlanningDay(now = new Date()) {
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    if (now.getHours() < PLAN_TODAY_UNTIL_HOUR && isSchoolDay(today)) return { date: today, isToday: true };
+    return { date: getNextSchoolDay(now), isToday: false };
+}
+
 // The next school day after today (skips weekends and holidays)
-function getNextSchoolDay() {
-    const date = new Date();
+function getNextSchoolDay(now = new Date()) {
+    const date = new Date(now);
     date.setHours(0, 0, 0, 0);
     for (let i = 0; i < 366; i++) {
         date.setDate(date.getDate() + 1);
@@ -2445,22 +2457,37 @@ function renderHomework() {
     });
 }
 
+// If the page stays open past 8 AM, switch the dashboard from today to the next school day by itself
+let dashboardSwitchTimer = null;
+function scheduleDashboardSwitch() {
+    clearTimeout(dashboardSwitchTimer);
+    const now = new Date();
+    if (now.getHours() >= PLAN_TODAY_UNTIL_HOUR) return;
+    const at = new Date(now);
+    at.setHours(PLAN_TODAY_UNTIL_HOUR, 0, 5, 0);
+    dashboardSwitchTimer = setTimeout(() => { if (appState.user) renderDashboard(); }, at - now);
+}
+
 function renderDashboard() {
     const dateLine = document.getElementById('dash-date');
     if (dateLine) dateLine.innerText = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
-    // Plan for the next school day, skipping weekends and holidays
-    const nextSchoolDay = getNextSchoolDay();
+    // Plan for today until 8 AM on a school day (still time to pack), otherwise the next school day
+    const planning = getPlanningDay();
+    const nextSchoolDay = planning.date;
     const tmrwDay = getDayOrderForDate(nextSchoolDay);
     const tomorrow = new Date();
     tomorrow.setHours(0, 0, 0, 0);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const isTomorrow = nextSchoolDay.getTime() === tomorrow.getTime();
-    const nextLabel = isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
+    const nextLabel = planning.isToday ? 'Today' : isTomorrow ? 'Tomorrow' : nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long' });
     const tomorrowLabel = document.getElementById('dash-tomorrow-label');
     if (tomorrowLabel) tomorrowLabel.innerText = nextLabel;
+    const uniformFoot = document.getElementById('dash-uniform-foot');
+    if (uniformFoot) uniformFoot.innerText = planning.isToday ? 'For today' : 'For your next school day';
+    scheduleDashboardSwitch();
     let dayOrderText = dayOrderLabel(tmrwDay);
-    if (!isTomorrow) {
+    if (!planning.isToday && !isTomorrow) {
         const holidayName = getHoliday(tomorrow);
         const reason = holidayName !== undefined ? `Tomorrow is a holiday${holidayName ? ` (${holidayName})` : ''}` : 'No school tomorrow';
         dayOrderText = `${reason}. Next school day: ${nextSchoolDay.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}, ${dayOrderLabel(tmrwDay)}`;
