@@ -7910,7 +7910,29 @@ function isFriendOnline(email) {
     return !!id && onlineUserIds.has(id);
 }
 
+// Everyone you have an online chat with. The friends list is part of the planner, and when the
+// planner loads from the server it replaces the list; if someone new had just been added from
+// their messages (before the planner was ready, so that change was never saved online), they
+// vanished again. These people are added back after every planner load (mergeChatPartners).
+const chatPartners = new Set();
+
+// Adds chat partners missing from the friends list; true if any were added
+function mergeChatPartners() {
+    if (!appState.user || chatPartners.size === 0) return false;
+    if (!Array.isArray(appState.friendsList)) appState.friendsList = [];
+    let added = false;
+    chatPartners.forEach(email => {
+        if (!appState.friendsList.includes(email)) {
+            appState.friendsList.push(email);
+            added = true;
+        }
+    });
+    return added;
+}
+
 function addFriendIfNew(email) {
+    if (!email) return;
+    chatPartners.add(email);
     if (!appState.friendsList) appState.friendsList = [];
     if (appState.friendsList.includes(email)) return;
     appState.friendsList.push(email);
@@ -8218,16 +8240,8 @@ async function loadCloudFriends() {
         console.error('Could not load chats:', error.message);
         return;
     }
-    if (!appState.friendsList) appState.friendsList = [];
-    let updated = false;
-    data.forEach(row => {
-        const other = row.member_a === myEmail ? row.member_b : row.member_a;
-        if (!appState.friendsList.includes(other)) {
-            appState.friendsList.push(other);
-            updated = true;
-        }
-    });
-    if (updated) saveState();
+    data.forEach(row => chatPartners.add(row.member_a === myEmail ? row.member_b : row.member_a));
+    if (mergeChatPartners()) saveState();
     fetchFriendProfiles(appState.friendsList);
 }
 
@@ -8286,6 +8300,7 @@ function stopCloudChat() {
     cloudChannels.forEach(channel => cloud.removeChannel(channel));
     cloudChannels = [];
     cloudRooms = {};
+    chatPartners.clear(); // the next account on this device has its own
     loadedRooms = new Set();
     friendProfiles = {};
     onlineUserIds = new Set();
@@ -9354,6 +9369,8 @@ function applyRemotePlanner(remote) {
         ...nb,
         images: [...(nb.images || []), ...(localPictures[nb.id] || [])]
     }));
+    // People who've messaged you stay in your friends list even if the online copy doesn't have them yet
+    const partnersAdded = mergeChatPartners();
 
     applyingRemotePlanner = true;
     try {
@@ -9363,6 +9380,7 @@ function applyRemotePlanner(remote) {
     } finally {
         applyingRemotePlanner = false;
     }
+    if (partnersAdded) schedulePlannerSync(); // save them online too (does nothing until the planner is ready)
 }
 
 async function pullPlannerData() {
@@ -9398,6 +9416,15 @@ async function startPlannerSync() {
     plannerBase = {};
     await pullPlannerData();
     plannerReady = true;
+    // Chat partners found while the planner was loading weren't saved online yet: save them now
+    // (only if the online copy is actually missing someone)
+    let online = [];
+    try { online = JSON.parse(plannerBase.friendsList || '[]') || []; } catch (e) { /* treat as empty */ }
+    const added = mergeChatPartners();
+    if (added || [...chatPartners].some(email => !online.includes(email))) {
+        saveState();
+        renderFriends();
+    }
 }
 
 function stopPlannerSync() {

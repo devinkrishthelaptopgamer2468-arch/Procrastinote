@@ -6,8 +6,8 @@ window.PROCRASTINOTE_UPDATES = [
     {
         id: 'week-2026-11-23',
         date: '2026-11-27',
-        title: 'This week: messages to Devin fixed',
-        text: '"Message me on Friends" (in About me) now really reaches me. Before, those messages went to an old address I don\'t use, so if you sent me one and never got a reply, please send it again!'
+        title: 'This week: messages fixed',
+        text: '"Message me on Friends" (in About me) now really reaches me. Before, those messages went to an old address I don\'t use, so if you sent me one and never got a reply, please send it again! Also fixed: someone who messaged you for the first time could disappear from your Friends list right after opening Procrastinote. Now everyone who messages you stays there.'
     },
     {
         date: '2026-11-16',
