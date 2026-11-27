@@ -5255,7 +5255,9 @@ function openAuth(mode) {
 }
 
 // --- About me (opened from "Created by Devin Krish" on the welcome page) ---
-const CREATOR_EMAIL = 'devinkrishthelaptopgamer2468@gmail.com';
+// The account Devin logs in to Procrastinote with (the same as SITE_OWNER_EMAIL in classes.js and
+// is_site_owner() in add-classes.sql). Messages from "Message me on Friends" go to this address.
+const CREATOR_EMAIL = 'devinthegamer2468@gmail.com';
 const PENDING_CREATOR_CHAT_KEY = 'procrastinote_open_creator_chat'; // survives the trip to Google sign-in
 
 function openAboutMe() {
